@@ -79,6 +79,15 @@ export default function SettingsScreen() {
   const { user, logout } = useAuth();
   const { pushToken, permissionError } = useNotifications();
 
+  const isAdmin = (() => {
+    const role = String(user?.role ?? "").toLowerCase();
+    if (role) return role !== "user";
+    const regType = String(
+      user?.registrationType ?? user?.registration_type ?? "",
+    ).toUpperCase();
+    return regType !== "USER";
+  })();
+
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
@@ -147,36 +156,40 @@ export default function SettingsScreen() {
           </View>
 
           <View style={{ paddingHorizontal: 20 }}>
-            <Text
-              style={{
-                color: colors.textMuted,
-                fontSize: 11,
-                letterSpacing: 1.4,
-                textTransform: "uppercase",
-                fontWeight: "700",
-                marginBottom: 8,
-              }}
-            >
-              Guest management
-            </Text>
-            <SettingsRow
-              icon={<UserCheck size={20} color={colors.accent} />}
-              title="Guest list"
-              subtitle="Pending and recent guest arrivals"
-              onPress={() => router.push("/(tabs)/guest-list")}
-            />
-            <SettingsRow
-              icon={<CalendarRange size={20} color={colors.accent} />}
-              title="Guest schedules"
-              subtitle="Pre-approve expected guest windows"
-              onPress={() => router.push("/(tabs)/guest-schedules")}
-            />
-            <SettingsRow
-              icon={<Ticket size={20} color={colors.accent} />}
-              title="Guest passes"
-              subtitle="Pre-registered passes with event IDs"
-              onPress={() => router.push("/(tabs)/guest-passes")}
-            />
+            {isAdmin ? (
+              <>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    letterSpacing: 1.4,
+                    textTransform: "uppercase",
+                    fontWeight: "700",
+                    marginBottom: 8,
+                  }}
+                >
+                  Guest management
+                </Text>
+                <SettingsRow
+                  icon={<UserCheck size={20} color={colors.accent} />}
+                  title="Guest list"
+                  subtitle="Pending and recent guest arrivals"
+                  onPress={() => router.push("/(tabs)/guest-list")}
+                />
+                <SettingsRow
+                  icon={<CalendarRange size={20} color={colors.accent} />}
+                  title="Guest schedules"
+                  subtitle="Pre-approve expected guest windows"
+                  onPress={() => router.push("/(tabs)/guest-schedules")}
+                />
+                <SettingsRow
+                  icon={<Ticket size={20} color={colors.accent} />}
+                  title="Guest passes"
+                  subtitle="Pre-registered passes with event IDs"
+                  onPress={() => router.push("/(tabs)/guest-passes")}
+                />
+              </>
+            ) : null}
 
             <Text
               style={{
@@ -185,7 +198,7 @@ export default function SettingsScreen() {
                 letterSpacing: 1.4,
                 textTransform: "uppercase",
                 fontWeight: "700",
-                marginTop: 16,
+                marginTop: isAdmin ? 16 : 0,
                 marginBottom: 8,
               }}
             >
