@@ -21,6 +21,7 @@ import {
   type ZoneType,
 } from "@/api/zones";
 import { AUTH_MAP_DEFAULT_CENTER, type LatLng } from "@/lib/h3";
+import { setStoredMapCenter } from "@/lib/storage";
 import {
   circleToGeoJsonPolygon,
   colorForZoneType,
@@ -250,6 +251,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
           : "";
       setStatus(`Locked onto your location${acc}`);
       setError(null);
+      void setStoredMapCenter({ latitude: lat, longitude: lng });
     },
     [clearLocationTimeout],
   );
@@ -611,7 +613,10 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
     if (capabilities && capabilities.can_create_zone === false) return false;
     if (zoneType === "geofence") {
       if (geofenceTool === "polygon") {
-        return isClosedPolygon(draftRing);
+        // Allow either a closed polygon or any 3+ vertex sketch — save will
+        // close it automatically before sending. Hitting the closing-tap
+        // tolerance on a phone is too easy to miss to gate Save on it.
+        return draftRing.length >= 3;
       }
       return draftCircle != null && draftCircle.radiusMeters > 0;
     }
@@ -664,6 +669,15 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
     const description = zoneDescription.trim();
     let payload: CreateZonePayload | null = null;
 
+    // Stamp every new zone with the owner's account-level zone id (the value
+    // saved in the `owners.zone_id` column at signup, e.g. "zone-KJ14"). The
+    // server's contract route reads this from `id`; the canonical route reads
+    // it from `zone_id`. We send both so whichever handler answers picks the
+    // right value instead of generating "{owner_id}-{N}".
+    const ownerStamp = ownerZoneId
+      ? { id: ownerZoneId, zone_id: ownerZoneId }
+      : {};
+
     if (zoneType === "geofence") {
       const polygon =
         geofenceTool === "polygon"
@@ -673,7 +687,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "geofence",
         zone_type: "geofence",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: { geo_fence_polygon: polygon },
         geo_fence_polygon: polygon,
         config: { h3_cells: [] },
@@ -683,7 +697,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "grid",
         zone_type: "grid",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: {},
         config: { h3_cells: selectedH3Cells },
         h3_cells: selectedH3Cells,
@@ -695,7 +709,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "proximity",
         zone_type: "proximity",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: {
           center: centerPayload,
           centers: [centerPayload],
@@ -716,7 +730,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "dynamic",
         zone_type: "dynamic",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: { center },
         config: {
           target_user_count: Math.trunc(dynamicTarget),
@@ -733,7 +747,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "communal_id",
         zone_type: "communal_id",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: communalValidation.geometry,
         geo_fence_polygon:
           refFence && typeof refFence === "object"
@@ -754,7 +768,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "government_local_code",
         zone_type: "government_local_code",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: governmentValidation.geometry,
         geo_fence_polygon:
           refFence && typeof refFence === "object"
@@ -768,7 +782,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         name: zoneName.trim(),
         type: "object",
         zone_type: "object",
-        ...(ownerZoneId ? { zone_id: ownerZoneId } : {}),
+        ...ownerStamp,
         geometry: {
           center: {
             latitude: objectCenter[0],
@@ -934,6 +948,13 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
     },
     undoGeofencePoint: () =>
       setDraftRing((cur) => (cur.length ? cur.slice(0, -1) : cur)),
+    finishGeofencePolygon: () => {
+      setDraftRing((cur) => {
+        if (cur.length < 3) return cur;
+        if (isClosedPolygon(cur)) return cur;
+        return [...cur, cur[0]];
+      });
+    },
 
     // proximity
     proximityCenter,

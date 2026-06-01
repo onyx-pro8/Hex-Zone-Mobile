@@ -25,6 +25,7 @@
       }
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0F"
@@ -77,8 +78,8 @@
     },
     "extra": {
       "router": {},
-      "apiBaseUrl": "https://zone-weaver-wwws2.ondigitalocean.app",
-      "webAppBaseUrl": "https://zone-weaver-wwws2.ondigitalocean.app",
+      "apiBaseUrl": "https://zone-weaver-server-7ksef.ondigitalocean.app/",
+      "webAppBaseUrl": "https://zone-weaver-server-7ksef.ondigitalocean.app/",
       "eas": {
         "projectId": "f7e4abd1-8246-4b62-b78e-2f1c690d78ea"
       }

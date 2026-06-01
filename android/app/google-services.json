@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "700623739728",
+    "project_id": "zoneweaver",
+    "storage_bucket": "zoneweaver.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:700623739728:android:e07fb72dc05ea3bb0aaa55",
+        "android_client_info": {
+          "package_name": "com.zoneweaver.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBICnsYY4fJ-HQb67Xe3ChdqYS0meC656Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

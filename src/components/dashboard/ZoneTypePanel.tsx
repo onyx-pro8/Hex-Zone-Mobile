@@ -1,5 +1,6 @@
 import { Text, View, Pressable } from "react-native";
 import {
+  CheckCircle2,
   Crosshair,
   LocateFixed,
   MapPin,
@@ -8,6 +9,8 @@ import {
   Trash2,
   Wand2,
 } from "lucide-react-native";
+import { isClosedPolygon } from "@/lib/zoneGeometry";
+import { setStoredMapCenter } from "@/lib/storage";
 import { Input } from "@/components/ui/Input";
 import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
 import { CompactSlider } from "@/components/dashboard/Slider";
@@ -20,6 +23,10 @@ export function ZoneTypePanel({ builder }: Props) {
   const t = builder.zoneType;
 
   if (t === "geofence") {
+    const polygonPoints = builder.draftRing.length;
+    const polygonClosed = isClosedPolygon(builder.draftRing);
+    const canFinishPolygon =
+      builder.geofenceTool === "polygon" && polygonPoints >= 3 && !polygonClosed;
     return (
       <View style={{ gap: 12 }}>
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -36,9 +43,35 @@ export function ZoneTypePanel({ builder }: Props) {
         </View>
         <Text style={hintStyle}>
           {builder.geofenceTool === "polygon"
-            ? "Tap the map to drop vertices, then tap near the first point to close."
+            ? polygonClosed
+              ? `Polygon closed · ${polygonPoints - 1} vertices.`
+              : polygonPoints === 0
+                ? "Tap the map to drop vertices, then press Finish (or tap near the first point) to close."
+                : polygonPoints < 3
+                  ? `Add ${3 - polygonPoints} more vertex${polygonPoints === 2 ? "" : "es"} to enable Finish.`
+                  : `Tap Finish to close the polygon, or keep adding vertices (${polygonPoints} so far).`
             : "Tap the map once for the circle center, tap again to set the radius."}
         </Text>
+        {builder.geofenceTool === "polygon" ? (
+          <SecondaryButton
+            label={polygonClosed ? "Polygon closed" : "Finish polygon"}
+            icon={
+              <CheckCircle2
+                size={14}
+                color={
+                  canFinishPolygon
+                    ? colors.accent
+                    : polygonClosed
+                      ? colors.success
+                      : colors.textDim
+                }
+              />
+            }
+            onPress={builder.finishGeofencePolygon}
+            disabled={!canFinishPolygon}
+            highlight={canFinishPolygon}
+          />
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8 }}>
           <SecondaryButton
             label="Undo"
@@ -345,6 +378,10 @@ export function ZoneTypePanel({ builder }: Props) {
             if (coords) {
               builder.setObjectCenter(coords);
               builder.setMapCenter(coords);
+              void setStoredMapCenter({
+                latitude: coords[0],
+                longitude: coords[1],
+              });
               if (!builder.objectReferenceId) {
                 builder.setObjectReferenceId(
                   `place-${coords[0].toFixed(4)}-${coords[1].toFixed(4)}`,
@@ -429,14 +466,19 @@ function SecondaryButton({
   label,
   icon,
   onPress,
+  disabled,
+  highlight,
 }: {
   label: string;
   icon?: React.ReactNode;
   onPress: () => void;
+  disabled?: boolean;
+  highlight?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={{
         flex: 1,
         flexDirection: "row",
@@ -446,14 +488,15 @@ function SecondaryButton({
         paddingVertical: 11,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.bgCard,
+        borderColor: highlight ? colors.accent : colors.border,
+        backgroundColor: highlight ? "rgba(255,45,170,0.12)" : colors.bgCard,
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       {icon}
       <Text
         style={{
-          color: colors.textMuted,
+          color: highlight ? colors.accent : colors.textMuted,
           fontWeight: "700",
           fontSize: 12,
         }}

@@ -21,8 +21,11 @@ import { colorForZoneType, summarizeZone } from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
 export default function DashboardScreen() {
-  const { user } = useAuth();
-  const builder = useZoneBuilder(user?.zoneId);
+  const { ownerZoneId } = useAuth();
+  // Always create zones against the account owner's zone_id, not the
+  // signed-in user's. For admins they're the same; for non-admin USERS
+  // the owner's zone is the canonical one for the whole account.
+  const builder = useZoneBuilder(ownerZoneId || undefined);
   const [panelOpen, setPanelOpen] = useState(true);
 
   const dragResponder = useRef(

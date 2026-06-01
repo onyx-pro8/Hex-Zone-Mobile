@@ -115,19 +115,20 @@ export function normalizeZoneType(value: unknown): ZoneType {
   return "geofence";
 }
 
-function parsePositionPair(pair: unknown): LatLng | null {
+/** GeoJSON positions are always `[longitude, latitude]`. */
+function geoJsonPositionToLatLng(pair: unknown): LatLng | null {
   if (!Array.isArray(pair) || pair.length < 2) return null;
-  const a = Number(pair[0]);
-  const b = Number(pair[1]);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  if (Math.abs(a) <= 90 && Math.abs(b) <= 180) return [a, b];
-  return [b, a];
+  const lng = Number(pair[0]);
+  const lat = Number(pair[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90) return null;
+  return [lat, lng];
 }
 
 function ringFromGeoJsonRing(ring: unknown): LatLng[] | null {
   if (!Array.isArray(ring)) return null;
   const pts = ring
-    .map(parsePositionPair)
+    .map(geoJsonPositionToLatLng)
     .filter((p): p is LatLng => p !== null);
   return pts.length >= 3 ? pts : null;
 }

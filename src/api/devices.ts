@@ -2,6 +2,16 @@ import { request } from "./client";
 
 export type PushPlatform = "FCM" | "APNS" | "EXPO";
 
+export type DeviceOwner = {
+  id?: number | string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  role?: string;
+  account_type?: string;
+  active?: boolean;
+};
+
 export type DeviceRecord = {
   id: number | string;
   hid: string;
@@ -18,6 +28,11 @@ export type DeviceRecord = {
   status?: boolean;
   is_online?: boolean;
   owner_id?: number | string;
+  owner?: DeviceOwner;
+  h3_cell_id?: string;
+  last_seen?: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type UpsertDevicePayload = {

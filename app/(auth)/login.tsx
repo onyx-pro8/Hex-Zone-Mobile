@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
-import { Lock, Mail, QrCode } from "lucide-react-native";
+import { AlertTriangle, Lock, Mail, QrCode } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
@@ -20,17 +20,24 @@ import { colors } from "@/theme/colors";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, authError, clearAuthError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Pick up errors from background device sync (e.g. account device limit
+  // hit when restoring an existing token on a second phone).
+  useEffect(() => {
+    if (authError) setError(authError);
+  }, [authError]);
+
   const center = AUTH_MAP_DEFAULT_CENTER;
 
   const onSubmit = async () => {
     setError(null);
+    clearAuthError();
     if (!email.trim() || !password) {
       setError("Email and password are required.");
       return;
@@ -44,11 +51,13 @@ export default function LoginScreen() {
         err instanceof Error
           ? err.message
           : "Login failed. Check your credentials and try again.";
-      setError(
-        /inactive|expired|403/i.test(message)
-          ? "Account is inactive or expired"
-          : message,
-      );
+      if (/device.*registered|device limit|already has/i.test(message)) {
+        setError(message);
+      } else if (/inactive|expired|403/i.test(message)) {
+        setError("Account is inactive or expired");
+      } else {
+        setError(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -126,6 +135,36 @@ export default function LoginScreen() {
             </Text>
           </View>
 
+          {error && /device|already has/i.test(error) ? (
+            <View
+              style={{
+                marginHorizontal: 24,
+                marginBottom: 4,
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "rgba(255, 77, 109, 0.5)",
+                backgroundColor: "rgba(255, 77, 109, 0.1)",
+              }}
+            >
+              <AlertTriangle size={16} color={colors.danger} />
+              <Text
+                style={{
+                  color: colors.danger,
+                  fontSize: 12,
+                  lineHeight: 18,
+                  flex: 1,
+                }}
+              >
+                {error}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={{ paddingHorizontal: 24, gap: 16, marginTop: 24 }}>
             <Input
               label="Email"
@@ -145,7 +184,9 @@ export default function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               leftIcon={<Lock size={18} color={colors.textMuted} />}
-              error={error ?? undefined}
+              error={
+                error && !/device|already has/i.test(error) ? error : undefined
+              }
             />
 
             <View
