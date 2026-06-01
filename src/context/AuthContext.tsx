@@ -31,6 +31,7 @@ import {
 } from "@/lib/storage";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { isRunningExpoGo } from "@/lib/pushSupport";
+import { onUnauthorized } from "@/lib/authEvents";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -164,6 +165,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void syncCurrentDevice(user);
     void syncPushTokenToServer();
   }, [token, user]);
+
+  useEffect(() => {
+    return onUnauthorized(() => {
+      void performLogout();
+    });
+  }, [performLogout]);
 
   const refreshUser = useCallback(async () => {
     if (!token) return;

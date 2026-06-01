@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import {
   Loader2,
   Lock,
@@ -83,6 +83,13 @@ const labelStyle = {
 export default function SignupScreen() {
   const router = useRouter();
   const { register } = useAuth();
+  const params = useLocalSearchParams<{ invite_token?: string | string[] }>();
+  const inviteToken = useMemo(() => {
+    const raw = Array.isArray(params.invite_token)
+      ? params.invite_token[0]
+      : params.invite_token;
+    return typeof raw === "string" ? raw.trim() : "";
+  }, [params.invite_token]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -119,8 +126,14 @@ export default function SignupScreen() {
   }, []);
 
   useEffect(() => {
+    if (inviteToken) {
+      setRegistrationCode(inviteToken);
+      setRegCodeLoading(false);
+      setRegCodeError(null);
+      return;
+    }
     void loadRegistrationCode();
-  }, [loadRegistrationCode]);
+  }, [loadRegistrationCode, inviteToken]);
 
   const center = useMemo<LatLng>(
     () => addressCoords ?? addressToMockCoords(address) ?? AUTH_MAP_DEFAULT_CENTER,

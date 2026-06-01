@@ -3,10 +3,13 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Bell,
+  CalendarRange,
   LogOut,
   Shield,
   Smartphone,
+  Ticket,
   User,
+  UserCheck,
 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -144,6 +147,50 @@ export default function SettingsScreen() {
           </View>
 
           <View style={{ paddingHorizontal: 20 }}>
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: 11,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                fontWeight: "700",
+                marginBottom: 8,
+              }}
+            >
+              Guest management
+            </Text>
+            <SettingsRow
+              icon={<UserCheck size={20} color={colors.accent} />}
+              title="Guest list"
+              subtitle="Pending and recent guest arrivals"
+              onPress={() => router.push("/(tabs)/guest-list")}
+            />
+            <SettingsRow
+              icon={<CalendarRange size={20} color={colors.accent} />}
+              title="Guest schedules"
+              subtitle="Pre-approve expected guest windows"
+              onPress={() => router.push("/(tabs)/guest-schedules")}
+            />
+            <SettingsRow
+              icon={<Ticket size={20} color={colors.accent} />}
+              title="Guest passes"
+              subtitle="Pre-registered passes with event IDs"
+              onPress={() => router.push("/(tabs)/guest-passes")}
+            />
+
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: 11,
+                letterSpacing: 1.4,
+                textTransform: "uppercase",
+                fontWeight: "700",
+                marginTop: 16,
+                marginBottom: 8,
+              }}
+            >
+              Account
+            </Text>
             <SettingsRow
               icon={<Bell size={20} color={colors.accent} />}
               title="Push notifications"

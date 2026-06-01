@@ -4,4 +4,5 @@ export * from "./zones";
 export * from "./devices";
 export * from "./members";
 export * from "./messages";
+export * from "./messageFeature";
 export * from "./guest";
