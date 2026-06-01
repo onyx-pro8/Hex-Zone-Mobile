@@ -1,9 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TOKEN_KEY = "hexzone:token";
-const REMEMBER_KEY = "hexzone:remember";
-const DEVICE_HID_KEY = "hexzone:device_hid";
-const PUSH_TOKEN_KEY = "hexzone:push_token";
+const TOKEN_KEY = "zoneweaver:token";
+const REMEMBER_KEY = "zoneweaver:remember";
+const DEVICE_HID_KEY = "zoneweaver:device_hid";
+const PUSH_TOKEN_KEY = "zoneweaver:push_token";
 
 export async function getToken(): Promise<string | null> {
   try {

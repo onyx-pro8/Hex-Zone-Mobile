@@ -33,7 +33,7 @@ export function Logo({
             letterSpacing: 1.5,
           }}
         >
-          Hex <Text style={{ color: colors.accent }}>Zone</Text>
+          Zone <Text style={{ color: colors.accent }}>Weaver</Text>
         </Text>
       ) : null}
     </View>

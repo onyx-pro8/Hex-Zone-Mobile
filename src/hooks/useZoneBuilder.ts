@@ -272,7 +272,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
           {
             title: "Use your location",
             message:
-              "Hex Zone needs your device location to anchor the proximity zone.",
+              "Zone Weaver needs your device location to anchor the proximity zone.",
             buttonPositive: "Allow",
             buttonNegative: "Cancel",
           },

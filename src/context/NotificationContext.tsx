@@ -37,7 +37,7 @@ function toPayload(
 ): ZoneNotificationPayload {
   const content = notification.request.content;
   return {
-    title: content.title ?? "Hex Zone",
+    title: content.title ?? "Zone Weaver",
     body: content.body ?? "",
     data: (content.data as Record<string, unknown>) ?? {},
     receivedAt: Date.now(),
