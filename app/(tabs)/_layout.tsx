@@ -88,6 +88,10 @@ export default function TabsLayout() {
         name="guest-schedules"
         options={{ href: null }}
       />
+      <Tabs.Screen
+        name="api-docs"
+        options={{ href: null }}
+      />
     </Tabs>
   );
 }

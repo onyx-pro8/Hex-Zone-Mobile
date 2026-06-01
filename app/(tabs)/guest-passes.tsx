@@ -131,7 +131,7 @@ export default function GuestPassesScreen() {
           title="Guest passes"
           subtitle="Pre-registered arrivals"
           showBack
-          onBack={() => router.back()}
+          onBack={() => router.replace("/(tabs)/settings")}
         />
         {!zoneId ? (
           <View style={{ paddingHorizontal: 20 }}>

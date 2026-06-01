@@ -399,7 +399,6 @@ export default function SignupScreen() {
                 containerStyle={{ flex: 1 }}
               />
             </View>
-
             <Input
               label="Email"
               placeholder="alex@zoneweaver.io"
