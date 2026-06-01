@@ -1,6 +1,7 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from "axios";
 import Constants from "expo-constants";
 import { clearToken, getToken } from "@/lib/storage";
+import { emitUnauthorized } from "@/lib/authEvents";
 
 type ExtraConfig = { apiBaseUrl?: string };
 
@@ -21,6 +22,7 @@ export type ApiResult<T> = {
   data: T | null;
   error: string | null;
   loading: boolean;
+  unauthorized?: boolean;
 };
 
 export const apiClient: AxiosInstance = axios.create({
@@ -42,6 +44,7 @@ apiClient.interceptors.response.use(
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
       await clearToken();
+      emitUnauthorized();
     }
     return Promise.reject(error);
   },
@@ -102,6 +105,12 @@ export async function request<T>(
       loading: false,
     };
   } catch (error) {
-    return { data: null, error: toErrorMessage(error), loading: false };
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+    return {
+      data: null,
+      error: toErrorMessage(error),
+      loading: false,
+      ...(status === 401 ? { unauthorized: true } : {}),
+    };
   }
 }

@@ -5,7 +5,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "hexzone",
+    "scheme": "zoneweaver",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -78,6 +78,7 @@
     "extra": {
       "router": {},
       "apiBaseUrl": "https://zone-weaver-wwws2.ondigitalocean.app",
+      "webAppBaseUrl": "https://zone-weaver-wwws2.ondigitalocean.app",
       "eas": {
         "projectId": "f7e4abd1-8246-4b62-b78e-2f1c690d78ea"
       }

@@ -27,9 +27,10 @@ function ProtectedShell() {
 
   useEffect(() => {
     if (initializing) return;
-    const firstSegment = (segments as readonly string[])[0];
-    const inAuthGroup = firstSegment === "(auth)";
-    const inTabsGroup = firstSegment === "(tabs)";
+    const segs = segments as readonly string[];
+    const firstSegment = segs[0];
+    const inAuthGroup = segs.includes("(auth)");
+    const inTabsGroup = segs.includes("(tabs)");
     if (!token && inTabsGroup) {
       router.replace("/(auth)/welcome");
     } else if (token && (inAuthGroup || firstSegment == null)) {
