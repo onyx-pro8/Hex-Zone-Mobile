@@ -1,9 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { normalizeMapCenter, type MapCenter } from "@/lib/mapCenter";
+
 const TOKEN_KEY = "zoneweaver:token";
 const REMEMBER_KEY = "zoneweaver:remember";
 const DEVICE_HID_KEY = "zoneweaver:device_hid";
 const PUSH_TOKEN_KEY = "zoneweaver:push_token";
+const MAP_CENTER_KEY = "zoneweaver:map_center";
 
 export async function getToken(): Promise<string | null> {
   try {
@@ -58,6 +61,14 @@ export async function getOrCreateDeviceHid(): Promise<string> {
   }
 }
 
+export async function setDeviceHid(hid: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(DEVICE_HID_KEY, hid);
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function getStoredPushToken(): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(PUSH_TOKEN_KEY);
@@ -69,6 +80,26 @@ export async function getStoredPushToken(): Promise<string | null> {
 export async function setStoredPushToken(token: string): Promise<void> {
   try {
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getStoredMapCenter(): Promise<MapCenter | null> {
+  try {
+    const raw = await AsyncStorage.getItem(MAP_CENTER_KEY);
+    if (!raw) return null;
+    return normalizeMapCenter(JSON.parse(raw) as MapCenter);
+  } catch {
+    return null;
+  }
+}
+
+export async function setStoredMapCenter(center: MapCenter): Promise<void> {
+  const normalized = normalizeMapCenter(center);
+  if (!normalized) return;
+  try {
+    await AsyncStorage.setItem(MAP_CENTER_KEY, JSON.stringify(normalized));
   } catch {
     /* ignore */
   }

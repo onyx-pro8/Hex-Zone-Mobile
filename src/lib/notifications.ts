@@ -25,6 +25,27 @@ export type PushRegistrationResult = {
   error?: string;
 };
 
+const FCM_SETUP_URL =
+  "https://docs.expo.dev/push-notifications/fcm-credentials/";
+
+function formatPushRegistrationError(err: unknown): string {
+  const raw =
+    err instanceof Error ? err.message : "Push registration failed.";
+  if (/FirebaseApp is not initialized/i.test(raw)) {
+    const androidPackage =
+      Constants.expoConfig?.android?.package ?? "com.zoneweaver.mobile";
+    return [
+      "Firebase (FCM) is not configured in this Android build.",
+      `Add google-services.json for package ${androidPackage}, upload an FCM service account to EAS (eas credentials), then rebuild with expo run:android or EAS Build.`,
+      FCM_SETUP_URL,
+    ].join(" ");
+  }
+  if (/fcm-credentials/i.test(raw)) {
+    return `${raw} ${FCM_SETUP_URL}`;
+  }
+  return raw;
+}
+
 export async function ensureAndroidChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
   try {
@@ -95,9 +116,7 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
     }
     return { token };
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Push registration failed.";
-    return { token: null, error: message };
+    return { token: null, error: formatPushRegistrationError(err) };
   }
 }
 
@@ -117,14 +136,19 @@ export async function presentLocalMessageNotification(payload: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  /** Android notification channel (`messages` or `alarms`). */
+  channelId?: "messages" | "alarms";
 }) {
   try {
+    await ensureAndroidChannels();
+    const channelId = payload.channelId ?? "messages";
     await Notifications.scheduleNotificationAsync({
       content: {
         title: payload.title,
         body: payload.body,
         data: payload.data ?? {},
         sound: "default",
+        ...(Platform.OS === "android" ? { channelId } : {}),
       },
       trigger: null,
     });

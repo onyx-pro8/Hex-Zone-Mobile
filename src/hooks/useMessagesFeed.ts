@@ -14,6 +14,10 @@ import {
   parseMessageFeatureSocketEvent,
   parseMessageSocketPayload,
 } from "@/lib/messageSocket";
+import {
+  notifyIncomingGeoPropagation,
+  notifyIncomingInboxMessage,
+} from "@/lib/incomingMessageNotify";
 import { isRunningExpoGo } from "@/lib/pushSupport";
 import { useWebSocket } from "./useWebSocket";
 
@@ -32,7 +36,7 @@ function mergeSortedInbox(batch: Message[]): Message[] {
 }
 
 export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }) {
-  const { user, token } = useAuth();
+  const { user, token, ownerZoneId } = useAuth();
   const { lastNotification } = useNotifications();
   const [messages, setMessages] = useState<Message[]>([]);
   const [blockRules, setBlockRules] = useState<MessageFeatureBlock[]>([]);
@@ -45,20 +49,28 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [user?.id]);
 
-  const zoneIds = useMemo(() => {
+  const accountZoneId = useMemo(() => {
+    const fromOwner = ownerZoneId?.trim();
+    if (fromOwner) return fromOwner;
     const fromUser = user?.zoneId ?? user?.zone_id;
+    return fromUser != null ? String(fromUser).trim() : "";
+  }, [ownerZoneId, user?.zoneId, user?.zone_id]);
+
+  const zoneIds = useMemo(() => {
     const base =
       options?.zoneIds?.filter((z) => z.trim().length > 0) ??
-      (fromUser ? [String(fromUser)] : []);
+      (accountZoneId ? [accountZoneId] : []);
     const fromMessages = messages.map((m) => m.zone_id).filter(Boolean);
     return Array.from(new Set([...base, ...fromMessages]));
-  }, [user?.zoneId, user?.zone_id, options?.zoneIds, messages]);
+  }, [accountZoneId, options?.zoneIds, messages]);
 
   const blockRulesRef = useRef(blockRules);
   useEffect(() => {
     blockRulesRef.current = blockRules;
   }, [blockRules]);
 
+  const inboxHydratedOnceRef = useRef(false);
+  const seenInboxIdsRef = useRef<Set<string>>(new Set());
   const refetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const applyInboxBatch = useCallback((batch: Message[], blocks: MessageFeatureBlock[]) => {
@@ -67,6 +79,7 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
   }, []);
 
   const prependInboxMessage = useCallback((incoming: Message) => {
+    seenInboxIdsRef.current.add(incoming.id);
     const blocks = blockRulesRef.current;
     setMessages((prev) => {
       const merged = mergeSortedInbox([
@@ -78,14 +91,19 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
     setError(null);
   }, []);
 
+  const fallbackZoneId = accountZoneId || null;
+
   const applyGeoPropagationToInbox = useCallback(
     (propagation: Parameters<typeof messageFromGeoPropagation>[0]) => {
       if (ownerId == null) return;
       if (!shouldShowGeoPropagationInInbox(propagation, ownerId)) return;
-      const row = messageFromGeoPropagation(propagation);
+      void notifyIncomingGeoPropagation(propagation, ownerId);
+      const row = messageFromGeoPropagation(propagation, {
+        fallbackZoneId,
+      });
       if (row) prependInboxMessage(row);
     },
-    [ownerId, prependInboxMessage],
+    [ownerId, prependInboxMessage, fallbackZoneId],
   );
 
   const hydrateInbox = useCallback(async () => {
@@ -113,7 +131,18 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
         setError(messagesResult.error);
         return;
       }
-      applyInboxBatch(messagesResult.data ?? [], rules);
+      const batch = messagesResult.data ?? [];
+      applyInboxBatch(batch, rules);
+      if (ownerId != null) {
+        for (const row of batch) {
+          if (seenInboxIdsRef.current.has(row.id)) continue;
+          seenInboxIdsRef.current.add(row.id);
+          if (inboxHydratedOnceRef.current) {
+            void notifyIncomingInboxMessage(row, ownerId);
+          }
+        }
+        inboxHydratedOnceRef.current = true;
+      }
     } finally {
       setLoading(false);
     }
@@ -126,7 +155,7 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
     }, 400);
   }, [hydrateInbox]);
 
-  const wsEnabled = Boolean(token) && !isRunningExpoGo();
+  const wsEnabled = Boolean(token);
   const { lastMessage, status: wsStatus } = useWebSocket({
     token,
     zoneIds,
@@ -142,6 +171,7 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
     }
     const row = parseMessageSocketPayload(lastMessage);
     if (row) {
+      if (ownerId != null) void notifyIncomingInboxMessage(row, ownerId);
       prependInboxMessage(row);
       scheduleInboxRefetchFromSocket();
       return;
@@ -160,10 +190,16 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
     }
   }, [
     lastMessage,
+    ownerId,
     applyGeoPropagationToInbox,
     prependInboxMessage,
     scheduleInboxRefetchFromSocket,
   ]);
+
+  useEffect(() => {
+    inboxHydratedOnceRef.current = false;
+    seenInboxIdsRef.current.clear();
+  }, [ownerId]);
 
   useEffect(() => {
     void hydrateInbox();
@@ -194,8 +230,9 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
     loading,
     error,
     refresh: hydrateInbox,
+    applyGeoPropagationToInbox,
     ownerId,
-    zoneId: user?.zoneId ?? (user?.zone_id != null ? String(user.zone_id) : null),
+    zoneId: accountZoneId || null,
     wsStatus: wsEnabled ? wsStatus : ("closed" as const),
   };
 }

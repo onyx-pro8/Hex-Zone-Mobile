@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "build:icons": "node scripts/build-icons.js"
+    "build:icons": "node scripts/build-icons.js",
+    "logs:android": "adb logcat *:S ReactNativeJS:V ReactNative:V ExpoModules:V AndroidRuntime:E"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -365,6 +365,7 @@ export type MessageFeaturePropagationResponse = {
   category?: string | null;
   scope?: string | null;
   text?: string | null;
+  receiver_id?: number | null;
   delivered_owner_ids: number[];
   blocked_owner_ids: number[];
   created_at: string;
@@ -375,10 +376,12 @@ export type MessageFeaturePropagationResponse = {
 
 export function messageFromGeoPropagation(
   propagation: MessageFeaturePropagationResponse,
+  options?: { fallbackZoneId?: string | null },
 ): Message | null {
   const zoneId =
     (typeof propagation.zone_id === "string" && propagation.zone_id.trim()) ||
-    (propagation.zone_ids?.[0] ?? "");
+    (propagation.zone_ids?.[0] ?? "").trim() ||
+    (options?.fallbackZoneId?.trim() ?? "");
   const meta =
     propagation.metadata && typeof propagation.metadata === "object"
       ? (propagation.metadata as Record<string, unknown>)
@@ -402,6 +405,13 @@ export function messageFromGeoPropagation(
     String(propagation.type ?? "ALARM");
   const createdAt = propagation.created_at;
   const id = propagation.id;
+  const receiverFromMeta = meta?.receiver_owner_id ?? meta?.receiver_id;
+  const receiverId =
+    typeof propagation.receiver_id === "number"
+      ? propagation.receiver_id
+      : typeof receiverFromMeta === "number"
+        ? receiverFromMeta
+        : null;
   if (id == null || !zoneId || typeof createdAt !== "string") {
     return null;
   }
@@ -409,7 +419,7 @@ export function messageFromGeoPropagation(
     id,
     zone_id: zoneId,
     sender_id: senderId,
-    receiver_id: null,
+    receiver_id: receiverId,
     type,
     category: propagation.category ?? getMessageTypeCategory(type),
     scope: visibility,

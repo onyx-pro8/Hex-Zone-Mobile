@@ -42,6 +42,8 @@ import {
   type GuestAccessQrToken,
   type GuestRequest,
 } from "@/api/guest";
+import { getZones, type SavedZone } from "@/api/zones";
+import { devLog } from "@/lib/devConsole";
 import { colors } from "@/theme/colors";
 
 type Tab = "member" | "guest";
@@ -265,7 +267,19 @@ function MemberInviteSection({ disabled }: { disabled: boolean }) {
   );
 }
 
-function GuestAccessSection({ zoneId }: { zoneId: string }) {
+function GuestAccessSection({
+  zoneId,
+  candidateZoneIds = [],
+  zonesLoading = false,
+  onPickZoneId = () => {},
+  onRefreshZones = () => {},
+}: {
+  zoneId: string;
+  candidateZoneIds?: string[];
+  zonesLoading?: boolean;
+  onPickZoneId?: (next: string) => void;
+  onRefreshZones?: () => void;
+}) {
   const [label, setLabel] = useState("");
   const [eventId, setEventId] = useState("");
   const [hours, setHours] = useState<number>(24 * 7);
@@ -310,6 +324,11 @@ function GuestAccessSection({ zoneId }: { zoneId: string }) {
         expires_in_hours: hours,
         ...(label.trim() ? { label: label.trim() } : {}),
         ...(eventId.trim() ? { event_id: eventId.trim() } : {}),
+      });
+      devLog("Access: create guest QR result", {
+        zoneId,
+        ok: !create.error && Boolean(create.data),
+        error: create.error,
       });
       if (create.error || !create.data) {
         throw new Error(create.error ?? "Could not mint guest QR token.");
@@ -389,6 +408,40 @@ function GuestAccessSection({ zoneId }: { zoneId: string }) {
         Guests scan and arrive into your zone; revoke anytime.
       </Text>
 
+      {candidateZoneIds.length > 0 ? (
+        <View style={{ gap: 8 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: 11,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                fontWeight: "700",
+              }}
+            >
+              Zone
+            </Text>
+            <Pressable onPress={onRefreshZones} hitSlop={8}>
+              <RefreshCw size={14} color={colors.accent} />
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {candidateZoneIds.map((zid) => (
+              <Pressable key={zid} onPress={() => onPickZoneId(zid)}>
+                <Chip label={zid} active={zid === zoneId} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={{ gap: 10 }}>
         <TextInput
           placeholder="Label (optional)"
@@ -449,7 +502,9 @@ function GuestAccessSection({ zoneId }: { zoneId: string }) {
       />
       {!zoneId ? (
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
-          Your account has no zone id; create a zone before issuing guest QRs.
+          {zonesLoading
+            ? "Looking up your zones…"
+            : "No zone id is linked to this account yet. Create a zone on the Dashboard, then come back here."}
         </Text>
       ) : null}
 
@@ -524,10 +579,13 @@ function GuestAccessSection({ zoneId }: { zoneId: string }) {
 export default function AccessScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const zoneId = user?.zoneId ?? "";
+  const accountZoneId = user?.zoneId ?? "";
   const [tab, setTab] = useState<Tab>("member");
   const [requests, setRequests] = useState<GuestRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [savedZones, setSavedZones] = useState<SavedZone[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [pickedZoneId, setPickedZoneId] = useState<string>("");
 
   const params = useLocalSearchParams<{
     gt?: string;
@@ -554,16 +612,63 @@ export default function AccessScreen() {
     return !(accountType === "PRIVATE" || accountType === "EXCLUSIVE");
   }, [user]);
 
+  const refreshZones = useCallback(async () => {
+    setZonesLoading(true);
+    try {
+      const result = await getZones();
+      const rows = result.data ?? [];
+      setSavedZones(rows);
+      devLog("Access: loaded zones", {
+        count: rows.length,
+        zone_ids: rows.map((z) => z.zone_id).filter(Boolean),
+        error: result.error,
+      });
+    } finally {
+      setZonesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshZones();
+  }, [refreshZones]);
+
+  const candidateZoneIds = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const push = (raw: unknown) => {
+      if (raw == null) return;
+      const str = String(raw).trim();
+      if (!str || seen.has(str)) return;
+      seen.add(str);
+      out.push(str);
+    };
+    push(accountZoneId);
+    for (const z of savedZones) push(z.zone_id);
+    return out;
+  }, [accountZoneId, savedZones]);
+
+  const effectiveZoneId =
+    pickedZoneId || accountZoneId || candidateZoneIds[0] || "";
+
+  useEffect(() => {
+    devLog("Access: effective zone id", {
+      effectiveZoneId,
+      accountZoneId,
+      pickedZoneId,
+      candidateZoneIds,
+    });
+  }, [effectiveZoneId, accountZoneId, pickedZoneId, candidateZoneIds]);
+
   const loadRequests = useCallback(async () => {
-    if (!zoneId) return;
+    if (!effectiveZoneId) return;
     setLoadingRequests(true);
     try {
-      const result = await listGuestRequests(zoneId);
+      const result = await listGuestRequests(effectiveZoneId);
       setRequests(result.data ?? []);
     } finally {
       setLoadingRequests(false);
     }
-  }, [zoneId]);
+  }, [effectiveZoneId]);
 
   useEffect(() => {
     void loadRequests();
@@ -599,7 +704,13 @@ export default function AccessScreen() {
             {tab === "member" ? (
               <MemberInviteSection disabled={memberInviteDisabled} />
             ) : (
-              <GuestAccessSection zoneId={zoneId} />
+              <GuestAccessSection
+                zoneId={effectiveZoneId}
+                candidateZoneIds={candidateZoneIds}
+                zonesLoading={zonesLoading}
+                onPickZoneId={setPickedZoneId}
+                onRefreshZones={() => void refreshZones()}
+              />
             )}
 
             <Pressable onPress={() => router.push("/(tabs)/guest-passes")}>

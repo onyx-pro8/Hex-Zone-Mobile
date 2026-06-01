@@ -73,7 +73,26 @@ npx expo run:ios
 
 Or use [EAS Build](https://docs.expo.dev/develop/development-builds/introduction/) for a installable dev client.
 
-> **Production:** Set a real `projectId` in `app.json` → `extra.eas.projectId` and configure FCM (Android) / APNs (iOS) in Expo.
+### Android FCM (required for dev/production builds)
+
+If Settings shows **“FirebaseApp is not initialized”**, the native app is missing FCM setup:
+
+1. **Firebase Console** → create or open a project → add an **Android app** whose package name matches `app.json` → `android.package` (currently `com.zoneweaver.mobile`).
+2. Download **`google-services.json`** and save it as `Hex-Zone-Mobile/google-services.json` (see `google-services.json.example`). Then add to `app.json` under `expo.android`:
+   ```json
+   "googleServicesFile": "./google-services.json"
+   ```
+3. **EAS FCM credentials** (server-side push): run `eas credentials`, choose Android → set up **Google Service Account Key for Push Notifications (FCM V1)** and upload the JSON key from Firebase → Project settings → Service accounts → Generate new private key. Do not commit that key file.
+4. **Rebuild** the native app (a JS reload is not enough):
+   ```bash
+   npx expo prebuild --platform android
+   npx expo run:android
+   ```
+   Or use `eas build --profile development`.
+
+Full guide: [Expo FCM credentials](https://docs.expo.dev/push-notifications/fcm-credentials/).
+
+> **Package name:** The installed APK must use the same package as Firebase. If an error mentions a different package (e.g. `com.hexzone.mobile`), uninstall the old app or align Firebase to that package, then rebuild.
 
 ## Getting started
 

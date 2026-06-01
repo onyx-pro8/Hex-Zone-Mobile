@@ -8,6 +8,7 @@ export type Member = {
   last_name?: string;
   address?: string;
   zone_id?: string;
+  account_type?: string;
   location?: { latitude: number; longitude: number } | null;
   zones?: string[];
   role?: "administrator" | "user" | string;
@@ -31,6 +32,7 @@ function normalizeMember(raw: unknown): Member | null {
     }
   }
 
+  const rawZoneId = row.zone_id ?? row.zoneId;
   return {
     id: String(id),
     name:
@@ -43,7 +45,18 @@ function normalizeMember(raw: unknown): Member | null {
       typeof row.first_name === "string" ? row.first_name : undefined,
     last_name: typeof row.last_name === "string" ? row.last_name : undefined,
     address: typeof row.address === "string" ? row.address : undefined,
-    zone_id: typeof row.zone_id === "string" ? row.zone_id : undefined,
+    zone_id:
+      typeof rawZoneId === "string"
+        ? rawZoneId
+        : rawZoneId != null
+          ? String(rawZoneId)
+          : undefined,
+    account_type:
+      typeof row.account_type === "string"
+        ? row.account_type
+        : typeof row.accountType === "string"
+          ? row.accountType
+          : undefined,
     location,
     zones: Array.isArray(row.zones)
       ? row.zones.filter((z): z is string => typeof z === "string")
@@ -71,5 +84,21 @@ export async function updateLocation(payload: {
     method: "POST",
     url: "/members/location",
     data: payload,
+  });
+}
+
+/**
+ * Admin-only: activate or deactivate a member. The server (PATCH /owners/{id})
+ * rejects non-admin callers with 403, and a subsequent login by an inactive
+ * member is refused with 403 "Account is inactive or expired".
+ */
+export async function setMemberActive(
+  memberId: string | number,
+  active: boolean,
+) {
+  return request<unknown>({
+    method: "PATCH",
+    url: `/owners/${encodeURIComponent(String(memberId))}`,
+    data: { active },
   });
 }

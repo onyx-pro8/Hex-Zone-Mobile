@@ -29,7 +29,7 @@ import { propagateMessageFeatureMessage } from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
 import { presentLocalMessageNotification } from "@/lib/notifications";
-import { loadExpoLocation, LOCATION_UNAVAILABLE_MESSAGE } from "@/lib/expoLocation";
+import { resolveMessagePropagationPosition } from "@/lib/messagePosition";
 import { getOrCreateDeviceHid } from "@/lib/storage";
 import { isRunningExpoGo } from "@/lib/pushSupport";
 import {
@@ -92,8 +92,16 @@ function MessageRow({ item }: { item: Message }) {
 
 export default function MessagesScreen() {
   const { user } = useAuth();
-  const { messages, loading, error, refresh, ownerId, zoneId, wsStatus } =
-    useMessagesFeed();
+  const {
+    messages,
+    loading,
+    error,
+    refresh,
+    applyGeoPropagationToInbox,
+    ownerId,
+    zoneId,
+    wsStatus,
+  } = useMessagesFeed();
   const { pushToken, permissionError, lastNotification } = useNotifications();
   const [filter, setFilter] = useState<Filter>("All");
   const [composeOpen, setComposeOpen] = useState(false);
@@ -242,41 +250,43 @@ export default function MessagesScreen() {
     setComposeStatus("Sending…");
     try {
       if (usesGeoPropagationMessageType(composeType)) {
-        const Location = await loadExpoLocation();
-        if (!Location) {
-          throw new Error(LOCATION_UNAVAILABLE_MESSAGE);
-        }
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (perm.status !== "granted") {
-          throw new Error(
-            "Location permission is required to send alarm/alert messages.",
-          );
-        }
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
+        const resolved = await resolveMessagePropagationPosition(
+          user?.mapCenter ?? user?.map_center ?? null,
+        );
+        if ("error" in resolved) throw new Error(resolved.error);
         const hid = await getOrCreateDeviceHid();
         const result = await propagateMessageFeatureMessage({
           type: composeType,
           hid,
           msg: { description: text },
-          position: {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          },
+          position: resolved.position,
           ...(isPrivateMessageType(composeType)
             ? { receiver_owner_id: parsedReceiverId }
             : {}),
         });
         if (result.error) throw new Error(result.error);
+        const body = result.data;
+        if (body && !body.skipped && ownerId != null) {
+          applyGeoPropagationToInbox({
+            ...body,
+            sender_id: body.sender_id ?? ownerId,
+            zone_id:
+              body.zone_id ??
+              body.zone_ids?.[0] ??
+              composeZoneId ??
+              undefined,
+          });
+        }
+        const sourceLabel =
+          resolved.source === "gps"
+            ? "live GPS"
+            : resolved.source === "profile"
+              ? "account address"
+              : "last map center";
         setDraft("");
         setComposeOpen(false);
+        setComposeStatus(`Sent · ${sourceLabel}`);
         await refresh();
-        await presentLocalMessageNotification({
-          title: `${toMessageTypeLabel(composeType)} sent`,
-          body: text.slice(0, 120),
-          data: { type: composeType },
-        });
         return;
       }
 
@@ -313,6 +323,11 @@ export default function MessagesScreen() {
     composeReceiverId,
     composeZoneId,
     refresh,
+    user?.mapCenter,
+    user?.map_center,
+    applyGeoPropagationToInbox,
+    ownerId,
+    composeZoneId,
   ]);
 
   return (
@@ -488,7 +503,7 @@ export default function MessagesScreen() {
                   {getMessageTypeCategory(composeType)} ·{" "}
                   {getMessageScopeForType(composeType)} scope
                   {usesGeoPropagationMessageType(composeType)
-                    ? " · uses GPS propagation"
+                    ? " · uses location propagation"
                     : ""}
                 </Text>
 

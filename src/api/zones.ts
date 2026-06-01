@@ -28,6 +28,13 @@ export type CreateZonePayload = {
   description?: string;
   type: string;
   zone_type?: string;
+  /**
+   * Shared zone identifier for this owner's account namespace. Sent both as
+   * `id` (legacy contract route at `POST /zones`) and `zone_id` (canonical
+   * route at `POST /zones/`) so the server stores it instead of falling back
+   * to the generated `{owner_id}-{N}` pattern.
+   */
+  id?: string;
   zone_id?: string;
   geometry?: Record<string, unknown>;
   config?: Record<string, unknown>;

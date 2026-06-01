@@ -9,7 +9,12 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { devLog } from "@/lib/devConsole";
 import { colors } from "@/theme/colors";
+
+if (__DEV__) {
+  devLog("Dev console active — JS logs appear in the Metro terminal (npx expo start).");
+}
 
 if (__DEV__ && isRunningInExpoGo()) {
   LogBox.ignoreLogs([

@@ -9,7 +9,24 @@ const expoConfigExtra = (Constants.expoConfig?.extra ?? {}) as ExtraConfig;
 
 export const API_BASE_URL =
   expoConfigExtra.apiBaseUrl ||
-  "https://zone-weaver-wwws2.ondigitalocean.app";
+  "https://zone-weaver-server-7ksef.ondigitalocean.app/";
+
+const LOG_PREFIX = "[ZoneWeaver/api]";
+
+if (__DEV__) {
+  console.log(`${LOG_PREFIX} API_BASE_URL =`, API_BASE_URL);
+}
+
+function safePreviewBody(body: unknown): unknown {
+  if (body == null) return undefined;
+  try {
+    const json = typeof body === "string" ? body : JSON.stringify(body);
+    if (!json) return undefined;
+    return json.length > 600 ? `${json.slice(0, 600)}…(${json.length} chars)` : json;
+  } catch {
+    return "<unserializable>";
+  }
+}
 
 export type ApiEnvelope<T> = {
   status: "success" | "error";
@@ -31,17 +48,56 @@ export const apiClient: AxiosInstance = axios.create({
   timeout: 20000,
 });
 
+type TimedConfig = AxiosRequestConfig & { metadata?: { startedAt: number } };
+
 apiClient.interceptors.request.use(async (config) => {
   const token = await getToken();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  if (__DEV__) {
+    (config as TimedConfig).metadata = { startedAt: Date.now() };
+    const method = String(config.method ?? "GET").toUpperCase();
+    const fullUrl = `${config.baseURL ?? ""}${config.url ?? ""}`;
+    console.log(`${LOG_PREFIX} → ${method} ${fullUrl}`, {
+      params: config.params,
+      hasAuth: Boolean(config.headers?.Authorization),
+      body: safePreviewBody(config.data),
+    });
+  }
   return config;
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (__DEV__) {
+      const cfg = response.config as TimedConfig;
+      const ms = cfg.metadata ? Date.now() - cfg.metadata.startedAt : -1;
+      const method = String(response.config.method ?? "GET").toUpperCase();
+      const fullUrl = `${response.config.baseURL ?? ""}${response.config.url ?? ""}`;
+      console.log(
+        `${LOG_PREFIX} ← ${response.status} ${method} ${fullUrl} (${ms}ms)`,
+        { body: safePreviewBody(response.data) },
+      );
+    }
+    return response;
+  },
   async (error: AxiosError) => {
+    if (__DEV__) {
+      const cfg = (error.config ?? {}) as TimedConfig;
+      const ms = cfg.metadata ? Date.now() - cfg.metadata.startedAt : -1;
+      const method = String(cfg.method ?? "GET").toUpperCase();
+      const fullUrl = `${cfg.baseURL ?? ""}${cfg.url ?? ""}`;
+      const status = error.response?.status ?? "no-response";
+      console.warn(
+        `${LOG_PREFIX} ✕ ${status} ${method} ${fullUrl} (${ms}ms)`,
+        {
+          message: error.message,
+          code: error.code,
+          response: safePreviewBody(error.response?.data),
+        },
+      );
+    }
     if (error.response?.status === 401) {
       await clearToken();
       emitUnauthorized();

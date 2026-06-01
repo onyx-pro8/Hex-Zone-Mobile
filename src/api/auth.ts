@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { normalizeMapCenter, type MapCenter } from "@/lib/mapCenter";
 
 export type AccountType =
   | "PRIVATE"
@@ -28,6 +29,8 @@ export type AuthUser = {
   address?: string;
   phone?: string | null;
   active?: boolean;
+  mapCenter?: MapCenter | null;
+  map_center?: MapCenter | null;
 };
 
 export type LoginPayload = { email: string; password: string };
@@ -161,6 +164,26 @@ export async function fetchProfile() {
   return request<AuthUser>({ method: "GET", url: "/owners/me" });
 }
 
+/**
+ * Returns the account owner's profile. Used to resolve the canonical
+ * `zone_id` for the whole account (members on the same account share the
+ * owner's zone).
+ */
+export async function fetchOwnerProfile(ownerId: number | string) {
+  return request<AuthUser>({
+    method: "GET",
+    url: `/owners/${encodeURIComponent(String(ownerId))}`,
+  });
+}
+
+export function extractZoneId(profile: AuthUser | null | undefined): string {
+  if (!profile) return "";
+  const raw =
+    profile.zoneId ??
+    (profile.zone_id != null ? String(profile.zone_id) : undefined);
+  return raw ? String(raw).trim() : "";
+}
+
 function parseRegistrationCodePayload(data: unknown): string | null {
   if (data == null) return null;
   if (typeof data === "string") {
@@ -255,6 +278,7 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
     (raw.id != null && Number.isFinite(Number(raw.id))
       ? Number(raw.id)
       : undefined);
+  const mapCenter = normalizeMapCenter(raw.mapCenter ?? raw.map_center ?? null);
   return {
     ...raw,
     name: fullName,
@@ -268,6 +292,8 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
     account_owner_id: accountOwnerId,
     zoneId:
       raw.zoneId ?? (raw.zone_id != null ? String(raw.zone_id) : undefined),
+    mapCenter,
+    map_center: mapCenter,
     active: typeof raw.active === "boolean" ? raw.active : true,
   };
 }
