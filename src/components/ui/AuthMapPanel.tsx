@@ -91,7 +91,7 @@ function buildHtml(
 export function AuthMapPanel({
   center,
   addressLabel,
-  title = "Hex Zone",
+  title = "Zone Weaver",
   subtitle = "Spatial Intelligence Platform",
   style,
   h3Resolution = 9,

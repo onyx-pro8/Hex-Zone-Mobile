@@ -129,7 +129,7 @@ export default function LoginScreen() {
           <View style={{ paddingHorizontal: 24, gap: 16, marginTop: 24 }}>
             <Input
               label="Email"
-              placeholder="alex@hexzone.io"
+              placeholder="alex@zoneweaver.io"
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"

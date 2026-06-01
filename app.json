@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Hex Zone",
+    "name": "Zone Weaver",
     "slug": "zone-weaver",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -15,13 +15,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hexzone.mobile",
+      "bundleIdentifier": "com.zoneweaver.mobile",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSCameraUsageDescription": "Hex Zone uses your camera to scan QR codes for zone access and member invites.",
-        "NSLocationWhenInUseUsageDescription": "Hex Zone uses your location to anchor proximity-source zones to where you are right now."
+        "NSCameraUsageDescription": "Zone Weaver uses your camera to scan QR codes for zone access and member invites.",
+        "NSLocationWhenInUseUsageDescription": "Zone Weaver uses your location to anchor proximity-source zones to where you are right now."
       }
     },
     "android": {
@@ -29,7 +29,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0F"
       },
-      "package": "com.hexzone.mobile",
+      "package": "com.zoneweaver.mobile",
       "edgeToEdgeEnabled": true,
       "permissions": [
         "CAMERA",
@@ -59,7 +59,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Hex Zone to access your camera to scan QR codes."
+          "cameraPermission": "Allow Zone Weaver to access your camera to scan QR codes."
         }
       ],
       "expo-secure-store",
@@ -68,7 +68,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Hex Zone uses your location to anchor proximity-source zones to where you are right now."
+          "locationAlwaysAndWhenInUsePermission": "Zone Weaver uses your location to anchor proximity-source zones to where you are right now."
         }
       ]
     ],

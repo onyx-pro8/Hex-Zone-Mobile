@@ -136,7 +136,8 @@ export default function SignupScreen() {
   }, [loadRegistrationCode, inviteToken]);
 
   const center = useMemo<LatLng>(
-    () => addressCoords ?? addressToMockCoords(address) ?? AUTH_MAP_DEFAULT_CENTER,
+    () =>
+      addressCoords ?? addressToMockCoords(address) ?? AUTH_MAP_DEFAULT_CENTER,
     [address, addressCoords],
   );
   const selectedZoneId =
@@ -246,19 +247,25 @@ export default function SignupScreen() {
           </View>
 
           <View style={{ paddingHorizontal: 24 }}>
-            <Text style={{ color: colors.text, fontSize: 30, fontWeight: "800" }}>
-              Create an
-            </Text>
-            <Text
-              style={{
-                color: colors.accent,
-                fontSize: 30,
-                fontWeight: "800",
-                marginTop: -4,
-              }}
+            <View
+              style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}
             >
-              account
-            </Text>
+              <Text
+                style={{ color: colors.text, fontSize: 30, fontWeight: "800" }}
+              >
+                Create an
+              </Text>
+              <Text
+                style={{
+                  color: colors.accent,
+                  fontSize: 30,
+                  fontWeight: "800",
+                  marginTop: -4,
+                }}
+              >
+                account
+              </Text>
+            </View>
             <Text
               style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}
             >
@@ -320,7 +327,13 @@ export default function SignupScreen() {
                 </Pressable>
               </View>
               {regCodeLoading ? (
-                <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 13,
+                    marginTop: 8,
+                  }}
+                >
                   Requesting registration code from server…
                 </Text>
               ) : regCodeError ? (
@@ -361,7 +374,9 @@ export default function SignupScreen() {
                   </Text>
                 </View>
               )}
-              <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 8 }}>
+              <Text
+                style={{ color: colors.textDim, fontSize: 11, marginTop: 8 }}
+              >
                 Issued by the server when you open this page. Required for
                 administrator self-registration.
               </Text>
@@ -387,7 +402,7 @@ export default function SignupScreen() {
 
             <Input
               label="Email"
-              placeholder="alex@hexzone.io"
+              placeholder="alex@zoneweaver.io"
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -535,9 +550,15 @@ export default function SignupScreen() {
                     value={accountOwnerId}
                     onChangeText={setAccountOwnerId}
                   />
-                  <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 6 }}>
-                    Linked users must use the admin account owner ID and matching
-                    account type/zone scope.
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 11,
+                      marginTop: 6,
+                    }}
+                  >
+                    Linked users must use the admin account owner ID and
+                    matching account type/zone scope.
                   </Text>
                 </View>
               ) : null}
@@ -619,8 +640,7 @@ export default function SignupScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 10,
                     color: useExistingZone ? colors.text : colors.accent,
-                    fontFamily:
-                      Platform.OS === "ios" ? "Menlo" : "monospace",
+                    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
                     fontSize: 13,
                   }}
                 />

@@ -1,4 +1,4 @@
-package com.hexzone.mobile
+package com.zoneweaver.mobile
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.hexzone.mobile'
+    namespace 'com.zoneweaver.mobile'
     defaultConfig {
-        applicationId 'com.hexzone.mobile'
+        applicationId 'com.zoneweaver.mobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
