@@ -30,6 +30,7 @@ import {
   setToken,
 } from "@/lib/storage";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
+import { isRunningExpoGo } from "@/lib/pushSupport";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -102,6 +103,7 @@ async function syncCurrentDevice(user: AuthUser | null) {
 }
 
 async function syncPushTokenToServer() {
+  if (isRunningExpoGo()) return;
   try {
     const token = await getStoredPushToken();
     if (!token) {

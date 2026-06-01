@@ -4,10 +4,17 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { setStoredPushToken } from "@/lib/storage";
 import { registerPushToken } from "@/api/devices";
+import {
+  EXPO_GO_PUSH_MESSAGE,
+  isRemotePushSupported,
+  isRunningExpoGo,
+} from "@/lib/pushSupport";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -42,6 +49,15 @@ export async function ensureAndroidChannels(): Promise<void> {
 
 export async function registerForPushNotificationsAsync(): Promise<PushRegistrationResult> {
   try {
+    if (!isRemotePushSupported()) {
+      return {
+        token: null,
+        error: isRunningExpoGo()
+          ? EXPO_GO_PUSH_MESSAGE
+          : "Push notifications require a physical device.",
+      };
+    }
+
     await ensureAndroidChannels();
 
     if (!Device.isDevice) {

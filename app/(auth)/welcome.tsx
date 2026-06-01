@@ -46,7 +46,7 @@ export default function Welcome() {
           paddingHorizontal: 32,
         }}
       >
-        <View style={{ alignItems: "center", gap: 32, flex: 1, justifyContent: "center" }}>
+        <View style={{ alignItems: "center", gap: 18, flex: 1, justifyContent: "center" }}>
           <Logo size={56} />
           <Text
             style={{
@@ -61,13 +61,13 @@ export default function Welcome() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={() => router.push("/(auth)/login")}
-          style={({ pressed }) => ({
-            marginBottom: 56,
-            transform: [{ scale: pressed ? 0.95 : 1 }],
-          })}
-        >
+        <View style={{ marginBottom: 56 }}>
+          <Pressable
+            onPress={() => router.push("/(auth)/login")}
+            style={({ pressed }) => ({
+              transform: [{ scale: pressed ? 0.95 : 1 }],
+            })}
+          >
           <View
             style={{
               width: 86,
@@ -115,16 +115,17 @@ export default function Welcome() {
               </LinearGradient>
             </View>
           </View>
-        </Pressable>
+          </Pressable>
+        </View>
 
         <View
           style={{
             position: "absolute",
             bottom: 30,
-            width: 64,
+            width: 130,
             height: 4,
             borderRadius: 2,
-            backgroundColor: "#FFFFFF20",
+            backgroundColor: "#FFFFFFBB",
           }}
         />
       </View>
