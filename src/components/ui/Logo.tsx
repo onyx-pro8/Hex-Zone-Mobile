@@ -34,7 +34,7 @@ export function Logo({ size = 32 }: { size?: number }) {
             letterSpacing: 0.5,
           }}
         >
-          H
+          Z
         </Text>
       </View>
       <Text
@@ -45,7 +45,7 @@ export function Logo({ size = 32 }: { size?: number }) {
           letterSpacing: 1.5,
         }}
       >
-        HEX<Text style={{ color: colors.accent }}>ZONE</Text>
+        Zone <Text style={{ color: colors.accent }}>Weaver</Text>
       </Text>
     </View>
   );

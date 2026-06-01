@@ -8,12 +8,14 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
-import { Mail, Lock } from "lucide-react-native";
+import { Lock, Mail, QrCode } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { useAuth } from "@/context/AuthContext";
+import { AUTH_MAP_DEFAULT_CENTER } from "@/lib/h3";
 import { colors } from "@/theme/colors";
 
 export default function LoginScreen() {
@@ -24,6 +26,8 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const center = AUTH_MAP_DEFAULT_CENTER;
 
   const onSubmit = async () => {
     setError(null);
@@ -36,10 +40,14 @@ export default function LoginScreen() {
       await login(email.trim(), password, { rememberMe });
       router.replace("/(tabs)");
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Login failed. Check your credentials and try again.",
+          : "Login failed. Check your credentials and try again.";
+      setError(
+        /inactive|expired|403/i.test(message)
+          ? "Account is inactive or expired"
+          : message,
       );
     } finally {
       setSubmitting(false);
@@ -53,40 +61,72 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 32 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ height: 56 }} />
-          <ScreenHeader showBack />
-          <View style={{ paddingHorizontal: 24, gap: 12, marginTop: 8 }}>
-            <Text
-              style={{
-                color: colors.text,
-                fontSize: 36,
-                fontWeight: "800",
-                letterSpacing: 0.2,
-              }}
-            >
-              Welcome
+          <AuthMapPanel
+            center={center}
+            addressLabel="New York, NY"
+            style={{ height: 280 }}
+          />
+
+          <View style={{ paddingTop: 8 }}>
+            <ScreenHeader showBack />
+          </View>
+
+          {/* QR banner (mirrors web client) */}
+          <View
+            style={{
+              marginHorizontal: 20,
+              marginTop: 4,
+              marginBottom: 16,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "rgba(255,45,170,0.4)",
+              backgroundColor: "rgba(255,45,170,0.08)",
+            }}
+          >
+            <QrCode size={16} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: 12, flex: 1 }}>
+              Have a QR code? Scan to auto-populate your Zone ID
             </Text>
+          </View>
+
+          <View style={{ paddingHorizontal: 24 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}>
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: 32,
+                  fontWeight: "800",
+                }}
+              >
+                Welcome
+              </Text>
+              <Text
+                style={{
+                  color: colors.accent,
+                  fontSize: 32,
+                  fontWeight: "800",
+                  marginTop: -4,
+                }}
+              >
+                Back!
+              </Text>
+            </View>
             <Text
-              style={{
-                color: colors.accent,
-                fontSize: 36,
-                fontWeight: "800",
-                marginTop: -8,
-              }}
-            >
-              Back!
-            </Text>
-            <Text
-              style={{ color: colors.textMuted, fontSize: 14, marginTop: 8 }}
+              style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}
             >
               Sign in to manage your zones, members, and access requests.
             </Text>
           </View>
 
-          <View style={{ paddingHorizontal: 24, gap: 16, marginTop: 28 }}>
+          <View style={{ paddingHorizontal: 24, gap: 16, marginTop: 24 }}>
             <Input
               label="Email"
               placeholder="alex@hexzone.io"
@@ -97,7 +137,6 @@ export default function LoginScreen() {
               onChangeText={setEmail}
               leftIcon={<Mail size={18} color={colors.textMuted} />}
             />
-
             <Input
               label="Password"
               placeholder="••••••••"
@@ -155,9 +194,17 @@ export default function LoginScreen() {
                   Remember me
                 </Text>
               </Pressable>
-              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
-                Forgot Password?
-              </Text>
+              <Pressable hitSlop={8}>
+                <Text
+                  style={{
+                    color: colors.accent,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  Forgot Password?
+                </Text>
+              </Pressable>
             </View>
 
             <Button
@@ -181,15 +228,17 @@ export default function LoginScreen() {
                 Don't have an account?
               </Text>
               <Link href="/(auth)/signup" asChild>
-                <Text
-                  style={{
-                    color: colors.accent,
-                    fontSize: 13,
-                    fontWeight: "700",
-                  }}
-                >
-                  Signup
-                </Text>
+                <Pressable hitSlop={6}>
+                  <Text
+                    style={{
+                      color: colors.accent,
+                      fontSize: 13,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Signup
+                  </Text>
+                </Pressable>
               </Link>
             </View>
           </View>

@@ -20,6 +20,7 @@ import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useNotifications } from "@/context/NotificationContext";
 import { sendMessage, type Message } from "@/api/messages";
 import { presentLocalMessageNotification } from "@/lib/notifications";
+import { isRunningExpoGo } from "@/lib/pushSupport";
 import { colors } from "@/theme/colors";
 
 type Filter = "All" | "Alarm" | "Alert" | "Access";
@@ -92,9 +93,10 @@ export default function MessagesScreen() {
   }, [lastNotification, refresh]);
 
   useEffect(() => {
+    const pollMs = isRunningExpoGo() ? 30000 : 45000;
     const interval = setInterval(() => {
       void refresh();
-    }, 45000);
+    }, pollMs);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -181,11 +183,14 @@ export default function MessagesScreen() {
               <BellRing size={20} color={colors.accent} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.text, fontWeight: "600" }}>
-                  Real-time via push
+                  {isRunningExpoGo()
+                    ? "Polling inbox (Expo Go)"
+                    : "Real-time via push"}
                 </Text>
                 <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-                  New alarms, alerts and access events arrive as push
-                  notifications instead of a live WebSocket feed.
+                  {isRunningExpoGo()
+                    ? "Expo Go cannot receive remote push on Android. Messages refresh every 30s here; use a development build for push alerts."
+                    : "New alarms, alerts and access events arrive as push notifications."}
                 </Text>
               </View>
             </Card>

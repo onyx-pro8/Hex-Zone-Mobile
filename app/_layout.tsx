@@ -1,5 +1,7 @@
 import "../global.css";
 import { useEffect } from "react";
+import { LogBox } from "react-native";
+import { isRunningInExpoGo } from "expo";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -8,6 +10,13 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { colors } from "@/theme/colors";
+
+if (__DEV__ && isRunningInExpoGo()) {
+  LogBox.ignoreLogs([
+    /expo-notifications.*Expo Go/i,
+    /expo-notifications.*development build/i,
+  ]);
+}
 
 void SystemUI.setBackgroundColorAsync(colors.bg);
 
@@ -18,11 +27,12 @@ function ProtectedShell() {
 
   useEffect(() => {
     if (initializing) return;
-    const inAuthGroup = segments[0] === "(auth)";
-    const inTabsGroup = segments[0] === "(tabs)";
+    const firstSegment = (segments as readonly string[])[0];
+    const inAuthGroup = firstSegment === "(auth)";
+    const inTabsGroup = firstSegment === "(tabs)";
     if (!token && inTabsGroup) {
       router.replace("/(auth)/welcome");
-    } else if (token && (inAuthGroup || segments.length === 0)) {
+    } else if (token && (inAuthGroup || firstSegment == null)) {
       router.replace("/(tabs)");
     }
   }, [token, segments, initializing, router]);

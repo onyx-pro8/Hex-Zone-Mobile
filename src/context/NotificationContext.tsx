@@ -12,6 +12,7 @@ import {
   addNotificationResponseListener,
   registerForPushNotificationsAsync,
 } from "@/lib/notifications";
+import { EXPO_GO_PUSH_MESSAGE, isRunningExpoGo } from "@/lib/pushSupport";
 import { useAuth } from "./AuthContext";
 
 export type ZoneNotificationPayload = {
@@ -46,12 +47,15 @@ function toPayload(
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   const [pushToken, setPushToken] = useState<string | null>(null);
-  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(() =>
+    isRunningExpoGo() ? EXPO_GO_PUSH_MESSAGE : null,
+  );
   const [lastNotification, setLastNotification] =
     useState<ZoneNotificationPayload | null>(null);
 
   useEffect(() => {
     if (!token) return;
+    if (isRunningExpoGo()) return;
     let cancelled = false;
     (async () => {
       const result = await registerForPushNotificationsAsync();

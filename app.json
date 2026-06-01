@@ -1,13 +1,13 @@
 {
   "expo": {
     "name": "Hex Zone",
-    "slug": "hex-zone-mobile",
+    "slug": "zone-weaver",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "hexzone",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -17,8 +17,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.hexzone.mobile",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
-        "NSCameraUsageDescription": "Hex Zone uses your camera to scan QR codes for zone access and member invites."
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
+        "NSCameraUsageDescription": "Hex Zone uses your camera to scan QR codes for zone access and member invites.",
+        "NSLocationWhenInUseUsageDescription": "Hex Zone uses your location to anchor proximity-source zones to where you are right now."
       }
     },
     "android": {
@@ -27,11 +30,16 @@
         "backgroundColor": "#0A0A0F"
       },
       "package": "com.hexzone.mobile",
+      "edgeToEdgeEnabled": true,
       "permissions": [
         "CAMERA",
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -54,17 +62,26 @@
           "cameraPermission": "Allow Hex Zone to access your camera to scan QR codes."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-splash-screen",
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Hex Zone uses your location to anchor proximity-source zones to where you are right now."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "router": { "origin": false },
+      "router": {},
       "apiBaseUrl": "https://zone-weaver-wwws2.ondigitalocean.app",
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "f7e4abd1-8246-4b62-b78e-2f1c690d78ea"
       }
-    }
+    },
+    "owner": "ihnatenkoandrii"
   }
 }
