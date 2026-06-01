@@ -138,7 +138,7 @@ export default function GuestSchedulesScreen() {
           title="Guest schedules"
           subtitle="Pre-approve expected guest windows"
           showBack
-          onBack={() => router.back()}
+          onBack={() => router.replace("/(tabs)/settings")}
         />
         {!zoneId ? (
           <View style={{ paddingHorizontal: 20 }}>

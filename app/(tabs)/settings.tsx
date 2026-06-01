@@ -211,6 +211,7 @@ export default function SettingsScreen() {
               icon={<Shield size={20} color={colors.accent} />}
               title="API endpoint"
               subtitle={API_BASE_URL}
+              onPress={() => router.push("/(tabs)/api-docs")}
             />
 
             <Button

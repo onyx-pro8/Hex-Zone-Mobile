@@ -71,7 +71,7 @@ export default function GuestListScreen() {
           title="Guest list"
           subtitle="Active and recent arrivals for your zone"
           showBack
-          onBack={() => router.back()}
+          onBack={() => router.replace("/(tabs)/settings")}
         />
         {!zoneId ? (
           <View style={{ paddingHorizontal: 20 }}>

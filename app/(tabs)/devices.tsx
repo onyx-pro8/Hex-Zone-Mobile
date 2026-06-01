@@ -88,7 +88,7 @@ export default function DevicesScreen() {
           title="Devices"
           subtitle={`${devices.length} registered`}
           showBack
-          onBack={() => router.back()}
+          onBack={() => router.replace("/(tabs)/settings")}
         />
         {error ? (
           <Text style={{ color: colors.danger, paddingHorizontal: 20 }}>
