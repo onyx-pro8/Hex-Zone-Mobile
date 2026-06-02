@@ -25,6 +25,8 @@ if (__DEV__ && isRunningInExpoGo()) {
 
 void SystemUI.setBackgroundColorAsync(colors.bg);
 
+const PUBLIC_ROOT_SEGMENTS = new Set(["access", "join"]);
+
 function ProtectedShell() {
   const { token, initializing } = useAuth();
   const segments = useSegments();
@@ -36,6 +38,13 @@ function ProtectedShell() {
     const firstSegment = segs[0];
     const inAuthGroup = segs.includes("(auth)");
     const inTabsGroup = segs.includes("(tabs)");
+    // QR landings like `/access?gt=...` and `/join?token=...` must work for
+    // signed-out users (anonymous guest check-in / member invite). Skip both
+    // the auth and the redirect-to-tabs branches when on those routes.
+    const onPublicLanding =
+      typeof firstSegment === "string" &&
+      PUBLIC_ROOT_SEGMENTS.has(firstSegment);
+    if (onPublicLanding) return;
     if (!token && inTabsGroup) {
       router.replace("/(auth)/welcome");
     } else if (token && (inAuthGroup || firstSegment == null)) {
