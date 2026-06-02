@@ -7,6 +7,7 @@ const REMEMBER_KEY = "zoneweaver:remember";
 const DEVICE_HID_KEY = "zoneweaver:device_hid";
 const PUSH_TOKEN_KEY = "zoneweaver:push_token";
 const MAP_CENTER_KEY = "zoneweaver:map_center";
+const GUEST_SESSION_KEY = "zoneweaver:guest_session";
 
 export async function getToken(): Promise<string | null> {
   try {
@@ -100,6 +101,44 @@ export async function setStoredMapCenter(center: MapCenter): Promise<void> {
   if (!normalized) return;
   try {
     await AsyncStorage.setItem(MAP_CENTER_KEY, JSON.stringify(normalized));
+  } catch {
+    /* ignore */
+  }
+}
+
+export type StoredGuestSession = {
+  access_token: string;
+  guest_id: string;
+  display_name: string;
+  zone_id: string;
+  zone_ids: string[];
+  allowed_message_types: string[];
+  saved_at: number;
+};
+
+export async function setStoredGuestSession(
+  session: StoredGuestSession,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(session));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getStoredGuestSession(): Promise<StoredGuestSession | null> {
+  try {
+    const raw = await AsyncStorage.getItem(GUEST_SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as StoredGuestSession;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearStoredGuestSession(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(GUEST_SESSION_KEY);
   } catch {
     /* ignore */
   }

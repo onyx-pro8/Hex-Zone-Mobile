@@ -71,11 +71,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="access"
+        name="access-admin"
         options={{
           title: "Access",
           tabBarIcon: ({ color, size }) => <QrCode size={size} color={color} />,
-          href: isAdmin ? "/(tabs)/access" : null,
+          href: isAdmin ? "/(tabs)/access-admin" : null,
         }}
       />
       <Tabs.Screen
