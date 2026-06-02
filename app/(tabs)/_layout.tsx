@@ -1,14 +1,28 @@
+import { useMemo } from "react";
 import { Tabs } from "expo-router";
 import {
   LayoutGrid,
   MessageSquare,
   QrCode,
   Settings,
+  UserPlus,
   Users,
 } from "lucide-react-native";
+import { useAuth } from "@/context/AuthContext";
 import { colors } from "@/theme/colors";
 
 export default function TabsLayout() {
+  const { user } = useAuth();
+
+  const isAdmin = useMemo(() => {
+    const role = String(user?.role ?? "").toLowerCase();
+    if (role) return role !== "user";
+    const regType = String(
+      user?.registrationType ?? user?.registration_type ?? "",
+    ).toUpperCase();
+    return regType !== "USER";
+  }, [user?.role, user?.registrationType, user?.registration_type]);
+
   return (
     <Tabs
       screenOptions={{
@@ -61,6 +75,17 @@ export default function TabsLayout() {
         options={{
           title: "Access",
           tabBarIcon: ({ color, size }) => <QrCode size={size} color={color} />,
+          href: isAdmin ? "/(tabs)/access" : null,
+        }}
+      />
+      <Tabs.Screen
+        name="guest"
+        options={{
+          title: "Guest",
+          tabBarIcon: ({ color, size }) => (
+            <UserPlus size={size} color={color} />
+          ),
+          href: isAdmin ? null : "/(tabs)/guest",
         }}
       />
       <Tabs.Screen
@@ -72,26 +97,11 @@ export default function TabsLayout() {
           ),
         }}
       />
-      <Tabs.Screen
-        name="devices"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="guest-passes"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="guest-list"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="guest-schedules"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="api-docs"
-        options={{ href: null }}
-      />
+      <Tabs.Screen name="devices" options={{ href: null }} />
+      <Tabs.Screen name="guest-passes" options={{ href: null }} />
+      <Tabs.Screen name="guest-list" options={{ href: null }} />
+      <Tabs.Screen name="guest-schedules" options={{ href: null }} />
+      <Tabs.Screen name="api-docs" options={{ href: null }} />
     </Tabs>
   );
 }

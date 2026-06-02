@@ -106,6 +106,18 @@ export default function GuestPassesScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const zoneId = user?.zoneId ?? "";
+  const role = String(user?.role ?? "").toLowerCase();
+  const onBack = () => {
+    if (role === "user") {
+      router.replace("/(tabs)/guest");
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)/settings");
+  };
   const [passes, setPasses] = useState<GuestPass[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -131,7 +143,7 @@ export default function GuestPassesScreen() {
           title="Guest passes"
           subtitle="Pre-registered arrivals"
           showBack
-          onBack={() => router.replace("/(tabs)/settings")}
+          onBack={onBack}
         />
         {!zoneId ? (
           <View style={{ paddingHorizontal: 20 }}>

@@ -61,6 +61,18 @@ export default function GuestSchedulesScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const zoneId = user?.zoneId ?? "";
+  const role = String(user?.role ?? "").toLowerCase();
+  const onBack = () => {
+    if (role === "user") {
+      router.replace("/(tabs)/guest");
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace("/(tabs)/settings");
+  };
   const [schedules, setSchedules] = useState<AccessSchedule[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -138,7 +150,7 @@ export default function GuestSchedulesScreen() {
           title="Guest schedules"
           subtitle="Pre-approve expected guest windows"
           showBack
-          onBack={() => router.replace("/(tabs)/settings")}
+          onBack={onBack}
         />
         {!zoneId ? (
           <View style={{ paddingHorizontal: 20 }}>
