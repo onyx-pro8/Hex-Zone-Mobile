@@ -670,10 +670,11 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
     let payload: CreateZonePayload | null = null;
 
     // Stamp every new zone with the owner's account-level zone id (the value
-    // saved in the `owners.zone_id` column at signup, e.g. "zone-KJ14"). The
+    // saved in the `owners.zone_id` column at signup, e.g. "ZONE-1234"). The
     // server's contract route reads this from `id`; the canonical route reads
-    // it from `zone_id`. We send both so whichever handler answers picks the
-    // right value instead of generating "{owner_id}-{N}".
+    // it from `zone_id`. We send both so whichever handler answers stores the
+    // shared account zone id (the server also falls back to `owners.zone_id`
+    // when neither is supplied).
     const ownerStamp = ownerZoneId
       ? { id: ownerZoneId, zone_id: ownerZoneId }
       : {};
