@@ -44,8 +44,12 @@ export type CreateZonePayload = {
 
 export type UpdateZonePayload = Partial<CreateZonePayload>;
 
-export async function getZones() {
-  return request<SavedZone[]>({ method: "GET", url: "/zones" });
+export async function getZones(zoneId?: string) {
+  const z = zoneId?.trim();
+  return request<SavedZone[]>({
+    method: "GET",
+    url: z ? `/zones?zone_id=${encodeURIComponent(z)}` : "/zones",
+  });
 }
 
 export type ZoneCapabilities = {

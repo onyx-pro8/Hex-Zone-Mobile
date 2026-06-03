@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -31,13 +32,74 @@ import {
   tryParseGuestDashboardMap,
   type GuestDashboardMapView,
 } from "@/lib/guestDashboardMap";
-import { AUTH_MAP_DEFAULT_CENTER } from "@/lib/h3";
+import { getZones, type SavedZone } from "@/api/zones";
+import {
+  circleToGeoJsonPolygon,
+  zoneRecordToLayer,
+} from "@/lib/zoneGeometry";
+import { AUTH_MAP_DEFAULT_CENTER, type LatLng } from "@/lib/h3";
 import { useAuth } from "@/context/AuthContext";
 import {
   clearStoredGuestSession,
   getStoredGuestSession,
 } from "@/lib/storage";
 import { colors } from "@/theme/colors";
+
+/**
+ * Convert a member-style zone record (GET /zones shape) into the read-only
+ * guest map view, reusing the exact parser the in-app builder map uses so
+ * circle / polygon / h3 zones render identically.
+ */
+function savedZoneToMapView(zone: SavedZone): GuestDashboardMapView | null {
+  const layer = zoneRecordToLayer(zone, 0);
+  if (!layer) return null;
+
+  const polygons: LatLng[][] = [...layer.rings];
+  for (const circle of layer.circles) {
+    const gj = circleToGeoJsonPolygon(circle);
+    polygons.push(gj.coordinates[0].map(([lng, lat]) => [lat, lng] as LatLng));
+  }
+  const center: LatLng | null = layer.marker ?? (polygons[0]?.[0] ?? null);
+
+  if (polygons.length === 0 && layer.h3Cells.length === 0 && !center) {
+    return null;
+  }
+  return { center, polygons, h3Cells: layer.h3Cells };
+}
+
+/**
+ * The server now embeds a read-only `zone` (same shape as GET /zones) in the
+ * guest dashboard payload, so a PURE guest can render the owner's real map
+ * without member auth. Pull it out and convert it.
+ */
+function mapViewFromDashboardZone(
+  dashboard: unknown,
+): GuestDashboardMapView | null {
+  if (!dashboard || typeof dashboard !== "object" || Array.isArray(dashboard)) {
+    return null;
+  }
+  const zoneRaw = (dashboard as Record<string, unknown>).zone;
+  if (!zoneRaw || typeof zoneRaw !== "object" || Array.isArray(zoneRaw)) {
+    return null;
+  }
+  return savedZoneToMapView(zoneRaw as SavedZone);
+}
+
+/**
+ * Real zone geometry from the member API (GET /zones?zone_id=). Only usable
+ * when a member token is present — a pure guest token is rejected by /zones
+ * (its `sub` is "guest:<id>" which the member auth dependency cannot parse).
+ */
+async function fetchMemberZoneMapView(
+  zoneId: string,
+): Promise<GuestDashboardMapView | null> {
+  const res = await getZones(zoneId);
+  if (res.error || !res.data?.length) return null;
+  const match =
+    res.data.find((z) => String(z.zone_id ?? z.id ?? "").trim() === zoneId) ??
+    res.data[0];
+  return savedZoneToMapView(match);
+}
 
 export default function GuestDashboardScreen() {
   const router = useRouter();
@@ -48,8 +110,10 @@ export default function GuestDashboardScreen() {
   const [zones, setZones] = useState<string[]>([]);
   const [primaryZone, setPrimaryZone] = useState("");
   const [mapModel, setMapModel] = useState<GuestDashboardMapView | null>(null);
+  const [rawDashboard, setRawDashboard] = useState<unknown>(null);
   const [loadingMap, setLoadingMap] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showRawDashboard, setShowRawDashboard] = useState(false);
   const [fitToken, setFitToken] = useState(0);
 
   const leaveGuest = useCallback(async () => {
@@ -114,6 +178,22 @@ export default function GuestDashboardScreen() {
     setLoadingMap(true);
     setError(null);
     void (async () => {
+      // Member-token viewers (e.g. an admin also testing guest access) can read
+      // the zone's real geometry from GET /zones?zone_id= — no server change.
+      if (memberToken) {
+        const memberView = await fetchMemberZoneMapView(primaryZone);
+        if (!active) return;
+        if (memberView) {
+          setRawDashboard(null);
+          setError(null);
+          setMapModel(memberView);
+          setLoadingMap(false);
+          setFitToken((t) => t + 1);
+          return;
+        }
+      }
+
+      // Pure guests: the guest token only reaches the dashboard endpoint.
       const res = await fetchGuestZoneDashboard(primaryZone);
       if (!active) return;
       setLoadingMap(false);
@@ -124,16 +204,22 @@ export default function GuestDashboardScreen() {
       if (res.error) {
         setError(res.error);
         setMapModel(null);
+        setRawDashboard(null);
         return;
       }
-      setMapModel(tryParseGuestDashboardMap(res.data));
+      setRawDashboard(res.data ?? null);
+      // Prefer the embedded read-only `zone` (same shape as GET /zones) which
+      // carries the real geometry; fall back to the legacy map.* parser.
+      setMapModel(
+        mapViewFromDashboardZone(res.data) ?? tryParseGuestDashboardMap(res.data),
+      );
       // Bump so the map WebView fits to the freshly loaded zone geometry.
       setFitToken((t) => t + 1);
     })();
     return () => {
       active = false;
     };
-  }, [primaryZone, leaveGuest]);
+  }, [primaryZone, memberToken, leaveGuest]);
 
   const hasMapGeometry = useMemo(
     () =>
@@ -143,6 +229,29 @@ export default function GuestDashboardScreen() {
         !!mapModel.center),
     [mapModel],
   );
+
+  // Exact reason the map is empty (instead of a generic "no map" line) so the
+  // cause is visible on-device. Mirrors the web GuestDashboard hint + raw JSON.
+  const mapDiagnostic = useMemo(() => {
+    if (error) return `Dashboard request failed: ${error}`;
+    if (!primaryZone) return "No zone is attached to this guest session.";
+    if (rawDashboard == null) {
+      return `Server returned no dashboard payload for zone ${primaryZone} (GET /api/guest/zones/${primaryZone}/dashboard).`;
+    }
+    const mapBag =
+      rawDashboard && typeof rawDashboard === "object" && !Array.isArray(rawDashboard)
+        ? ((rawDashboard as Record<string, unknown>).map ?? null)
+        : null;
+    const mapKeys =
+      mapBag && typeof mapBag === "object"
+        ? Object.keys(mapBag as Record<string, unknown>).join(", ") || "(empty)"
+        : "(no map object)";
+    return (
+      `No drawable geometry in the dashboard payload for zone ${primaryZone}. ` +
+      `The map needs one of: geojson, bounds, h3_cells/cells, or geo_fence. ` +
+      `Server sent map: { ${mapKeys} }. Expand the raw payload below to inspect.`
+    );
+  }, [error, primaryZone, rawDashboard]);
 
   if (checking) {
     return (
@@ -233,19 +342,63 @@ export default function GuestDashboardScreen() {
                   fitDraftToken={fitToken}
                 />
               ) : (
-                <View
-                  style={{
-                    flex: 1,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: 20,
-                  }}
+                <ScrollView
+                  contentContainerStyle={{ padding: 16, gap: 10 }}
+                  style={{ flex: 1 }}
                 >
-                  <Text style={{ color: colors.textMuted, textAlign: "center" }}>
-                    {error ??
-                      "No map is available for this zone yet. You can still chat with the hosts below."}
+                  <Text
+                    style={{
+                      color: error ? colors.danger : colors.warning,
+                      fontSize: 12,
+                      lineHeight: 18,
+                    }}
+                  >
+                    {mapDiagnostic}
                   </Text>
-                </View>
+                  {rawDashboard != null ? (
+                    <>
+                      <Pressable
+                        onPress={() => setShowRawDashboard((v) => !v)}
+                        hitSlop={6}
+                      >
+                        <Text
+                          style={{
+                            color: colors.accent,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {showRawDashboard
+                            ? "Hide raw dashboard JSON"
+                            : "Show raw dashboard JSON"}
+                        </Text>
+                      </Pressable>
+                      {showRawDashboard ? (
+                        <View
+                          style={{
+                            backgroundColor: colors.bgSurface,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            padding: 10,
+                          }}
+                        >
+                          <Text
+                            selectable
+                            style={{
+                              color: colors.textMuted,
+                              fontFamily:
+                                Platform.OS === "ios" ? "Menlo" : "monospace",
+                              fontSize: 11,
+                            }}
+                          >
+                            {JSON.stringify(rawDashboard, null, 2)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
+                  ) : null}
+                </ScrollView>
               )}
             </View>
           </Card>

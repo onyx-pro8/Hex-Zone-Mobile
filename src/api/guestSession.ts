@@ -323,16 +323,32 @@ export async function listGuestThreadMessages(params: {
       ...(params.limit ? { limit: params.limit } : {}),
     },
     parse: (data) => {
-      const arr = Array.isArray(data)
-        ? data
-        : data &&
-            typeof data === "object" &&
-            Array.isArray((data as { messages?: unknown }).messages)
-          ? (data as { messages: unknown[] }).messages
-          : [];
+      // The backend wraps the thread in { items: [...], next_cursor }
+      // (GuestMessagesListData). Older/alt shapes used `messages`. Accept a
+      // bare array too, so the thread renders regardless of envelope shape.
+      let arr: unknown[] = [];
+      if (Array.isArray(data)) {
+        arr = data;
+      } else if (data && typeof data === "object") {
+        const bag = data as Record<string, unknown>;
+        for (const key of ["items", "messages", "data"]) {
+          if (Array.isArray(bag[key])) {
+            arr = bag[key] as unknown[];
+            break;
+          }
+        }
+      }
       return arr
         .map((m) => parseGuestMessage(m))
-        .filter((m): m is GuestMessage => m != null);
+        .filter((m): m is GuestMessage => m != null)
+        .sort((a, b) => {
+          // Oldest → newest so the chat reads top-to-bottom (the screen scrolls
+          // to the end). Fall back to id when timestamps are equal/missing.
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+          if (ta !== tb) return ta - tb;
+          return a.id.localeCompare(b.id);
+        });
     },
   });
 }
