@@ -370,14 +370,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await setToken(result.data.token);
         await persistRememberMe(remember);
         let normalized: AuthUser | null = null;
-        if (result.data.user?.id != null) {
-          normalized = normalizeUser(result.data.user);
+        const loginUser = result.data.user;
+        // The login payload often omits email (or returns a thin user). Always
+        // hydrate from the profile endpoints when email is missing so the
+        // Settings header doesn't show "—". Fall back to the login user only
+        // if the profile fetch fails entirely.
+        const loginHasEmail =
+          typeof loginUser?.email === "string" && loginUser.email.trim() !== "";
+        if (loginUser?.id != null && loginHasEmail) {
+          normalized = normalizeUser(loginUser);
         } else {
           const me = await fetchProfile();
-          if (!me.data) {
+          if (me.data) {
+            normalized = normalizeUser(me.data);
+          } else if (loginUser?.id != null) {
+            normalized = normalizeUser(loginUser);
+          } else {
             throw new Error(me.error ?? "Could not load profile");
           }
-          normalized = normalizeUser(me.data);
         }
 
         // Gate the session on device sync. If the account already has its

@@ -92,7 +92,12 @@ export function buildDashboardMapHtml(): string {
       var H3 = null;
       ensureH3Loaded(function (lib) {
         H3 = lib;
-        if (state) applyState(state);
+        if (state) {
+          // h3-js arrived after the first state push: allow the pending fit to
+          // re-run now that cell boundaries can be computed.
+          lastFitToken = 0;
+          applyState(state);
+        }
       });
 
       function clearGroup(g) { if (g) g.clearLayers(); }
@@ -249,6 +254,41 @@ export function buildDashboardMapHtml(): string {
         });
       }
 
+      function collectContentBounds(next) {
+        var pts = [];
+        var lib = H3 || getH3();
+        if (lib && typeof lib.cellToBoundary === 'function') {
+          (next.selectedH3Cells || []).forEach(function (cell) {
+            try {
+              lib.cellToBoundary(cell).forEach(function (p) { pts.push([p[0], p[1]]); });
+            } catch (e) {}
+          });
+        }
+        (next.previewRings || []).forEach(function (ring) {
+          (ring || []).forEach(function (p) { pts.push([p[0], p[1]]); });
+        });
+        (next.draftRing || []).forEach(function (p) { pts.push([p[0], p[1]]); });
+        (next.savedLayers || []).forEach(function (layer) {
+          (layer.rings || []).forEach(function (ring) {
+            (ring || []).forEach(function (p) { pts.push([p[0], p[1]]); });
+          });
+          if (lib && lib.cellToBoundary) {
+            (layer.h3Cells || []).forEach(function (cell) {
+              try {
+                lib.cellToBoundary(cell).forEach(function (p) { pts.push([p[0], p[1]]); });
+              } catch (e) {}
+            });
+          }
+        });
+        if (next.draftMarker) pts.push([next.draftMarker[0], next.draftMarker[1]]);
+        if (!pts.length) return null;
+        try {
+          return L.latLngBounds(pts);
+        } catch (e) {
+          return null;
+        }
+      }
+
       var lastFitToken = 0;
       function applyState(next) {
         if (!map) return;
@@ -280,18 +320,23 @@ export function buildDashboardMapHtml(): string {
         }
         renderH3Draft(next.selectedH3Cells || [], color);
 
-        if (
-          next.fitDraftToken &&
-          next.fitDraftToken !== lastFitToken &&
-          next.draftCircle &&
-          next.draftCircle.center &&
-          Number(next.draftCircle.radiusMeters) > 0
-        ) {
+        if (next.fitDraftToken && next.fitDraftToken !== lastFitToken) {
           lastFitToken = next.fitDraftToken;
           try {
-            var c = L.latLng(next.draftCircle.center[0], next.draftCircle.center[1]);
-            var bounds = c.toBounds(Math.max(Number(next.draftCircle.radiusMeters) * 2.4, 200));
-            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17, animate: true });
+            if (
+              next.draftCircle &&
+              next.draftCircle.center &&
+              Number(next.draftCircle.radiusMeters) > 0
+            ) {
+              var c = L.latLng(next.draftCircle.center[0], next.draftCircle.center[1]);
+              var bounds = c.toBounds(Math.max(Number(next.draftCircle.radiusMeters) * 2.4, 200));
+              map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17, animate: true });
+            } else {
+              var contentBounds = collectContentBounds(next);
+              if (contentBounds && contentBounds.isValid()) {
+                map.fitBounds(contentBounds, { padding: [40, 40], maxZoom: 17, animate: true });
+              }
+            }
           } catch (e) {
             debug('fit-bounds-error', { err: String(e && e.message || e) });
           }

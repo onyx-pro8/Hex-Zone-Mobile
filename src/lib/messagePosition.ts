@@ -1,4 +1,4 @@
-import { loadExpoLocation } from "@/lib/expoLocation";
+import { readDeviceLocation } from "@/lib/expoLocation";
 import { normalizeMapCenter, type MapCenter } from "@/lib/mapCenter";
 import { getStoredMapCenter } from "@/lib/storage";
 
@@ -12,11 +12,16 @@ export type ResolvedMessagePosition = {
   source: MessagePositionSource;
 };
 
+/** Max time to wait for a fresh GPS fix before falling back. Keeps the Send
+ *  button from hanging for ~60s on weak signal / indoors / emulator. */
+const SEND_GPS_TIMEOUT_MS = 7000;
+
 /**
  * Resolves sender position for geo-propagation messages.
  *
  * Priority:
- *   1. Live GPS (most accurate; matches the alarm intent)
+ *   1. Live GPS, but bounded by a short timeout with a last-known-position
+ *      fallback so sending never blocks for long.
  *   2. Profile `mapCenter` saved on the account — backfilled from the
  *      address geocode at registration, so it always exists once the
  *      account is created with a valid address.
@@ -38,28 +43,10 @@ export async function resolveMessagePropagationPosition(
 }
 
 async function tryReadGps(): Promise<MapCenter | null> {
-  const Location = await loadExpoLocation();
-  if (!Location) return null;
-  try {
-    const existing = await Location.getForegroundPermissionsAsync();
-    let granted = existing.status === "granted";
-    if (!granted && existing.canAskAgain !== false) {
-      const requested = await Location.requestForegroundPermissionsAsync();
-      granted = requested.status === "granted";
-    }
-    if (!granted) return null;
-    const servicesOn = await Location.hasServicesEnabledAsync().catch(
-      () => true,
-    );
-    if (!servicesOn) return null;
-    const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
-    return {
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-    };
-  } catch {
-    return null;
-  }
+  const result = await readDeviceLocation({ timeoutMs: SEND_GPS_TIMEOUT_MS });
+  if (!result) return null;
+  return {
+    latitude: result.coords.latitude,
+    longitude: result.coords.longitude,
+  };
 }

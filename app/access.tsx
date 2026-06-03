@@ -33,7 +33,7 @@ import {
   submitAnonymousGuestPermission,
 } from "@/api/guestPublic";
 import { getOrCreateDeviceHid, setStoredGuestSession } from "@/lib/storage";
-import { loadExpoLocation } from "@/lib/expoLocation";
+import { readDeviceLocation } from "@/lib/expoLocation";
 import { colors } from "@/theme/colors";
 
 type Phase =
@@ -117,26 +117,16 @@ export default function GuestAccessScreen() {
     setLocating(true);
     setFormError(null);
     try {
-      const Location = await loadExpoLocation();
-      if (!Location) {
+      const result = await readDeviceLocation({ timeoutMs: 10000 });
+      if (!result) {
         setFormError(
-          "Location module is not available. You can still continue.",
+          "Could not read your location. You can still continue without it.",
         );
         return;
       }
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== "granted") {
-        setFormError(
-          "Location permission denied. You can still continue without it.",
-        );
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
       setPosition({
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
+        lat: result.coords.latitude,
+        lng: result.coords.longitude,
       });
     } catch {
       setFormError("Could not read your location. You can still continue.");
@@ -146,11 +136,15 @@ export default function GuestAccessScreen() {
   }, []);
 
   const runExchange = useCallback(
-    async (guestId: string, pollZoneId: string, exchangeCode: string) => {
+    async (
+      guestId: string,
+      pollZoneId: string,
+      exchangeCode: string,
+    ): Promise<boolean> => {
       const gid = guestId.trim();
       const zone = pollZoneId.trim();
       const code = exchangeCode.trim();
-      if (!gid || !zone || !code) return;
+      if (!gid || !zone || !code) return false;
       setExchangeBusy(true);
       setExchangeError(null);
       try {
@@ -162,25 +156,34 @@ export default function GuestAccessScreen() {
           device_id: hid,
         });
         if (ex.error || !ex.data) {
-          setExchangeError(
-            ex.error ?? "Could not start guest session.",
-          );
-          return;
+          setExchangeError(ex.error ?? "Could not start guest session.");
+          return false;
         }
-        const guestZone = ex.data.guest.zone_ids?.[0] ?? zone;
+        // Prefer the zone used at check-in when it appears in the guest's
+        // zone list (matches web persistGuestSessionAfterExchange).
+        const zoneIds = ex.data.guest.zone_ids?.length
+          ? ex.data.guest.zone_ids
+          : [];
+        const pollZone = zone.trim();
+        const primaryZone =
+          zoneIds.find((z) => z === pollZone) ?? (pollZone || zoneIds[0] || "");
+        const resolvedZoneIds = zoneIds.length
+          ? zoneIds
+          : primaryZone
+            ? [primaryZone]
+            : [];
         await setStoredGuestSession({
           access_token: ex.data.access_token,
           guest_id: ex.data.guest.guest_id,
           display_name: ex.data.guest.display_name,
-          zone_id: guestZone,
-          zone_ids: ex.data.guest.zone_ids?.length
-            ? ex.data.guest.zone_ids
-            : [guestZone],
+          zone_id: primaryZone,
+          zone_ids: resolvedZoneIds,
           allowed_message_types: ex.data.guest.allowed_message_types?.length
             ? ex.data.guest.allowed_message_types
             : ["PERMISSION", "CHAT"],
           saved_at: Date.now(),
         });
+        return true;
       } finally {
         setExchangeBusy(false);
       }
@@ -302,9 +305,13 @@ export default function GuestAccessScreen() {
     if (!gid || !zone) return;
     let cancelled = false;
     void (async () => {
-      await runExchange(gid, zone, code);
-      if (!cancelled) {
-        // Land back on welcome (or the tabs if a member is also signed in).
+      const ok = await runExchange(gid, zone, code);
+      if (cancelled) return;
+      if (ok) {
+        // Approved guests land on the guest dashboard (map + chat).
+        router.replace("/guest/dashboard");
+      } else {
+        // Exchange failed — fall back to welcome / tabs.
         router.replace(memberToken ? "/(tabs)" : "/(auth)/welcome");
       }
     })();

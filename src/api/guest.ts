@@ -29,13 +29,75 @@ export type CreateGuestPassBody = {
 };
 
 export type GuestRequest = {
+  /** Session row id (preferred for approve/reject paths). */
+  id: string;
   guest_id: string;
   zone_id: string;
   guest_name?: string;
   status: string;
-  approval_status: "PENDING" | "APPROVED" | "REJECTED";
+  approval_status: "PENDING" | "APPROVED" | "REJECTED" | "ARRIVED";
+  expectation?: "expected" | "unexpected";
   created_at: string;
 };
+
+function normalizeGuestRequestRow(raw: unknown): GuestRequest | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const guestId = String(r.guest_id ?? r.guestId ?? "").trim();
+  const idRaw = r.id ?? r.request_id ?? r.permission_request_id;
+  const id =
+    idRaw != null && String(idRaw).trim()
+      ? String(idRaw).trim()
+      : guestId;
+  if (!id && !guestId) return null;
+
+  const statusRaw = String(
+    r.approval_status ?? r.status ?? r.resolution ?? "",
+  ).toUpperCase();
+  let approval_status: GuestRequest["approval_status"] = "PENDING";
+  if (statusRaw === "APPROVED" || statusRaw === "GRANTED") {
+    approval_status = "APPROVED";
+  } else if (statusRaw === "REJECTED" || statusRaw === "DENIED") {
+    approval_status = "REJECTED";
+  } else if (statusRaw === "ARRIVED") {
+    approval_status = "ARRIVED";
+  } else if (statusRaw === "PENDING" || statusRaw === "REVIEW") {
+    approval_status = "PENDING";
+  }
+
+  const kind = String(r.kind ?? r.expectation ?? "").toLowerCase();
+  const expectation: GuestRequest["expectation"] =
+    kind.includes("unexpected") ||
+    String(r.guest_status ?? "").toUpperCase() === "UNEXPECTED" ||
+    r.unexpected === true
+      ? "unexpected"
+      : "expected";
+
+  const created =
+    r.created_at ?? r.arrived_at ?? r.time ?? new Date().toISOString();
+
+  return {
+    id: id || guestId,
+    guest_id: guestId || id,
+    zone_id: String(r.zone_id ?? r.zoneId ?? "").trim(),
+    guest_name:
+      typeof r.guest_name === "string" && r.guest_name.trim()
+        ? r.guest_name.trim()
+        : undefined,
+    status: statusRaw || approval_status,
+    approval_status,
+    expectation,
+    created_at: String(created),
+  };
+}
+
+/** Whether approve/reject actions should show (aligned with web dashboard). */
+export function guestRequestShowsApprovalActions(row: GuestRequest): boolean {
+  if (row.expectation === "unexpected") {
+    return row.approval_status === "PENDING" || row.approval_status === "ARRIVED";
+  }
+  return row.approval_status === "PENDING";
+}
 
 /* --------------------------- Member invite QR --------------------------- */
 
@@ -307,25 +369,60 @@ export async function revokeGuestPass(passId: string, zoneId: string) {
 
 /* ------------------------ Guest requests / list ------------------------- */
 
-export async function listGuestRequests(zoneId: string) {
-  return request<GuestRequest[]>({
+export async function listGuestRequests(
+  zoneId: string,
+): Promise<ApiResult<GuestRequest[]>> {
+  const result = await request<unknown>({
     method: "GET",
     url: "/api/access/guest-requests",
     params: { zone_id: zoneId },
   });
+  if (result.error) {
+    return { data: [], error: result.error, loading: false };
+  }
+  const raw = result.data;
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { items?: unknown[] }).items)
+      ? (raw as { items: unknown[] }).items
+      : [];
+  const rows = list
+    .map((item) => normalizeGuestRequestRow(item))
+    .filter((row): row is GuestRequest => row != null);
+  return { data: rows, error: null, loading: false };
 }
 
-export async function approveGuestRequest(guestId: string) {
+export async function approveGuestRequest(requestId: string, zoneId: string) {
+  const id = requestId.trim();
+  const zid = zoneId.trim();
+  if (!id || !zid) {
+    return {
+      data: null,
+      error: "Missing guest request or zone id.",
+      loading: false,
+    };
+  }
   return request<{ ok?: boolean }>({
     method: "POST",
-    url: `/message-feature/access/guest-requests/${encodeURIComponent(guestId)}/approve`,
+    url: `/message-feature/access/guest-requests/${encodeURIComponent(id)}/approve`,
+    params: { zone_id: zid },
   });
 }
 
-export async function rejectGuestRequest(guestId: string) {
+export async function rejectGuestRequest(requestId: string, zoneId: string) {
+  const id = requestId.trim();
+  const zid = zoneId.trim();
+  if (!id || !zid) {
+    return {
+      data: null,
+      error: "Missing guest request or zone id.",
+      loading: false,
+    };
+  }
   return request<{ ok?: boolean }>({
     method: "POST",
-    url: `/message-feature/access/guest-requests/${encodeURIComponent(guestId)}/reject`,
+    url: `/message-feature/access/guest-requests/${encodeURIComponent(id)}/reject`,
+    params: { zone_id: zid },
   });
 }
 

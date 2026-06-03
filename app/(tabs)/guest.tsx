@@ -1,12 +1,11 @@
-import { useMemo } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CalendarRange, ChevronRight, Ticket } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
-import { useAuth } from "@/context/AuthContext";
+import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { colors } from "@/theme/colors";
 
 type GuestEntry = {
@@ -19,12 +18,8 @@ type GuestEntry = {
 
 export default function GuestHubScreen() {
   const router = useRouter();
-  const { user } = useAuth();
-
-  const zoneId = useMemo(
-    () => String(user?.zoneId ?? user?.zone_id ?? "").trim(),
-    [user?.zoneId, user?.zone_id],
-  );
+  const { effectiveZoneId, zonesLoading } = useEffectiveZoneId();
+  const zoneId = effectiveZoneId;
 
   const entries: GuestEntry[] = [
     {
@@ -55,10 +50,25 @@ export default function GuestHubScreen() {
           {!zoneId ? (
             <View style={{ paddingHorizontal: 20 }}>
               <Card>
-                <Text style={{ color: colors.textMuted }}>
-                  Your account is not linked to a zone yet. Ask your administrator
-                  to invite you to a zone before adding guests.
-                </Text>
+                {zonesLoading ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <ActivityIndicator color={colors.accent} />
+                    <Text style={{ color: colors.textMuted }}>
+                      Looking up your zone…
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={{ color: colors.textMuted }}>
+                    Your account is not linked to a zone yet. Ask your
+                    administrator to invite you to a zone before adding guests.
+                  </Text>
+                )}
               </Card>
             </View>
           ) : null}

@@ -1,10 +1,13 @@
+import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Bell,
+  BellRing,
   CalendarRange,
   LogOut,
+  MessageSquareText,
   Shield,
   Smartphone,
   Ticket,
@@ -19,8 +22,15 @@ import { Chip } from "@/components/ui/Chip";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { API_BASE_URL } from "@/api/client";
-import { registerForPushNotificationsAsync } from "@/lib/notifications";
+import { sendTestPush } from "@/api/devices";
+import {
+  getNotificationPermissionStatus,
+  registerForPushNotificationsAsync,
+} from "@/lib/notifications";
+import type { PushDeliveryError } from "@/api/devices";
 import { colors } from "@/theme/colors";
+
+const KILLED_APP_DELAY_SECONDS = 10;
 
 function SettingsRow({
   icon,
@@ -76,8 +86,29 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const { pushToken, permissionError } = useNotifications();
+  const [testingPush, setTestingPush] = useState<"none" | "now" | "delayed">(
+    "none",
+  );
+  const [osNotificationsGranted, setOsNotificationsGranted] = useState<
+    boolean | null
+  >(null);
+
+  useEffect(() => {
+    void getNotificationPermissionStatus().then(({ granted }) => {
+      setOsNotificationsGranted(granted);
+    });
+  }, [pushToken]);
+
+  // Recover a missing email (e.g. when the login payload was thin) by
+  // re-fetching the profile when the screen opens without one.
+  useEffect(() => {
+    if (user && !(typeof user.email === "string" && user.email.trim())) {
+      void refreshUser();
+    }
+    // Only react to identity / email changes, not every render.
+  }, [user?.id, user?.email, refreshUser]);
 
   const isAdmin = (() => {
     const role = String(user?.role ?? "").toLowerCase();
@@ -109,6 +140,73 @@ export default function SettingsScreen() {
         ? "This device is registered for message notifications."
         : result.error ?? "Could not register for push notifications.",
     );
+  };
+
+  // Diagnostic: trigger a self-test push from the server. Two variants help
+  // isolate where delivery actually breaks:
+  //   - "now": expect the foreground notification handler to fire — verifies
+  //     the Expo → FCM → device path while the app is alive.
+  //   - "delayed": server waits ~10s, so the user can close/kill the app and
+  //     verify the system-tray notification appears with the app not running.
+  const formatDeliveryErrors = (errors: PushDeliveryError[] | undefined) => {
+    if (!errors?.length) return "";
+    const first = errors[0];
+    const code = first.error ?? first.message ?? "unknown";
+    return ` Delivery error: ${code}.`;
+  };
+
+  const triggerTestPush = async (mode: "now" | "delayed") => {
+    if (testingPush !== "none") return;
+    const { granted } = await getNotificationPermissionStatus();
+    setOsNotificationsGranted(granted);
+    if (!granted) {
+      Alert.alert(
+        "Notifications blocked",
+        "Android is not allowed to show notifications for Zone Weaver. Open system Settings → Apps → Zone Weaver → Notifications and enable them, then try again.",
+      );
+      return;
+    }
+    setTestingPush(mode);
+    try {
+      const delaySeconds = mode === "delayed" ? KILLED_APP_DELAY_SECONDS : 0;
+      const result = await sendTestPush({ delaySeconds });
+      if (result.error) throw new Error(result.error);
+      const data = result.data ?? {};
+      if (data.push_no_tokens || (data.tokens ?? 0) === 0) {
+        Alert.alert(
+          "No push tokens registered",
+          "This account has no active push tokens on the server. Tap Push notifications above to re-register, then try again.",
+        );
+        return;
+      }
+      if (mode === "delayed") {
+        Alert.alert(
+          "Test push scheduled",
+          `Server will send to ${data.tokens} token(s) in ${KILLED_APP_DELAY_SECONDS}s on channel "${data.channel_id ?? "default"}". Swipe the app away from recents (do not Force stop). If nothing appears, rebuild the installed APK after the latest app.json notification changes (eas build).`,
+        );
+        return;
+      }
+      const sent = data.push_sent ?? 0;
+      const failed = data.push_failed ?? 0;
+      const deliveryHint = formatDeliveryErrors(data.delivery_errors);
+      if (sent > 0 && failed === 0) {
+        Alert.alert(
+          "Expo reports delivery OK",
+          `Push reached Google/FCM for ${sent} device(s). If you still see nothing in the tray, open Android Settings → Apps → Zone Weaver → Notifications and enable "Zone Weaver" / pop on screen. After updating notification config, run a new EAS build and reinstall.${deliveryHint}`,
+        );
+        return;
+      }
+      Alert.alert(
+        "Push delivery failed",
+        `Tried ${data.tokens ?? 0} token(s); ${failed} failed.${deliveryHint} Check server logs for Expo push receipt errors.`,
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not send a test push.";
+      Alert.alert("Test push failed", msg);
+    } finally {
+      setTestingPush("none");
+    }
   };
 
   return (
@@ -188,6 +286,16 @@ export default function SettingsScreen() {
                   subtitle="Pre-registered passes with event IDs"
                   onPress={() => router.push("/(tabs)/guest-passes")}
                 />
+                <SettingsRow
+                  icon={<MessageSquareText size={20} color={colors.accent} />}
+                  title="Arrival messages"
+                  subtitle={
+                    '"Expected" and "waiting for approval" wording for guests'
+                  }
+                  onPress={() =>
+                    router.push("/(tabs)/guest-arrival-messages")
+                  }
+                />
               </>
             ) : null}
 
@@ -209,11 +317,82 @@ export default function SettingsScreen() {
               title="Push notifications"
               subtitle={
                 pushToken
-                  ? "Enabled — messages arrive as push alerts"
+                  ? osNotificationsGranted === false
+                    ? "Token registered — system notifications are OFF"
+                    : "Enabled — messages arrive as push alerts"
                   : permissionError ?? "Tap to enable notifications"
               }
               onPress={() => void retryPush()}
             />
+            {pushToken ? (
+              <Card
+                style={{
+                  marginBottom: 10,
+                  paddingVertical: 12,
+                  gap: 10,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: colors.bgSurface,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <BellRing size={20} color={colors.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: "700",
+                        fontSize: 15,
+                      }}
+                    >
+                      Diagnose push delivery
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        marginTop: 3,
+                      }}
+                    >
+                      "Test now" verifies foreground delivery. "Test killed
+                      app" waits {KILLED_APP_DELAY_SECONDS}s so you can close
+                      the app first.
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <Button
+                    label="Test now"
+                    variant="secondary"
+                    onPress={() => void triggerTestPush("now")}
+                    loading={testingPush === "now"}
+                    disabled={testingPush !== "none"}
+                    style={{ flex: 1 }}
+                  />
+                  <Button
+                    label={`Test killed app (${KILLED_APP_DELAY_SECONDS}s)`}
+                    onPress={() => void triggerTestPush("delayed")}
+                    loading={testingPush === "delayed"}
+                    disabled={testingPush !== "none"}
+                    style={{ flex: 1 }}
+                  />
+                </View>
+              </Card>
+            ) : null}
             <SettingsRow
               icon={<Smartphone size={20} color={colors.accent} />}
               title="Devices"

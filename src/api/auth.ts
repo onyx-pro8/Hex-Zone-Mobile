@@ -158,10 +158,44 @@ export async function registerRequest(payload: RegisterPayload) {
   });
 }
 
+function profileHasEmail(user: AuthUser | null | undefined): boolean {
+  return Boolean(user && typeof user.email === "string" && user.email.trim());
+}
+
 export async function fetchProfile() {
   const primary = await request<AuthUser>({ method: "GET", url: "/me" });
-  if (primary.data) return primary;
-  return request<AuthUser>({ method: "GET", url: "/owners/me" });
+  // Fall back to /owners/me when /me returns nothing OR when it returns a user
+  // that is missing the email (the Settings header shows "—" otherwise). The
+  // two endpoints can return slightly different shapes depending on the
+  // account/role, so we merge to keep whatever fields each one provides.
+  if (primary.data && profileHasEmail(primary.data)) return primary;
+  const legacy = await request<AuthUser>({
+    method: "GET",
+    url: "/owners/me",
+  });
+  if (!legacy.data) return primary.data ? primary : legacy;
+  if (!primary.data) return legacy;
+  return {
+    ...primary,
+    data: { ...primary.data, ...mergeMissingFields(primary.data, legacy.data) },
+  };
+}
+
+/** Returns only the fields from `fallback` that are absent/blank on `primary`. */
+function mergeMissingFields(
+  primary: AuthUser,
+  fallback: AuthUser,
+): Partial<AuthUser> {
+  const out: Partial<AuthUser> = {};
+  const isBlank = (v: unknown) =>
+    v == null || (typeof v === "string" && v.trim() === "");
+  (Object.keys(fallback) as (keyof AuthUser)[]).forEach((key) => {
+    if (isBlank(primary[key]) && !isBlank(fallback[key])) {
+      // @ts-expect-error index assignment across union is safe here
+      out[key] = fallback[key];
+    }
+  });
+  return out;
 }
 
 /**
