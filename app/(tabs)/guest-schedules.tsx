@@ -10,15 +10,16 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CalendarPlus, CalendarRange } from "lucide-react-native";
+import { CalendarPlus, CalendarRange, RefreshCw } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
-import { useAuth } from "@/context/AuthContext";
+import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
+import { useGuestManagementBack } from "@/hooks/useGuestManagementBack";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
   createAccessSchedule,
   listAccessSchedules,
@@ -58,21 +59,15 @@ function isValidIso(value: string): boolean {
 }
 
 export default function GuestSchedulesScreen() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const zoneId = user?.zoneId ?? "";
-  const role = String(user?.role ?? "").toLowerCase();
-  const onBack = () => {
-    if (role === "user") {
-      router.replace("/(tabs)/guest");
-      return;
-    }
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace("/(tabs)/settings");
-  };
+  const isAdmin = useIsAdmin();
+  const onBack = useGuestManagementBack();
+  const {
+    effectiveZoneId,
+    candidateZoneIds,
+    zonesLoading,
+    setPickedZoneId,
+    refresh: refreshZones,
+  } = useEffectiveZoneId();
   const [schedules, setSchedules] = useState<AccessSchedule[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -86,15 +81,15 @@ export default function GuestSchedulesScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!zoneId) return;
+    if (!effectiveZoneId) return;
     setLoading(true);
     try {
-      const result = await listAccessSchedules(zoneId);
+      const result = await listAccessSchedules(effectiveZoneId);
       setSchedules(result.data ?? []);
     } finally {
       setLoading(false);
     }
-  }, [zoneId]);
+  }, [effectiveZoneId]);
 
   useEffect(() => {
     void load();
@@ -106,7 +101,7 @@ export default function GuestSchedulesScreen() {
   };
 
   const onSave = useCallback(async () => {
-    if (!zoneId) {
+    if (!effectiveZoneId) {
       setError("Set up a primary zone before adding a schedule.");
       return;
     }
@@ -118,7 +113,7 @@ export default function GuestSchedulesScreen() {
     setError(null);
     try {
       const result = await createAccessSchedule({
-        zone_id: zoneId,
+        zone_id: effectiveZoneId,
         guest_name: guestName.trim() || undefined,
         event_id: eventId.trim() || undefined,
         guest_id: guestId.trim() || undefined,
@@ -141,23 +136,55 @@ export default function GuestSchedulesScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [zoneId, guestName, eventId, guestId, startsAt, endsAt, notifyAssist, load]);
+  }, [
+    effectiveZoneId,
+    guestName,
+    eventId,
+    guestId,
+    startsAt,
+    endsAt,
+    notifyAssist,
+    load,
+  ]);
+
+  const showZonePicker = isAdmin && candidateZoneIds.length > 1;
 
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScreenHeader
           title="Guest schedules"
-          subtitle="Pre-approve expected guest windows"
+          subtitle={
+            effectiveZoneId
+              ? `Pre-approve expected guest windows · ${effectiveZoneId}`
+              : "Pre-approve expected guest windows"
+          }
           showBack
           onBack={onBack}
         />
-        {!zoneId ? (
+        {!effectiveZoneId ? (
           <View style={{ paddingHorizontal: 20 }}>
             <Card>
-              <Text style={{ color: colors.textMuted }}>
-                Set up a primary zone before adding access schedules.
-              </Text>
+              {zonesLoading ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <ActivityIndicator color={colors.accent} />
+                  <Text style={{ color: colors.textMuted }}>
+                    Looking up your zones…
+                  </Text>
+                </View>
+              ) : (
+                <Text style={{ color: colors.textMuted }}>
+                  {isAdmin
+                    ? "No zones are linked to this account yet. Create a zone from the Dashboard, then come back here."
+                    : "Your account is not linked to a zone yet. Ask your administrator to invite you to a zone."}
+                </Text>
+              )}
             </Card>
           </View>
         ) : (
@@ -165,7 +192,56 @@ export default function GuestSchedulesScreen() {
             data={schedules}
             keyExtractor={(item) => String(item.id)}
             ListHeaderComponent={
-              <Card style={{ marginBottom: 16, gap: 12 }}>
+              <View style={{ gap: 12 }}>
+                {showZonePicker ? (
+                  <Card style={{ gap: 8 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 11,
+                          letterSpacing: 1,
+                          textTransform: "uppercase",
+                          fontWeight: "700",
+                        }}
+                      >
+                        Zone
+                      </Text>
+                      <Pressable
+                        onPress={() => void refreshZones()}
+                        hitSlop={8}
+                      >
+                        <RefreshCw size={14} color={colors.accent} />
+                      </Pressable>
+                    </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      {candidateZoneIds.map((zid) => (
+                        <Pressable
+                          key={zid}
+                          onPress={() => setPickedZoneId(zid)}
+                        >
+                          <Chip
+                            label={zid}
+                            active={zid === effectiveZoneId}
+                          />
+                        </Pressable>
+                      ))}
+                    </View>
+                  </Card>
+                ) : null}
+                <Card style={{ marginBottom: 16, gap: 12 }}>
                 <View
                   style={{
                     flexDirection: "row",
@@ -259,6 +335,7 @@ export default function GuestSchedulesScreen() {
                   fullWidth
                 />
               </Card>
+              </View>
             }
             renderItem={({ item }) => (
               <Card style={{ marginBottom: 10 }}>

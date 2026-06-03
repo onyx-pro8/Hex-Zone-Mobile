@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,9 +13,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
 import {
+  CalendarRange,
   Check,
   Copy,
   Link as LinkIcon,
+  MessageSquareText,
   QrCode,
   RefreshCw,
   Ticket,
@@ -34,6 +36,7 @@ import {
   generateMemberInviteQr,
   getGuestAccessQrLink,
   getGuestAccessQrTokenLink,
+  guestRequestShowsApprovalActions,
   listGuestAccessQrTokens,
   listGuestRequests,
   rejectGuestRequest,
@@ -42,8 +45,9 @@ import {
   type GuestAccessQrToken,
   type GuestRequest,
 } from "@/api/guest";
-import { getZones, type SavedZone } from "@/api/zones";
+import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { devLog } from "@/lib/devConsole";
+import { presentLocalMessageNotification } from "@/lib/notifications";
 import { colors } from "@/theme/colors";
 
 type Tab = "member" | "guest";
@@ -579,13 +583,22 @@ function GuestAccessSection({
 export default function AccessScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const accountZoneId = user?.zoneId ?? "";
+  const {
+    effectiveZoneId,
+    accountZoneId,
+    candidateZoneIds,
+    zonesLoading,
+    setPickedZoneId,
+    refresh: refreshZones,
+  } = useEffectiveZoneId();
   const [tab, setTab] = useState<Tab>("member");
   const [requests, setRequests] = useState<GuestRequest[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
-  const [savedZones, setSavedZones] = useState<SavedZone[]>([]);
-  const [zonesLoading, setZonesLoading] = useState(false);
-  const [pickedZoneId, setPickedZoneId] = useState<string>("");
+  const [requestsError, setRequestsError] = useState<string | null>(null);
+  // Track which pending arrivals we've already alerted on, and skip the first
+  // load so we don't fire a burst of notifications for pre-existing requests.
+  const notifiedRequestIdsRef = useRef<Set<string>>(new Set());
+  const notifyPrimedRef = useRef(false);
 
   const params = useLocalSearchParams<{
     gt?: string;
@@ -612,70 +625,70 @@ export default function AccessScreen() {
     return !(accountType === "PRIVATE" || accountType === "EXCLUSIVE");
   }, [user]);
 
-  const refreshZones = useCallback(async () => {
-    setZonesLoading(true);
-    try {
-      const result = await getZones();
-      const rows = result.data ?? [];
-      setSavedZones(rows);
-      devLog("Access: loaded zones", {
-        count: rows.length,
-        zone_ids: rows.map((z) => z.zone_id).filter(Boolean),
-        error: result.error,
-      });
-    } finally {
-      setZonesLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshZones();
-  }, [refreshZones]);
-
-  const candidateZoneIds = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    const push = (raw: unknown) => {
-      if (raw == null) return;
-      const str = String(raw).trim();
-      if (!str || seen.has(str)) return;
-      seen.add(str);
-      out.push(str);
-    };
-    push(accountZoneId);
-    for (const z of savedZones) push(z.zone_id);
-    return out;
-  }, [accountZoneId, savedZones]);
-
-  const effectiveZoneId =
-    pickedZoneId || accountZoneId || candidateZoneIds[0] || "";
-
-  useEffect(() => {
-    devLog("Access: effective zone id", {
-      effectiveZoneId,
-      accountZoneId,
-      pickedZoneId,
-      candidateZoneIds,
-    });
-  }, [effectiveZoneId, accountZoneId, pickedZoneId, candidateZoneIds]);
-
   const loadRequests = useCallback(async () => {
     if (!effectiveZoneId) return;
     setLoadingRequests(true);
+    setRequestsError(null);
     try {
       const result = await listGuestRequests(effectiveZoneId);
-      setRequests(result.data ?? []);
+      if (result.error) {
+        setRequestsError(result.error);
+        setRequests([]);
+        return;
+      }
+      const rows = result.data ?? [];
+      setRequests(rows);
+
+      const pending = rows.filter(
+        (r) => r.approval_status === "PENDING" || r.approval_status === "ARRIVED",
+      );
+      const fresh = pending.filter(
+        (r) => !notifiedRequestIdsRef.current.has(r.id),
+      );
+      if (notifyPrimedRef.current && fresh.length > 0) {
+        const title =
+          fresh.length === 1
+            ? "New guest request"
+            : `${fresh.length} new guest requests`;
+        const body =
+          fresh.length === 1
+            ? `${fresh[0]?.guest_name ?? "A guest"} is requesting access to this zone.`
+            : "Several guests are requesting access to this zone.";
+        void presentLocalMessageNotification({
+          title,
+          body,
+          channelId: "messages",
+          data: { event: "GUEST_ACCESS_REQUEST", zone_id: effectiveZoneId },
+        });
+      }
+      for (const r of pending) notifiedRequestIdsRef.current.add(r.id);
+      notifyPrimedRef.current = true;
     } finally {
       setLoadingRequests(false);
     }
+  }, [effectiveZoneId]);
+
+  // Reset notification de-dupe state when switching zones.
+  useEffect(() => {
+    notifiedRequestIdsRef.current = new Set();
+    notifyPrimedRef.current = false;
   }, [effectiveZoneId]);
 
   useEffect(() => {
     void loadRequests();
   }, [loadRequests]);
 
-  const onApprove = async (guestId: string) => {
-    const result = await approveGuestRequest(guestId);
+  // Poll so the admin is alerted to new arrivals while this screen is open.
+  useEffect(() => {
+    if (!effectiveZoneId) return;
+    const interval = setInterval(() => {
+      void loadRequests();
+    }, 20_000);
+    return () => clearInterval(interval);
+  }, [effectiveZoneId, loadRequests]);
+
+  const onApprove = async (requestId: string) => {
+    const result = await approveGuestRequest(requestId, effectiveZoneId);
     if (result.error) {
       Alert.alert("Approve failed", result.error);
       return;
@@ -683,8 +696,8 @@ export default function AccessScreen() {
     void loadRequests();
   };
 
-  const onReject = async (guestId: string) => {
-    const result = await rejectGuestRequest(guestId);
+  const onReject = async (requestId: string) => {
+    const result = await rejectGuestRequest(requestId, effectiveZoneId);
     if (result.error) {
       Alert.alert("Reject failed", result.error);
       return;
@@ -727,6 +740,36 @@ export default function AccessScreen() {
               </Card>
             </Pressable>
 
+            <Pressable onPress={() => router.push("/(tabs)/guest-schedules")}>
+              <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <CalendarRange size={24} color={colors.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: "700" }}>
+                    Guest schedules
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    Pre-approve expected guest time windows
+                  </Text>
+                </View>
+              </Card>
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push("/(tabs)/guest-arrival-messages")}
+            >
+              <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <MessageSquareText size={24} color={colors.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: "700" }}>
+                    Arrival messages
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    Set the &quot;expected&quot; and &quot;waiting for approval&quot; wording
+                  </Text>
+                </View>
+              </Card>
+            </Pressable>
+
             <Text
               style={{
                 color: colors.text,
@@ -738,6 +781,14 @@ export default function AccessScreen() {
               Pending arrivals
             </Text>
 
+            {requestsError ? (
+              <Card>
+                <Text style={{ color: colors.danger, fontSize: 12 }}>
+                  {requestsError}
+                </Text>
+              </Card>
+            ) : null}
+
             {loadingRequests ? (
               <ActivityIndicator color={colors.accent} />
             ) : requests.length === 0 ? (
@@ -748,7 +799,7 @@ export default function AccessScreen() {
               </Card>
             ) : (
               requests.map((req) => (
-                <Card key={req.guest_id} style={{ marginBottom: 10 }}>
+                <Card key={req.id} style={{ marginBottom: 10 }}>
                   <View
                     style={{
                       flexDirection: "row",
@@ -796,7 +847,7 @@ export default function AccessScreen() {
                       }
                     />
                   </View>
-                  {req.approval_status === "PENDING" ? (
+                  {guestRequestShowsApprovalActions(req) ? (
                     <View
                       style={{
                         flexDirection: "row",
@@ -807,7 +858,7 @@ export default function AccessScreen() {
                       <Button
                         label="Approve"
                         size="sm"
-                        onPress={() => void onApprove(req.guest_id)}
+                        onPress={() => void onApprove(req.id)}
                         leftIcon={<Check size={14} color="#fff" />}
                         style={{ flex: 1 }}
                       />
@@ -815,7 +866,7 @@ export default function AccessScreen() {
                         label="Reject"
                         size="sm"
                         variant="danger"
-                        onPress={() => void onReject(req.guest_id)}
+                        onPress={() => void onReject(req.id)}
                         leftIcon={<X size={14} color={colors.danger} />}
                         style={{ flex: 1 }}
                       />

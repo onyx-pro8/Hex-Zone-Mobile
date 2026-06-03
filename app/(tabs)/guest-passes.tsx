@@ -3,19 +3,21 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ticket } from "lucide-react-native";
+import { RefreshCw, Ticket } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
-import { useAuth } from "@/context/AuthContext";
+import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
+import { useGuestManagementBack } from "@/hooks/useGuestManagementBack";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
   acceptGuestPass,
   listGuestPasses,
@@ -103,83 +105,162 @@ function PassRow({
 }
 
 export default function GuestPassesScreen() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const zoneId = user?.zoneId ?? "";
-  const role = String(user?.role ?? "").toLowerCase();
-  const onBack = () => {
-    if (role === "user") {
-      router.replace("/(tabs)/guest");
-      return;
-    }
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace("/(tabs)/settings");
-  };
+  const isAdmin = useIsAdmin();
+  const onBack = useGuestManagementBack();
+  const {
+    effectiveZoneId,
+    candidateZoneIds,
+    zonesLoading,
+    setPickedZoneId,
+    refresh: refreshZones,
+  } = useEffectiveZoneId();
   const [passes, setPasses] = useState<GuestPass[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!zoneId) return;
+    if (!effectiveZoneId) return;
     setLoading(true);
     try {
-      const result = await listGuestPasses(zoneId);
+      const result = await listGuestPasses(effectiveZoneId);
       setPasses(result.data ?? []);
     } finally {
       setLoading(false);
     }
-  }, [zoneId]);
+  }, [effectiveZoneId]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const showZonePicker = isAdmin && candidateZoneIds.length > 1;
 
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScreenHeader
           title="Guest passes"
-          subtitle="Pre-registered arrivals"
+          subtitle={
+            effectiveZoneId
+              ? `Pre-registered arrivals · ${effectiveZoneId}`
+              : "Pre-registered arrivals"
+          }
           showBack
           onBack={onBack}
         />
-        {!zoneId ? (
+        {!effectiveZoneId ? (
           <View style={{ paddingHorizontal: 20 }}>
             <Card>
-              <Text style={{ color: colors.textMuted }}>
-                Set up a primary zone before managing guest passes.
-              </Text>
+              {zonesLoading ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <ActivityIndicator color={colors.accent} />
+                  <Text style={{ color: colors.textMuted }}>
+                    Looking up your zones…
+                  </Text>
+                </View>
+              ) : (
+                <Text style={{ color: colors.textMuted }}>
+                  {isAdmin
+                    ? "No zones are linked to this account yet. Create a zone from the Dashboard, then come back here."
+                    : "Your account is not linked to a zone yet. Ask your administrator to invite you to a zone."}
+                </Text>
+              )}
             </Card>
           </View>
-        ) : loading && passes.length === 0 ? (
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <ActivityIndicator color={colors.accent} />
-          </View>
         ) : (
-          <FlatList
-            data={passes}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <PassRow pass={item} zoneId={zoneId} onChanged={() => void load()} />
-            )}
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
-            refreshControl={
-              <RefreshControl
-                refreshing={loading}
-                onRefresh={() => void load()}
-                tintColor={colors.accent}
+          <>
+            {showZonePicker ? (
+              <View
+                style={{ paddingHorizontal: 20, marginBottom: 8, gap: 8 }}
+              >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      letterSpacing: 1,
+                      textTransform: "uppercase",
+                      fontWeight: "700",
+                    }}
+                  >
+                    Zone
+                  </Text>
+                  <Pressable onPress={() => void refreshZones()} hitSlop={8}>
+                    <RefreshCw size={14} color={colors.accent} />
+                  </Pressable>
+                </View>
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
+                  {candidateZoneIds.map((zid) => (
+                    <Pressable
+                      key={zid}
+                      onPress={() => setPickedZoneId(zid)}
+                    >
+                      <Chip
+                        label={zid}
+                        active={zid === effectiveZoneId}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            {loading && passes.length === 0 ? (
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ActivityIndicator color={colors.accent} />
+              </View>
+            ) : (
+              <FlatList
+                data={passes}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <PassRow
+                    pass={item}
+                    zoneId={effectiveZoneId}
+                    onChanged={() => void load()}
+                  />
+                )}
+                contentContainerStyle={{
+                  paddingHorizontal: 20,
+                  paddingBottom: 24,
+                }}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={loading}
+                    onRefresh={() => void load()}
+                    tintColor={colors.accent}
+                  />
+                }
+                ListEmptyComponent={
+                  <Card>
+                    <Text
+                      style={{ color: colors.textMuted, textAlign: "center" }}
+                    >
+                      No guest passes yet for this zone.
+                    </Text>
+                  </Card>
+                }
               />
-            }
-            ListEmptyComponent={
-              <Card>
-                <Text style={{ color: colors.textMuted, textAlign: "center" }}>
-                  No guest passes yet for this zone.
-                </Text>
-              </Card>
-            }
-          />
+            )}
+          </>
         )}
       </SafeAreaView>
     </GradientBackground>

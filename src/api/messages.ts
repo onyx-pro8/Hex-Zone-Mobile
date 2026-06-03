@@ -351,9 +351,8 @@ export function normalizeMessage(raw: unknown): Message | null {
   };
 }
 
-function messagesListUrl(): string {
-  const base = API_BASE_URL.replace(/\/+$/, "");
-  return `${base}/messages/`;
+function messagesListPath(): string {
+  return "/messages/";
 }
 
 export type MessageFeaturePropagationResponse = {
@@ -437,7 +436,7 @@ export function formatMessageSenderLabel(message: Message): string {
 export async function listMessages(params: ListMessagesParams) {
   const result = await request<unknown[]>({
     method: "GET",
-    url: messagesListUrl(),
+    url: messagesListPath(),
     params,
   });
   return {

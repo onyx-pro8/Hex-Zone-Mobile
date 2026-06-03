@@ -4,7 +4,6 @@ import { useNotifications } from "@/context/NotificationContext";
 import {
   listMessages,
   messageFromGeoPropagation,
-  sortInboxAccessMessages,
   type Message,
 } from "@/api/messages";
 import { shouldShowGeoPropagationInInbox } from "@/lib/messageSocket";
@@ -30,9 +29,10 @@ function sortByNewest(list: Message[]) {
 }
 
 function mergeSortedInbox(batch: Message[]): Message[] {
-  const access = batch.filter((m) => m.category === "Access");
-  const general = batch.filter((m) => m.category !== "Access");
-  return [...sortInboxAccessMessages(access), ...sortByNewest(general)];
+  // Strict chronological order (newest first) across the whole merged feed —
+  // PERMISSION, CHAT, alarms and member messages are interleaved purely by
+  // created_at so the list matches the order events actually happened.
+  return sortByNewest(batch);
 }
 
 export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }) {
