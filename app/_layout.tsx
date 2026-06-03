@@ -10,6 +10,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { devLog } from "@/lib/devConsole";
+import { ensureAndroidChannels } from "@/lib/notifications";
 import { colors } from "@/theme/colors";
 
 if (__DEV__) {
@@ -24,8 +25,9 @@ if (__DEV__ && isRunningInExpoGo()) {
 }
 
 void SystemUI.setBackgroundColorAsync(colors.bg);
+void ensureAndroidChannels();
 
-const PUBLIC_ROOT_SEGMENTS = new Set(["access", "join"]);
+const PUBLIC_ROOT_SEGMENTS = new Set(["access", "join", "guest"]);
 
 function ProtectedShell() {
   const { token, initializing } = useAuth();

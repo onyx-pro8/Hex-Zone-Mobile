@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PermissionsAndroid, Platform } from "react-native";
 import {
   loadExpoLocation,
+  readDeviceLocation,
   LOCATION_UNAVAILABLE_MESSAGE,
 } from "@/lib/expoLocation";
 import {
@@ -320,29 +321,33 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
         setStatus(null);
         return;
       }
-      const enabled = await Location.hasServicesEnabledAsync();
-      if (!enabled) {
-        setProximityLocating(false);
-        setError("Turn on device location services and try again.");
-        setStatus(null);
+      // Bounded fresh fix with an automatic last-known-position fallback so
+      // we never hang and we avoid the raw "Current location is unavailable"
+      // native error when a fresh fix simply isn't ready yet.
+      const result = await readDeviceLocation({
+        timeoutMs: 12000,
+        requestPermission: false,
+      });
+      if (result) {
+        applyDeviceLocation(
+          result.coords.latitude,
+          result.coords.longitude,
+          result.coords.accuracy,
+        );
+        if (result.source === "lastKnown") {
+          setStatus("Using last known location — tap the map to fine-tune.");
+        }
         return;
       }
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      applyDeviceLocation(
-        pos.coords.latitude,
-        pos.coords.longitude,
-        pos.coords.accuracy ?? undefined,
-      );
+      // No native fix at all → try the in-map WebView geolocation as a last
+      // resort (works on dev clients without the ExpoLocation native module).
+      await requestMapWebViewLocation();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not get location.";
       if (/Cannot find native module|ExpoLocation/i.test(msg)) {
         await requestMapWebViewLocation();
       } else {
-        setProximityLocating(false);
-        setError(`Location lookup failed: ${msg}`);
-        setStatus(null);
+        await requestMapWebViewLocation();
       }
     }
   }, [applyDeviceLocation, requestMapWebViewLocation]);

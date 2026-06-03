@@ -46,15 +46,31 @@ function formatPushRegistrationError(err: unknown): string {
   return raw;
 }
 
+/** Android channel used for remote pushes (must match app.json `defaultChannel`). */
+export const ANDROID_DEFAULT_PUSH_CHANNEL = "default";
+
 export async function ensureAndroidChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
   try {
-    await Notifications.setNotificationChannelAsync("messages", {
-      name: "Zone messages",
-      importance: Notifications.AndroidImportance.HIGH,
+    // FCM v1 routes killed/background pushes to `defaultChannel` from app.json.
+    // Without this channel at MAX importance, notifications may land in Expo's
+    // silent fallback channel and never pop on screen.
+    await Notifications.setNotificationChannelAsync(ANDROID_DEFAULT_PUSH_CHANNEL, {
+      name: "Zone Weaver",
+      importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#FF2DAA",
       sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: false,
+    });
+    await Notifications.setNotificationChannelAsync("messages", {
+      name: "Zone messages",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#FF2DAA",
+      sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
     await Notifications.setNotificationChannelAsync("alarms", {
       name: "Alarms & alerts",
@@ -62,10 +78,22 @@ export async function ensureAndroidChannels(): Promise<void> {
       vibrationPattern: [0, 350, 200, 350],
       lightColor: "#FF4D6D",
       sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
   } catch {
     /* ignore */
   }
+}
+
+export async function getNotificationPermissionStatus(): Promise<{
+  granted: boolean;
+  status: Notifications.PermissionStatus;
+}> {
+  const { status } = await Notifications.getPermissionsAsync();
+  return {
+    granted: status === "granted",
+    status,
+  };
 }
 
 export async function registerForPushNotificationsAsync(): Promise<PushRegistrationResult> {
@@ -141,7 +169,7 @@ export async function presentLocalMessageNotification(payload: {
 }) {
   try {
     await ensureAndroidChannels();
-    const channelId = payload.channelId ?? "messages";
+    const channelId = payload.channelId ?? ANDROID_DEFAULT_PUSH_CHANNEL;
     await Notifications.scheduleNotificationAsync({
       content: {
         title: payload.title,

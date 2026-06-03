@@ -286,7 +286,7 @@ export default function MessagesScreen() {
         setDraft("");
         setComposeOpen(false);
         setComposeStatus(`Sent · ${sourceLabel}`);
-        await refresh();
+        void refresh();
         return;
       }
 
@@ -304,7 +304,8 @@ export default function MessagesScreen() {
       if (result.error) throw new Error(result.error);
       setDraft("");
       setComposeOpen(false);
-      await refresh();
+      setComposeStatus("Sent");
+      void refresh();
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Could not send your message.";

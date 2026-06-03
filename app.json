@@ -18,10 +18,12 @@
       "bundleIdentifier": "com.zoneweaver.mobile",
       "infoPlist": {
         "UIBackgroundModes": [
+          "remote-notification",
           "remote-notification"
         ],
         "NSCameraUsageDescription": "Zone Weaver uses your camera to scan QR codes for zone access and member invites.",
-        "NSLocationWhenInUseUsageDescription": "Zone Weaver uses your location to anchor proximity-source zones to where you are right now."
+        "NSLocationWhenInUseUsageDescription": "Zone Weaver uses your location to anchor proximity-source zones to where you are right now.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -40,7 +42,9 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -54,7 +58,9 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#FF2DAA"
+          "color": "#FF2DAA",
+          "defaultChannel": "default",
+          "enableBackgroundRemoteNotifications": true
         }
       ],
       [

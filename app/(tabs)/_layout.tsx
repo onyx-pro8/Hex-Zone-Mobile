@@ -101,6 +101,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="guest-passes" options={{ href: null }} />
       <Tabs.Screen name="guest-list" options={{ href: null }} />
       <Tabs.Screen name="guest-schedules" options={{ href: null }} />
+      <Tabs.Screen name="guest-arrival-messages" options={{ href: null }} />
       <Tabs.Screen name="api-docs" options={{ href: null }} />
     </Tabs>
   );

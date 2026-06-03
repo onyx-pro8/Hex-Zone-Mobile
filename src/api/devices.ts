@@ -109,3 +109,45 @@ export async function registerPushToken(payload: {
     data: payload,
   });
 }
+
+export type PushDeliveryError = {
+  phase?: string;
+  ticket_id?: string;
+  status?: string;
+  message?: string;
+  error?: string;
+  details?: Record<string, unknown>;
+};
+
+export type PushTestResult = {
+  tokens?: number;
+  push_sent?: number;
+  push_failed?: number;
+  push_no_tokens?: boolean;
+  scheduled?: boolean;
+  delay_seconds?: number;
+  channel_id?: string;
+  delivery_errors?: PushDeliveryError[];
+};
+
+/**
+ * Trigger a diagnostic push to every active token registered for the
+ * authenticated owner. With `delaySeconds > 0` the server schedules the send
+ * after the response, so the caller can close the app and verify killed-app
+ * delivery (system tray notification on Android).
+ */
+export async function sendTestPush(payload: {
+  title?: string;
+  message?: string;
+  delaySeconds?: number;
+} = {}) {
+  return request<PushTestResult>({
+    method: "POST",
+    url: "/devices/push-token/test",
+    data: {
+      ...(payload.title ? { title: payload.title } : {}),
+      ...(payload.message ? { message: payload.message } : {}),
+      delay_seconds: Math.max(0, Math.min(30, payload.delaySeconds ?? 0)),
+    },
+  });
+}
