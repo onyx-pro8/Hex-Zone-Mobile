@@ -96,8 +96,8 @@ export default function LoginScreen() {
               paddingVertical: 10,
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: "rgba(255,45,170,0.4)",
-              backgroundColor: "rgba(255,45,170,0.08)",
+              borderColor: "rgba(47,128,237,0.4)",
+              backgroundColor: "rgba(47,128,237,0.08)",
             }}
           >
             <QrCode size={16} color={colors.accent} />
@@ -168,7 +168,7 @@ export default function LoginScreen() {
           <View style={{ paddingHorizontal: 24, gap: 16, marginTop: 24 }}>
             <Input
               label="Email"
-              placeholder="alex@zoneweaver.io"
+              placeholder="alex@safezonepatrol.app"
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"

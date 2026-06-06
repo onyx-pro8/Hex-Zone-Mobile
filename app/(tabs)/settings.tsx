@@ -162,7 +162,7 @@ export default function SettingsScreen() {
     if (!granted) {
       Alert.alert(
         "Notifications blocked",
-        "Android is not allowed to show notifications for Zone Weaver. Open system Settings → Apps → Zone Weaver → Notifications and enable them, then try again.",
+        "Android is not allowed to show notifications for Safe Zone Patrol. Open system Settings → Apps → Safe Zone Patrol → Notifications and enable them, then try again.",
       );
       return;
     }
@@ -192,7 +192,7 @@ export default function SettingsScreen() {
       if (sent > 0 && failed === 0) {
         Alert.alert(
           "Expo reports delivery OK",
-          `Push reached Google/FCM for ${sent} device(s). If you still see nothing in the tray, open Android Settings → Apps → Zone Weaver → Notifications and enable "Zone Weaver" / pop on screen. After updating notification config, run a new EAS build and reinstall.${deliveryHint}`,
+          `Push reached Google/FCM for ${sent} device(s). If you still see nothing in the tray, open Android Settings → Apps → Safe Zone Patrol → Notifications and enable "Safe Zone Patrol" / pop on screen. After updating notification config, run a new EAS build and reinstall.${deliveryHint}`,
         );
         return;
       }

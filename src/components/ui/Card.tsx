@@ -36,7 +36,7 @@ export function Card({ children, style, padded = true, glow }: CardProps) {
     >
       {glow ? (
         <LinearGradient
-          colors={["rgba(255,45,170,0.12)", "rgba(255,45,170,0)"]}
+          colors={["rgba(47,128,237,0.12)", "rgba(47,128,237,0)"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}

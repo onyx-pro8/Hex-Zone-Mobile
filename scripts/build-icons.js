@@ -15,7 +15,7 @@ const ANDROID_RES = path.join(
   "res",
 );
 
-const BRAND_BG_HEX = 0x0a0a0fff;
+const BRAND_BG_HEX = 0xffffffff;
 
 async function loadAndKeyOut(srcPath) {
   const img = await Jimp.read(srcPath);

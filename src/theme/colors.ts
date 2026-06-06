@@ -1,32 +1,32 @@
 export const colors = {
-  bg: "#0A0A0F",
-  bgElevated: "#11111A",
-  bgCard: "#15151F",
-  bgSurface: "#1B1B27",
-  bgMuted: "#22222F",
+  bg: "#FFFFFF",
+  bgElevated: "#F3F7FD",
+  bgCard: "#F7FAFE",
+  bgSurface: "#EDF3FB",
+  bgMuted: "#E4ECF7",
 
-  accent: "#FF2DAA",
-  accentSoft: "#FF55BC",
-  accentDeep: "#C2148C",
-  accentGlow: "rgba(255, 45, 170, 0.2)",
+  accent: "#2F80ED",
+  accentSoft: "#5AA2F7",
+  accentDeep: "#1B5BB5",
+  accentGlow: "rgba(47, 128, 237, 0.12)",
 
-  text: "#F5F5F7",
-  textMuted: "#A0A0AE",
-  textDim: "#6E6E80",
+  text: "#0F2C5C",
+  textMuted: "#566784",
+  textDim: "#8694AC",
 
-  border: "#2A2A3A",
-  borderStrong: "#3A3A52",
+  border: "#DCE6F2",
+  borderStrong: "#C2D2E6",
 
-  success: "#23D9A0",
-  danger: "#FF4D6D",
-  warning: "#FFB547",
+  success: "#2FA24A",
+  danger: "#E23B4E",
+  warning: "#E0992A",
 } as const;
 
 export const gradients = {
-  background: ["#0A0A0F", "#1A0B1A", "#0A0A0F"] as const,
-  accent: ["#FF2DAA", "#C2148C"] as const,
-  card: ["#1B1B27", "#15151F"] as const,
-  glow: ["rgba(255,45,170,0.35)", "rgba(255,45,170,0)"] as const,
+  background: ["#FFFFFF", "#EFF5FD", "#FFFFFF"] as const,
+  accent: ["#2F80ED", "#1B5BB5"] as const,
+  card: ["#FFFFFF", "#F4F8FF"] as const,
+  glow: ["rgba(47,128,237,0.12)", "rgba(47,128,237,0)"] as const,
 };
 
 export const radius = {
@@ -39,16 +39,16 @@ export const radius = {
 
 export const shadow = {
   card: {
-    shadowColor: "#000",
+    shadowColor: "#1B3A6B",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.12,
     shadowRadius: 12,
     elevation: 6,
   },
   accent: {
     shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
+    shadowOpacity: 0.35,
     shadowRadius: 18,
     elevation: 10,
   },

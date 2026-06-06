@@ -18,11 +18,11 @@ export function Chip({ label, active, tone = "default", style }: ChipProps) {
       };
     }
     if (tone === "success")
-      return { bg: "#0F2A1F", fg: colors.success, border: "#1F4A36" };
+      return { bg: "#E4F6E8", fg: colors.success, border: "#BFE6C8" };
     if (tone === "warning")
-      return { bg: "#33240E", fg: colors.warning, border: "#5C401C" };
+      return { bg: "#FBEFD8", fg: colors.warning, border: "#F0DBB0" };
     if (tone === "danger")
-      return { bg: "#3A0E1C", fg: colors.danger, border: "#5C1B2C" };
+      return { bg: "#FCE7EA", fg: colors.danger, border: "#F3C2CA" };
     if (tone === "muted")
       return {
         bg: colors.bgSurface,

@@ -71,7 +71,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <NotificationProvider>
-            <StatusBar style="light" backgroundColor={colors.bg} />
+            <StatusBar style="dark" backgroundColor={colors.bg} />
             <ProtectedShell />
           </NotificationProvider>
         </AuthProvider>

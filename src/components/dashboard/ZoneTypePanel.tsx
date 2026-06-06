@@ -444,7 +444,7 @@ function ToolButton({
         borderRadius: 12,
         borderWidth: 1,
         borderColor: active ? colors.accent : colors.border,
-        backgroundColor: active ? "rgba(255,45,170,0.12)" : colors.bgCard,
+        backgroundColor: active ? "rgba(47,128,237,0.12)" : colors.bgCard,
       }}
     >
       {icon}
@@ -489,7 +489,7 @@ function SecondaryButton({
         borderRadius: 12,
         borderWidth: 1,
         borderColor: highlight ? colors.accent : colors.border,
-        backgroundColor: highlight ? "rgba(255,45,170,0.12)" : colors.bgCard,
+        backgroundColor: highlight ? "rgba(47,128,237,0.12)" : colors.bgCard,
         opacity: disabled ? 0.5 : 1,
       }}
     >
