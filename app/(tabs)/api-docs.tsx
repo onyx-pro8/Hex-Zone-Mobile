@@ -451,7 +451,7 @@ export default function ApiDocsScreen() {
                               borderBottomWidth: 1,
                               borderBottomColor: colors.border,
                               backgroundColor: active
-                                ? "rgba(255,45,170,0.08)"
+                                ? "rgba(47,128,237,0.08)"
                                 : "transparent",
                             }}
                           >

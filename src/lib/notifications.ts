@@ -56,10 +56,10 @@ export async function ensureAndroidChannels(): Promise<void> {
     // Without this channel at MAX importance, notifications may land in Expo's
     // silent fallback channel and never pop on screen.
     await Notifications.setNotificationChannelAsync(ANDROID_DEFAULT_PUSH_CHANNEL, {
-      name: "Zone Weaver",
+      name: "Safe Zone Patrol",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FF2DAA",
+      lightColor: "#2F80ED",
       sound: "default",
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       bypassDnd: false,
@@ -68,7 +68,7 @@ export async function ensureAndroidChannels(): Promise<void> {
       name: "Zone messages",
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FF2DAA",
+      lightColor: "#2F80ED",
       sound: "default",
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });

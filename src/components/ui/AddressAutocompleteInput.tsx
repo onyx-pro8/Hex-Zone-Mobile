@@ -203,7 +203,7 @@ export function AddressAutocompleteInput({
                     borderBottomWidth: index < suggestions.length - 1 ? 1 : 0,
                     borderBottomColor: colors.border,
                     backgroundColor: pressed
-                      ? "rgba(255,45,170,0.12)"
+                      ? "rgba(47,128,237,0.12)"
                       : "transparent",
                   })}
                 >

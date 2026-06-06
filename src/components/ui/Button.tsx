@@ -154,7 +154,7 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
       fg: colors.text,
       border: colors.borderStrong,
     },
-    danger: { bg: "#3A0E1C", fg: colors.danger, border: "#5C1B2C" },
+    danger: { bg: "#FCE7EA", fg: colors.danger, border: "#F3C2CA" },
   };
   const p = palette[variant];
 

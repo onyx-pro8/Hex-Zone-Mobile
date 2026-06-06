@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "Zone Weaver",
+    "name": "Safe Zone Patrol",
     "slug": "zone-weaver",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "zoneweaver",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A0A0F"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
@@ -21,8 +21,8 @@
           "remote-notification",
           "remote-notification"
         ],
-        "NSCameraUsageDescription": "Zone Weaver uses your camera to scan QR codes for zone access and member invites.",
-        "NSLocationWhenInUseUsageDescription": "Zone Weaver uses your location to anchor proximity-source zones to where you are right now.",
+        "NSCameraUsageDescription": "Safe Zone Patrol uses your camera to scan QR codes for zone access and member invites.",
+        "NSLocationWhenInUseUsageDescription": "Safe Zone Patrol uses your location to anchor proximity-source zones to where you are right now.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -30,7 +30,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0A0F"
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.zoneweaver.mobile",
       "edgeToEdgeEnabled": true,
@@ -58,7 +58,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#FF2DAA",
+          "color": "#2F80ED",
           "defaultChannel": "default",
           "enableBackgroundRemoteNotifications": true
         }
@@ -66,7 +66,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Zone Weaver to access your camera to scan QR codes."
+          "cameraPermission": "Allow Safe Zone Patrol to access your camera to scan QR codes."
         }
       ],
       "expo-secure-store",
@@ -75,7 +75,7 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Zone Weaver uses your location to anchor proximity-source zones to where you are right now."
+          "locationAlwaysAndWhenInUsePermission": "Safe Zone Patrol uses your location to anchor proximity-source zones to where you are right now."
         }
       ]
     ],

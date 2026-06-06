@@ -236,8 +236,8 @@ export default function SignupScreen() {
               paddingVertical: 10,
               borderRadius: 12,
               borderWidth: 1,
-              borderColor: "rgba(255,45,170,0.4)",
-              backgroundColor: "rgba(255,45,170,0.08)",
+              borderColor: "rgba(47,128,237,0.4)",
+              backgroundColor: "rgba(47,128,237,0.08)",
             }}
           >
             <QrCode size={16} color={colors.accent} />
@@ -401,7 +401,7 @@ export default function SignupScreen() {
             </View>
             <Input
               label="Email"
-              placeholder="alex@zoneweaver.io"
+              placeholder="alex@safezonepatrol.app"
               autoCapitalize="none"
               autoComplete="email"
               keyboardType="email-address"
@@ -459,7 +459,7 @@ export default function SignupScreen() {
                       borderWidth: 1,
                       borderColor: active ? colors.accent : colors.border,
                       backgroundColor: active
-                        ? "rgba(255,45,170,0.1)"
+                        ? "rgba(47,128,237,0.1)"
                         : colors.bgCard,
                       opacity: disabled ? 0.4 : 1,
                     }}
@@ -522,7 +522,7 @@ export default function SignupScreen() {
                         borderWidth: 1,
                         borderColor: active ? colors.accent : colors.border,
                         backgroundColor: active
-                          ? "rgba(255,45,170,0.1)"
+                          ? "rgba(47,128,237,0.1)"
                           : "transparent",
                         alignItems: "center",
                       }}

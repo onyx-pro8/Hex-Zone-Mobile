@@ -50,7 +50,7 @@ export async function notifyIncomingGeoPropagation(
     String(propagation.type ?? "Message");
 
   await presentLocalMessageNotification({
-    title: `Hex Zone ${toMessageTypeLabel(type)}`,
+    title: `Safe Zone Patrol ${toMessageTypeLabel(type)}`,
     body: text.slice(0, 240),
     channelId: androidChannelForCategory(category),
     data: {
@@ -69,7 +69,7 @@ export async function notifyIncomingInboxMessage(
   if (!markNotified(`msg:${message.id}`)) return;
 
   await presentLocalMessageNotification({
-    title: `Hex Zone ${toMessageTypeLabel(message.type)}`,
+    title: `Safe Zone Patrol ${toMessageTypeLabel(message.type)}`,
     body: message.message.slice(0, 240),
     channelId: androidChannelForCategory(message.category),
     data: {

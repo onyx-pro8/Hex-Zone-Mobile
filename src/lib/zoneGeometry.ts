@@ -80,7 +80,7 @@ export type MapZoneLayer = {
 };
 
 export const ZONE_COLORS: Record<ZoneType, string> = {
-  geofence: "#FF2DAA",
+  geofence: "#2F80ED",
   grid: "#F59E0B",
   proximity: "#06B6D4",
   dynamic: "#22C55E",
@@ -90,7 +90,7 @@ export const ZONE_COLORS: Record<ZoneType, string> = {
 };
 
 export function colorForZoneType(t: ZoneType): string {
-  return ZONE_COLORS[t] ?? "#FF2DAA";
+  return ZONE_COLORS[t] ?? "#2F80ED";
 }
 
 export function normalizeZoneType(value: unknown): ZoneType {

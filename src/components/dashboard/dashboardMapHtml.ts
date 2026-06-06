@@ -22,7 +22,7 @@ export type DashboardMapState = {
   fitDraftToken?: number;
 };
 
-const ACCENT = "#FF2DAA";
+const ACCENT = "#2F80ED";
 const DRAFT = "#FFD83D";
 
 export function buildDashboardMapHtml(): string {
@@ -33,12 +33,12 @@ export function buildDashboardMapHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    html, body, #map { height: 100%; margin: 0; padding: 0; background: #0A0A0F; }
-    .leaflet-container { background: #0A0A0F !important; }
-    .leaflet-control-attribution { font-size: 9px; background: rgba(10,10,15,0.6); color: #6E6E80; }
+    html, body, #map { height: 100%; margin: 0; padding: 0; background: #E6ECF3; }
+    .leaflet-container { background: #E6ECF3 !important; }
+    .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,0.75); color: #566784; }
     .leaflet-control-attribution a { color: ${ACCENT}; }
     .leaflet-control-zoom { border: none !important; }
-    .leaflet-control-zoom a { background: rgba(10,10,15,0.78) !important; color: #fff !important; border: 1px solid rgba(255,255,255,0.08) !important; }
+    .leaflet-control-zoom a { background: rgba(255,255,255,0.92) !important; color: #0F2C5C !important; border: 1px solid rgba(15,44,92,0.12) !important; }
   </style>
 </head>
 <body>
@@ -370,7 +370,7 @@ export function buildDashboardMapHtml(): string {
       function initMap() {
         map = L.map('map', { zoomControl: true, attributionControl: true })
           .setView([40.7527, -73.9772], 13);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
           attribution: '&copy; OSM &copy; CARTO',
           subdomains: 'abcd',
           maxZoom: 19

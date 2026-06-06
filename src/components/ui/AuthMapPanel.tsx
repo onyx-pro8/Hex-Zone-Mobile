@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { LatLng } from "@/lib/h3";
 import { colors } from "@/theme/colors";
 
-const ACCENT = "#FF2DAA";
+const ACCENT = "#2F80ED";
 const HIGHLIGHT = "#FFD83D";
 
 type AuthMapPanelProps = {
@@ -34,9 +34,9 @@ function buildHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-      html, body, #map { height: 100%; margin: 0; padding: 0; background: #0A0A0F; }
-      .leaflet-container { background: #0A0A0F !important; }
-      .leaflet-control-attribution { font-size: 9px; background: rgba(10,10,15,0.6); color: #6E6E80; }
+      html, body, #map { height: 100%; margin: 0; padding: 0; background: #E6ECF3; }
+      .leaflet-container { background: #E6ECF3 !important; }
+      .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,0.75); color: #566784; }
       .leaflet-control-attribution a { color: ${ACCENT}; }
       .leaflet-control-zoom { display: none; }
     </style>
@@ -53,7 +53,7 @@ function buildHtml(
         var radius = ${h3Radius};
         var map = L.map('map', { zoomControl: false, attributionControl: true })
           .setView([lat, lng], 12);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
           attribution: '&copy; OSM &copy; CARTO',
           subdomains: 'abcd',
           maxZoom: 19
@@ -91,8 +91,8 @@ function buildHtml(
 export function AuthMapPanel({
   center,
   addressLabel,
-  title = "Zone Weaver",
-  subtitle = "Spatial Intelligence Platform",
+  title = "Safe Zone Patrol",
+  subtitle = "Together. Aware. Protected.",
   style,
   h3Resolution = 9,
   h3Radius = 1,
@@ -159,15 +159,27 @@ export function AuthMapPanel({
       >
         <Text
           style={{
-            color: "#fff",
+            color: colors.text,
             fontSize: 18,
             fontWeight: "800",
             letterSpacing: 0.4,
+            textShadowColor: "rgba(255,255,255,0.9)",
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 4,
           }}
         >
           {title}
         </Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: 12,
+            marginTop: 2,
+            textShadowColor: "rgba(255,255,255,0.9)",
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 4,
+          }}
+        >
           {subtitle}
         </Text>
       </View>
@@ -181,8 +193,8 @@ export function AuthMapPanel({
           padding: 10,
           borderRadius: 10,
           borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.08)",
-          backgroundColor: "rgba(10,10,15,0.72)",
+          borderColor: "rgba(15,44,92,0.12)",
+          backgroundColor: "rgba(255,255,255,0.88)",
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -194,7 +206,7 @@ export function AuthMapPanel({
               borderRadius: 2,
             }}
           />
-          <Text style={{ color: "#D8D8E2", fontSize: 11 }}>
+          <Text style={{ color: colors.text, fontSize: 11 }}>
             H3 Hexagonal Cells
           </Text>
         </View>
@@ -216,7 +228,7 @@ export function AuthMapPanel({
               borderStyle: "dashed",
             }}
           />
-          <Text style={{ color: "#D8D8E2", fontSize: 11 }}>
+          <Text style={{ color: colors.text, fontSize: 11 }}>
             Geo-fence Polygons
           </Text>
         </View>

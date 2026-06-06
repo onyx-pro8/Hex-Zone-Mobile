@@ -275,7 +275,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
           {
             title: "Use your location",
             message:
-              "Zone Weaver needs your device location to anchor the proximity zone.",
+              "Safe Zone Patrol needs your device location to anchor the proximity zone.",
             buttonPositive: "Allow",
             buttonNegative: "Cancel",
           },

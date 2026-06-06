@@ -13,7 +13,7 @@ export function GradientBackground({
   ...rest
 }: GradientBackgroundProps) {
   return (
-    <View style={[{ flex: 1, backgroundColor: "#0A0A0F" }, style]} {...rest}>
+    <View style={[{ flex: 1, backgroundColor: "#FFFFFF" }, style]} {...rest}>
       <LinearGradient
         colors={gradients.background as unknown as readonly [string, string, ...string[]]}
         locations={[0, 0.5, 1]}

@@ -47,7 +47,7 @@ export default function Welcome() {
         }}
       >
         <View style={{ alignItems: "center", gap: 18, flex: 1, justifyContent: "center" }}>
-          <Logo size={56} />
+          <Logo variant="full" size={300} />
           <Text
             style={{
               color: colors.textMuted,
@@ -125,7 +125,7 @@ export default function Welcome() {
             width: 130,
             height: 4,
             borderRadius: 2,
-            backgroundColor: "#FFFFFFBB",
+            backgroundColor: colors.borderStrong,
           }}
         />
       </View>
