@@ -11,7 +11,17 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { BellRing, Plus, Send } from "lucide-react-native";
+import {
+  BellRing,
+  HelpCircle,
+  Megaphone,
+  MessageSquare,
+  Plus,
+  Radar,
+  Send,
+  Siren,
+  Wrench,
+} from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -20,11 +30,7 @@ import { Button } from "@/components/ui/Button";
 import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
-import {
-  formatMessageSenderLabel,
-  sendMessage,
-  type Message,
-} from "@/api/messages";
+import { sendMessage, type Message } from "@/api/messages";
 import { propagateMessageFeatureMessage } from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
@@ -43,17 +49,41 @@ import {
   type MessageCategory,
   type MessageType,
 } from "@/lib/messageTypes";
+import {
+  resolveBroadcastName,
+  useAppSettings,
+  type QuickMessageType,
+} from "@/lib/appSettings";
+import { messageBroadcastLabel } from "@/lib/messageBroadcast";
 import { colors } from "@/theme/colors";
 
 type Filter = "All" | MessageCategory;
 
-function MessageRow({ item }: { item: Message }) {
+type OwnerNameMap = Record<number, string>;
+
+function MessageRow({
+  item,
+  selfOwnerId,
+  selfBroadcastName,
+  ownerNames,
+}: {
+  item: Message;
+  selfOwnerId: number | null;
+  selfBroadcastName: string;
+  ownerNames: OwnerNameMap;
+}) {
   const tone =
     item.category === "Alarm"
       ? "danger"
       : item.category === "Access"
         ? "warning"
         : "default";
+
+  const broadcast = messageBroadcastLabel(item, {
+    selfOwnerId,
+    selfBroadcastName,
+    resolveOwnerName: (id) => ownerNames[id] ?? null,
+  });
 
   return (
     <Card style={{ marginBottom: 10 }}>
@@ -66,7 +96,7 @@ function MessageRow({ item }: { item: Message }) {
           gap: 6,
         }}
       >
-        <Chip label={item.type} tone={tone} />
+        <Chip label={toMessageTypeLabel(item.type)} tone={tone} />
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
           {new Date(item.created_at).toLocaleString()}
         </Text>
@@ -74,24 +104,105 @@ function MessageRow({ item }: { item: Message }) {
       <Text
         style={{
           color: colors.text,
-          fontSize: 15,
-          fontWeight: "600",
+          fontSize: 16,
+          fontWeight: "800",
           marginTop: 10,
+        }}
+      >
+        {broadcast}
+      </Text>
+      <Text
+        style={{
+          color: colors.text,
+          fontSize: 15,
+          fontWeight: "500",
+          marginTop: 4,
           lineHeight: 22,
         }}
       >
         {item.message}
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>
-        Zone {item.zone_id} · {formatMessageSenderLabel(item)}
+        Zone {item.zone_id}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
       </Text>
     </Card>
   );
 }
 
+type QuickAction = {
+  type: QuickMessageType;
+  label: string;
+  icon: typeof BellRing;
+  tone: "alarm" | "messaging";
+};
+
+const ALARM_ACTIONS: QuickAction[] = [
+  { type: "PANIC", label: "PANIC", icon: BellRing, tone: "alarm" },
+  { type: "SENSOR", label: "SENSOR", icon: Radar, tone: "alarm" },
+  { type: "NS_PANIC", label: "NS PANIC", icon: Siren, tone: "alarm" },
+  { type: "UNKNOWN", label: "UNKNOWN", icon: HelpCircle, tone: "alarm" },
+];
+
+const MESSAGING_ACTIONS: QuickAction[] = [
+  { type: "PRIVATE", label: "PRIVATE MESSAGE", icon: MessageSquare, tone: "messaging" },
+  { type: "PA", label: "PUBLIC ANNOUNCEMENT", icon: Megaphone, tone: "messaging" },
+  { type: "SERVICE", label: "SERVICES", icon: Wrench, tone: "messaging" },
+];
+
+function QuickActionButton({
+  action,
+  onPress,
+  busy,
+}: {
+  action: QuickAction;
+  onPress: () => void;
+  busy: boolean;
+}) {
+  const Icon = action.icon;
+  const isAlarm = action.tone === "alarm";
+  const bg = isAlarm ? "#FCE7EA" : "#FBEFD8";
+  const border = isAlarm ? "#F3C2CA" : "#F0DBB0";
+  const fg = isAlarm ? colors.danger : colors.warning;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={busy}
+      style={{
+        flexBasis: "48%",
+        flexGrow: 1,
+        backgroundColor: bg,
+        borderWidth: 1,
+        borderColor: border,
+        borderRadius: 18,
+        paddingVertical: 18,
+        paddingHorizontal: 12,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        opacity: busy ? 0.6 : 1,
+      }}
+    >
+      <Icon size={28} color={fg} />
+      <Text
+        style={{
+          color: fg,
+          fontSize: 13,
+          fontWeight: "800",
+          letterSpacing: 0.5,
+          textAlign: "center",
+        }}
+      >
+        {action.label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function MessagesScreen() {
   const { user } = useAuth();
+  const settings = useAppSettings();
+  const selfBroadcastName = resolveBroadcastName(user?.name);
   const {
     messages,
     loading,
@@ -102,7 +213,7 @@ export default function MessagesScreen() {
     zoneId,
     wsStatus,
   } = useMessagesFeed();
-  const { pushToken, permissionError, lastNotification } = useNotifications();
+  const { pushToken, permissionError } = useNotifications();
   const [filter, setFilter] = useState<Filter>("All");
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<MessageType>("SERVICE");
@@ -110,9 +221,12 @@ export default function MessagesScreen() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [composeStatus, setComposeStatus] = useState("");
+  const [quickStatus, setQuickStatus] = useState("");
+  const [quickBusy, setQuickBusy] = useState<QuickMessageType | null>(null);
   const [members, setMembers] = useState<
     { id: number; name: string; zoneId: string }[]
   >([]);
+  const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
   const [guestOptions, setGuestOptions] = useState<
     { id: string; label: string }[]
   >([]);
@@ -139,6 +253,30 @@ export default function MessagesScreen() {
     if (filter === "All") return messages;
     return messages.filter((m) => m.category === filter);
   }, [messages, filter]);
+
+  // Load members once so inbox rows can resolve a friendly name for senders
+  // that did not embed a broadcast name.
+  useEffect(() => {
+    let active = true;
+    void getMembers().then((res) => {
+      if (!active) return;
+      const map: OwnerNameMap = {};
+      (res.data ?? []).forEach((row) => {
+        const id = Number(row.id);
+        if (!Number.isFinite(id) || id <= 0) return;
+        const name =
+          row.name ||
+          `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() ||
+          row.email ||
+          "";
+        if (name) map[id] = name;
+      });
+      setOwnerNames(map);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!composeOpen) return;
@@ -217,6 +355,77 @@ export default function MessagesScreen() {
     return permissionError ?? "Enable notifications in a dev build for alarms";
   }, [pushToken, permissionError, wsStatus]);
 
+  // One-tap quick alert: sends a pre-programmed message via geo propagation.
+  const sendQuickAlert = useCallback(
+    async (type: QuickMessageType) => {
+      if (quickBusy) return;
+      const presetText = (settings.quickMessages[type] ?? "").trim();
+      if (!presetText) {
+        // Types without a preset (e.g. PRIVATE) open the composer instead.
+        setComposeType(type as MessageType);
+        setDraft("");
+        setComposeOpen(true);
+        return;
+      }
+      setQuickBusy(type);
+      setQuickStatus(`Sending ${toMessageTypeLabel(type as MessageType)}…`);
+      try {
+        const resolved = await resolveMessagePropagationPosition(
+          user?.mapCenter ?? user?.map_center ?? null,
+        );
+        if ("error" in resolved) throw new Error(resolved.error);
+        const hid = await getOrCreateDeviceHid();
+        const result = await propagateMessageFeatureMessage({
+          type: type as MessageType,
+          hid,
+          msg: { description: presetText, broadcast_name: selfBroadcastName },
+          position: resolved.position,
+        });
+        if (result.error) throw new Error(result.error);
+        const body = result.data;
+        if (body && !body.skipped && ownerId != null) {
+          applyGeoPropagationToInbox({
+            ...body,
+            sender_id: body.sender_id ?? ownerId,
+            zone_id:
+              body.zone_id ?? body.zone_ids?.[0] ?? composeZoneId ?? undefined,
+          });
+        }
+        setQuickStatus(`${toMessageTypeLabel(type as MessageType)} sent`);
+        void refresh();
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Could not send the alert.";
+        setQuickStatus(msg);
+        await presentLocalMessageNotification({
+          title: "Send failed",
+          body: msg.slice(0, 120),
+          data: { type: "error" },
+        });
+      } finally {
+        setQuickBusy(null);
+      }
+    },
+    [
+      quickBusy,
+      settings.quickMessages,
+      user?.mapCenter,
+      user?.map_center,
+      selfBroadcastName,
+      ownerId,
+      applyGeoPropagationToInbox,
+      composeZoneId,
+      refresh,
+    ],
+  );
+
+  const openCompose = useCallback((type: MessageType) => {
+    setComposeType(type);
+    setDraft("");
+    setComposeStatus("");
+    setComposeOpen(true);
+  }, []);
+
   const onSend = useCallback(async () => {
     const text = draft.trim();
     if (!text) return;
@@ -258,7 +467,7 @@ export default function MessagesScreen() {
         const result = await propagateMessageFeatureMessage({
           type: composeType,
           hid,
-          msg: { description: text },
+          msg: { description: text, broadcast_name: selfBroadcastName },
           position: resolved.position,
           ...(isPrivateMessageType(composeType)
             ? { receiver_owner_id: parsedReceiverId }
@@ -293,6 +502,7 @@ export default function MessagesScreen() {
       const result = await sendMessage({
         message: text,
         type: composeType,
+        broadcast_name: selfBroadcastName,
         ...(composeZoneId ? { zone_id: composeZoneId } : {}),
         ...(accessGuest && composeReceiverId.trim()
           ? { guest_id: composeReceiverId.trim() }
@@ -326,10 +536,56 @@ export default function MessagesScreen() {
     refresh,
     user?.mapCenter,
     user?.map_center,
+    selfBroadcastName,
     applyGeoPropagationToInbox,
     ownerId,
-    composeZoneId,
   ]);
+
+  const renderQuickActions = () => (
+    <View style={{ paddingHorizontal: 20, marginBottom: 12, gap: 12 }}>
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <BellRing size={18} color={colors.danger} />
+          <Text style={{ color: colors.text, fontWeight: "800", fontSize: 14 }}>
+            Quick alerts
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          {ALARM_ACTIONS.map((action) => (
+            <QuickActionButton
+              key={action.type}
+              action={action}
+              busy={quickBusy === action.type}
+              onPress={() => void sendQuickAlert(action.type)}
+            />
+          ))}
+        </View>
+      </Card>
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Megaphone size={18} color={colors.warning} />
+          <Text style={{ color: colors.text, fontWeight: "800", fontSize: 14 }}>
+            Messaging
+          </Text>
+        </View>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+          {MESSAGING_ACTIONS.map((action) => (
+            <QuickActionButton
+              key={action.type}
+              action={action}
+              busy={false}
+              onPress={() => openCompose(action.type as MessageType)}
+            />
+          ))}
+        </View>
+        {quickStatus ? (
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            {quickStatus}
+          </Text>
+        ) : null}
+      </Card>
+    </View>
+  );
 
   return (
     <GradientBackground>
@@ -339,7 +595,7 @@ export default function MessagesScreen() {
           subtitle={realtimeHint}
           right={
             <Pressable
-              onPress={() => setComposeOpen(true)}
+              onPress={() => openCompose("SERVICE")}
               style={{
                 width: 42,
                 height: 42,
@@ -354,59 +610,6 @@ export default function MessagesScreen() {
           }
         />
 
-        <View
-          style={{
-            flexDirection: "row",
-            paddingHorizontal: 20,
-            gap: 8,
-            marginBottom: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          {(["All", "Alarm", "Alert", "Access"] as Filter[]).map((f) => (
-            <Pressable key={f} onPress={() => setFilter(f)}>
-              <Chip
-                label={f}
-                active={filter === f}
-                style={{ paddingHorizontal: 14, paddingVertical: 8 }}
-              />
-            </Pressable>
-          ))}
-        </View>
-
-        <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
-          <Pressable onPress={() => void refresh()}>
-            <Card style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <BellRing size={20} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "600" }}>
-                  {lastNotification
-                    ? "Tap to refresh after notification"
-                    : "Pull to refresh inbox"}
-                </Text>
-                <Text
-                  style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}
-                >
-                  Merged feed: alarms, alerts, access PERMISSION/CHAT, and member
-                  messages from GET /messages/
-                </Text>
-              </View>
-            </Card>
-          </Pressable>
-        </View>
-
-        {error ? (
-          <Text
-            style={{
-              color: colors.danger,
-              paddingHorizontal: 20,
-              marginBottom: 8,
-            }}
-          >
-            {error}
-          </Text>
-        ) : null}
-
         {loading && messages.length === 0 ? (
           <View
             style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
@@ -417,8 +620,43 @@ export default function MessagesScreen() {
           <FlatList
             data={filtered}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <MessageRow item={item} />}
+            renderItem={({ item }) => (
+              <MessageRow
+                item={item}
+                selfOwnerId={ownerId}
+                selfBroadcastName={selfBroadcastName}
+                ownerNames={ownerNames}
+              />
+            )}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+            ListHeaderComponent={
+              <View>
+                {renderQuickActions()}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    marginBottom: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {(["All", "Alarm", "Alert", "Access"] as Filter[]).map((f) => (
+                    <Pressable key={f} onPress={() => setFilter(f)}>
+                      <Chip
+                        label={f}
+                        active={filter === f}
+                        style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+                {error ? (
+                  <Text style={{ color: colors.danger, marginBottom: 8 }}>
+                    {error}
+                  </Text>
+                ) : null}
+              </View>
+            }
             refreshControl={
               <RefreshControl
                 refreshing={loading}
@@ -429,8 +667,7 @@ export default function MessagesScreen() {
             ListEmptyComponent={
               <Card>
                 <Text style={{ color: colors.textMuted, textAlign: "center" }}>
-                  No messages yet. System PERMISSION lines and guest CHAT appear
-                  when the server mirrors them into your inbox.
+                  No messages yet. Use a quick alert above or compose a message.
                 </Text>
               </Card>
             }
@@ -465,6 +702,9 @@ export default function MessagesScreen() {
                 }}
               >
                 Compose message
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                Sending as {selfBroadcastName}
               </Text>
 
               <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>

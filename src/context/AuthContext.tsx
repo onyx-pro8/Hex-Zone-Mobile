@@ -23,6 +23,8 @@ import {
   registerPushToken,
   sendDeviceHeartbeat,
 } from "@/api/devices";
+import { getRemoteAppSettings } from "@/api/settings";
+import { updateAppSettings, type AppSettings } from "@/lib/appSettings";
 import {
   clearToken,
   getOrCreateDeviceHid,
@@ -300,6 +302,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [token, user, performLogout]);
+
+  // Pull the owner's saved settings (broadcast name, address, shared
+  // notification, quick messages) into the local store after login so message
+  // composition uses the account's broadcast name on any device, not just
+  // after visiting the Settings screen.
+  useEffect(() => {
+    if (!token || !user) return;
+    let cancelled = false;
+    void (async () => {
+      const res = await getRemoteAppSettings();
+      if (cancelled || !res.data) return;
+      await updateAppSettings(res.data as Partial<AppSettings>);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user]);
 
   // Resolve the account-level `zone_id` (owners.zone_id) for the signed-in
   // user. Admins use their own value; invited members look up their owner.

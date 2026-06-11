@@ -19,6 +19,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
+import { ConfigForm } from "@/components/settings/ConfigForm";
 import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { API_BASE_URL } from "@/api/client";
@@ -253,7 +254,9 @@ export default function SettingsScreen() {
             </Card>
           </View>
 
-          <View style={{ paddingHorizontal: 20 }}>
+          <ConfigForm />
+
+          <View style={{ paddingHorizontal: 20, marginTop: 8 }}>
             {isAdmin ? (
               <>
                 <Text
