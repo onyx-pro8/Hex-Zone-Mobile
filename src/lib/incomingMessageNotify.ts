@@ -2,6 +2,24 @@ import type { Message, MessageFeaturePropagationResponse } from "@/api/messages"
 import { getMessageTypeCategory, toMessageType, toMessageTypeLabel } from "@/lib/messageTypes";
 import { presentLocalMessageNotification } from "@/lib/notifications";
 import { shouldShowGeoPropagationInInbox } from "@/lib/messageSocket";
+import { readMessageBroadcastName } from "@/lib/messageBroadcast";
+
+function broadcastNameFromMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const pick = (o: Record<string, unknown>): string | null => {
+    const v = o.broadcast_name ?? o.broadcastName;
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  const top = pick(metadata);
+  if (top) return top;
+  const msg = metadata.msg;
+  if (msg && typeof msg === "object" && !Array.isArray(msg)) {
+    return pick(msg as Record<string, unknown>);
+  }
+  return null;
+}
 
 const notifiedIds = new Set<string>();
 const MAX_NOTIFIED_IDS = 200;
@@ -48,9 +66,12 @@ export async function notifyIncomingGeoPropagation(
   const text =
     (typeof propagation.text === "string" && propagation.text.trim()) ||
     String(propagation.type ?? "Message");
+  const broadcastName = broadcastNameFromMetadata(propagation.metadata);
 
   await presentLocalMessageNotification({
-    title: `Safe Zone Patrol ${toMessageTypeLabel(type)}`,
+    title: broadcastName
+      ? `${broadcastName} · ${toMessageTypeLabel(type)}`
+      : `Safe Zone Patrol ${toMessageTypeLabel(type)}`,
     body: text.slice(0, 240),
     channelId: androidChannelForCategory(category),
     data: {
@@ -68,8 +89,12 @@ export async function notifyIncomingInboxMessage(
   if (!isIncomingForViewer(message.sender_id, viewerOwnerId)) return;
   if (!markNotified(`msg:${message.id}`)) return;
 
+  const broadcastName = readMessageBroadcastName(message);
+
   await presentLocalMessageNotification({
-    title: `Safe Zone Patrol ${toMessageTypeLabel(message.type)}`,
+    title: broadcastName
+      ? `${broadcastName} · ${toMessageTypeLabel(message.type)}`
+      : `Safe Zone Patrol ${toMessageTypeLabel(message.type)}`,
     body: message.message.slice(0, 240),
     channelId: androidChannelForCategory(message.category),
     data: {
