@@ -9,10 +9,13 @@ import {
   Users,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
+import { useLocationSync } from "@/hooks/useLocationSync";
 import { colors } from "@/theme/colors";
 
 export default function TabsLayout() {
   const { user } = useAuth();
+
+  useLocationSync(Boolean(user));
 
   const isAdmin = useMemo(() => {
     const role = String(user?.role ?? "").toLowerCase();
@@ -97,6 +100,8 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen name="emergency-log" options={{ href: null }} />
+      <Tabs.Screen name="private-thread" options={{ href: null }} />
       <Tabs.Screen name="devices" options={{ href: null }} />
       <Tabs.Screen name="guest-passes" options={{ href: null }} />
       <Tabs.Screen name="guest-list" options={{ href: null }} />

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   Pressable,
@@ -11,8 +12,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter, type Href } from "expo-router";
 import {
   BellRing,
+  HeartPulse,
   HelpCircle,
   Megaphone,
   MessageSquare,
@@ -31,9 +34,10 @@ import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { sendMessage, type Message } from "@/api/messages";
-import { propagateMessageFeatureMessage } from "@/api/messageFeature";
+import { propagateMessageFeatureMessage, acknowledgeWellnessCheck, listWellnessAcknowledgements, listInZoneMembers } from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { presentLocalMessageNotification } from "@/lib/notifications";
 import { resolveMessagePropagationPosition } from "@/lib/messagePosition";
 import { getOrCreateDeviceHid } from "@/lib/storage";
@@ -55,11 +59,116 @@ import {
   type QuickMessageType,
 } from "@/lib/appSettings";
 import { messageBroadcastLabel } from "@/lib/messageBroadcast";
+import { subscribeWellnessAck } from "@/lib/messageSocket";
+import {
+  getMessageWorkflow,
+  isEmergencyMessageType,
+  requiresAdminToSendType,
+} from "@/lib/messageWorkflow";
 import { colors } from "@/theme/colors";
 
 type Filter = "All" | MessageCategory;
 
 type OwnerNameMap = Record<number, string>;
+
+function WellnessAckInline({
+  messageEventId,
+  selfOwnerId,
+}: {
+  messageEventId: string;
+  selfOwnerId: number | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [canAck, setCanAck] = useState(false);
+  const [acked, setAcked] = useState(false);
+  const [summaryText, setSummaryText] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const res = await listWellnessAcknowledgements(messageEventId);
+    if (res.error || !res.data) return;
+    const data = res.data;
+    setSummaryText(
+      `${data.acknowledgements.length}/${data.expected_recipient_ids.length} responded`,
+    );
+    const mine = data.acknowledgements.some((row) => row.owner_id === selfOwnerId);
+    setAcked(mine);
+    setCanAck(
+      selfOwnerId != null &&
+        data.expected_recipient_ids.includes(selfOwnerId) &&
+        !mine,
+    );
+  }, [messageEventId, selfOwnerId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeWellnessAck((id) => {
+      if (id === messageEventId) void load();
+    });
+    return unsubscribe;
+  }, [load, messageEventId]);
+
+  const submit = async (status: "ok" | "need_help") => {
+    setBusy(true);
+    const res = await acknowledgeWellnessCheck(messageEventId, { status });
+    setBusy(false);
+    if (res.error || !res.data) return;
+    setAcked(true);
+    setCanAck(false);
+    setSummaryText(
+      `${res.data.acknowledgements.length}/${res.data.expected_recipient_ids.length} responded`,
+    );
+  };
+
+  return (
+    <View style={{ marginTop: 10, gap: 8 }}>
+      {summaryText ? (
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{summaryText}</Text>
+      ) : null}
+      {canAck ? (
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            disabled={busy}
+            onPress={() => void submit("ok")}
+            style={{
+              backgroundColor: colors.success,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 10,
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
+              I&apos;m OK
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={busy}
+            onPress={() => void submit("need_help")}
+            style={{
+              backgroundColor: colors.danger,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 10,
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
+              Need help
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {acked ? (
+        <Text style={{ color: colors.success, fontSize: 12, fontWeight: "600" }}>
+          You acknowledged this wellness check.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 function MessageRow({
   item,
@@ -72,6 +181,7 @@ function MessageRow({
   selfBroadcastName: string;
   ownerNames: OwnerNameMap;
 }) {
+  const router = useRouter();
   const tone =
     item.category === "Alarm"
       ? "danger"
@@ -84,6 +194,15 @@ function MessageRow({
     selfBroadcastName,
     resolveOwnerName: (id) => ownerNames[id] ?? null,
   });
+
+  const privateCounterpartId =
+    item.type === "PRIVATE" && selfOwnerId != null
+      ? item.sender_id != null && item.sender_id !== selfOwnerId
+        ? item.sender_id
+        : item.receiver_id != null && item.receiver_id !== selfOwnerId
+          ? item.receiver_id
+          : null
+      : null;
 
   return (
     <Card style={{ marginBottom: 10 }}>
@@ -126,6 +245,39 @@ function MessageRow({
         Zone {item.zone_id}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
       </Text>
+      {item.type === "WELLNESS_CHECK" ? (
+        <WellnessAckInline messageEventId={item.id} selfOwnerId={selfOwnerId} />
+      ) : null}
+      {privateCounterpartId != null ? (
+        <Pressable
+          onPress={() =>
+            router.push({
+              pathname: "/(tabs)/private-thread",
+              params: {
+                otherOwnerId: String(privateCounterpartId),
+                selfOwnerId: String(selfOwnerId ?? ""),
+              },
+            } as unknown as Href)
+          }
+          style={{
+            marginTop: 10,
+            alignSelf: "flex-start",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+          }}
+        >
+          <MessageSquare size={14} color={colors.accent} />
+          <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+            View private thread
+          </Text>
+        </Pressable>
+      ) : null}
     </Card>
   );
 }
@@ -148,6 +300,7 @@ const MESSAGING_ACTIONS: QuickAction[] = [
   { type: "PRIVATE", label: "PRIVATE MESSAGE", icon: MessageSquare, tone: "messaging" },
   { type: "PA", label: "PUBLIC ANNOUNCEMENT", icon: Megaphone, tone: "messaging" },
   { type: "SERVICE", label: "SERVICES", icon: Wrench, tone: "messaging" },
+  { type: "WELLNESS_CHECK", label: "WELLNESS CHECK", icon: HeartPulse, tone: "messaging" },
 ];
 
 function QuickActionButton({
@@ -161,9 +314,10 @@ function QuickActionButton({
 }) {
   const Icon = action.icon;
   const isAlarm = action.tone === "alarm";
-  const bg = isAlarm ? "#FCE7EA" : "#FBEFD8";
-  const border = isAlarm ? "#F3C2CA" : "#F0DBB0";
-  const fg = isAlarm ? colors.danger : colors.warning;
+  const urgent = isEmergencyMessageType(action.type as MessageType);
+  const bg = urgent ? colors.danger : isAlarm ? "#FCE7EA" : "#FBEFD8";
+  const border = urgent ? colors.danger : isAlarm ? "#F3C2CA" : "#F0DBB0";
+  const fg = urgent ? "#fff" : isAlarm ? colors.danger : colors.warning;
   return (
     <Pressable
       onPress={onPress}
@@ -201,6 +355,8 @@ function QuickActionButton({
 
 export default function MessagesScreen() {
   const { user } = useAuth();
+  const router = useRouter();
+  const isAdministrator = useIsAdmin();
   const settings = useAppSettings();
   const selfBroadcastName = resolveBroadcastName(user?.name);
   const {
@@ -216,7 +372,7 @@ export default function MessagesScreen() {
   const { pushToken, permissionError } = useNotifications();
   const [filter, setFilter] = useState<Filter>("All");
   const [composeOpen, setComposeOpen] = useState(false);
-  const [composeType, setComposeType] = useState<MessageType>("SERVICE");
+  const [composeType, setComposeType] = useState<MessageType>("PA");
   const [composeReceiverId, setComposeReceiverId] = useState("");
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -243,10 +399,42 @@ export default function MessagesScreen() {
       groupedTypeOptions
         .map((group) => ({
           ...group,
-          options: group.options.filter((o) => o.type !== "PERMISSION"),
+          options: group.options.filter((o) => {
+            if (o.type === "PERMISSION") return false;
+            if (requiresAdminToSendType(o.type) && !isAdministrator) return false;
+            return true;
+          }),
         }))
         .filter((group) => group.options.length > 0),
-    [groupedTypeOptions],
+    [groupedTypeOptions, isAdministrator],
+  );
+  const visibleMessagingActions = useMemo(
+    () =>
+      MESSAGING_ACTIONS.filter(
+        (action) =>
+          !requiresAdminToSendType(action.type as MessageType) || isAdministrator,
+      ),
+    [isAdministrator],
+  );
+  const composeWorkflow = getMessageWorkflow(composeType);
+
+  const confirmEmergencySend = useCallback(
+    (type: MessageType): Promise<boolean> =>
+      new Promise((resolve) => {
+        if (!isEmergencyMessageType(type)) {
+          resolve(true);
+          return;
+        }
+        Alert.alert(
+          "Emergency alert",
+          `${toMessageTypeLabel(type)} broadcasts to everyone in your zone with maximum priority. Block filters are bypassed.`,
+          [
+            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+            { text: "Send", style: "destructive", onPress: () => resolve(true) },
+          ],
+        );
+      }),
+    [],
   );
 
   const filtered = useMemo(() => {
@@ -283,14 +471,17 @@ export default function MessagesScreen() {
     let active = true;
     setLoadingComposeMeta(true);
     void Promise.all([
-      getMembers(),
+      listInZoneMembers(),
       composeZoneId
         ? listGuestRequests(composeZoneId)
         : Promise.resolve({ data: [], error: null, loading: false }),
     ])
       .then(([membersRes, guestsRes]) => {
         if (!active) return;
-        const list = membersRes.data ?? [];
+        // Recipients are the users physically located in the sender's current
+        // zone(s) — resolved server-side across accounts, matching delivery
+        // rules. Account-scoped zone_id label filtering is intentionally gone.
+        const list = membersRes.data?.members ?? [];
         const receivers = list
           .map((row) => {
             const id = Number(row.id);
@@ -300,7 +491,6 @@ export default function MessagesScreen() {
               `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() ||
               "Member";
             const z = String(row.zone_id ?? "").trim();
-            if (composeZoneId && z && z !== composeZoneId) return null;
             return { id, name, zoneId: z };
           })
           .filter((r): r is { id: number; name: string; zoneId: string } =>
@@ -359,6 +549,7 @@ export default function MessagesScreen() {
   const sendQuickAlert = useCallback(
     async (type: QuickMessageType) => {
       if (quickBusy) return;
+      if (!(await confirmEmergencySend(type as MessageType))) return;
       const presetText = (settings.quickMessages[type] ?? "").trim();
       if (!presetText) {
         // Types without a preset (e.g. PRIVATE) open the composer instead.
@@ -416,6 +607,7 @@ export default function MessagesScreen() {
       applyGeoPropagationToInbox,
       composeZoneId,
       refresh,
+      confirmEmergencySend,
     ],
   );
 
@@ -429,6 +621,12 @@ export default function MessagesScreen() {
   const onSend = useCallback(async () => {
     const text = draft.trim();
     if (!text) return;
+
+    if (requiresAdminToSendType(composeType) && !isAdministrator) {
+      setComposeStatus("Only administrators can send SERVICE messages.");
+      return;
+    }
+    if (!(await confirmEmergencySend(composeType))) return;
 
     const accessGuest = isAccessGuestChannelType(composeType);
     if (accessGuest && !composeReceiverId.trim()) {
@@ -539,6 +737,8 @@ export default function MessagesScreen() {
     selfBroadcastName,
     applyGeoPropagationToInbox,
     ownerId,
+    isAdministrator,
+    confirmEmergencySend,
   ]);
 
   const renderQuickActions = () => (
@@ -569,14 +769,23 @@ export default function MessagesScreen() {
           </Text>
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          {MESSAGING_ACTIONS.map((action) => (
-            <QuickActionButton
-              key={action.type}
-              action={action}
-              busy={false}
-              onPress={() => openCompose(action.type as MessageType)}
-            />
-          ))}
+          {visibleMessagingActions.map((action) => {
+            // WELLNESS CHECK sends in one tap using its preset copy; other
+            // messaging types open the composer for editing.
+            const oneTap = action.type === "WELLNESS_CHECK";
+            return (
+              <QuickActionButton
+                key={action.type}
+                action={action}
+                busy={oneTap && quickBusy === action.type}
+                onPress={() =>
+                  oneTap
+                    ? void sendQuickAlert(action.type)
+                    : openCompose(action.type as MessageType)
+                }
+              />
+            );
+          })}
         </View>
         {quickStatus ? (
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -594,19 +803,40 @@ export default function MessagesScreen() {
           title="Messages"
           subtitle={realtimeHint}
           right={
-            <Pressable
-              onPress={() => openCompose("SERVICE")}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 21,
-                backgroundColor: colors.accent,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Plus size={22} color="#fff" />
-            </Pressable>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {isAdministrator ? (
+                <Pressable
+                  onPress={() =>
+                    router.push("/(tabs)/emergency-log" as unknown as Href)
+                  }
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 21,
+                    backgroundColor: colors.bgCard,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Siren size={20} color={colors.danger} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={() => openCompose(isAdministrator ? "SERVICE" : "PA")}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
+                  backgroundColor: colors.accent,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Plus size={22} color="#fff" />
+              </Pressable>
+            </View>
           }
         />
 
@@ -747,6 +977,29 @@ export default function MessagesScreen() {
                     ? " · uses location propagation"
                     : ""}
                 </Text>
+                {composeWorkflow ? (
+                  <View
+                    style={{
+                      marginTop: 10,
+                      padding: 12,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                      gap: 4,
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontWeight: "700", fontSize: 12 }}>
+                      {toMessageTypeLabel(composeType)} workflow
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      {composeWorkflow.description}
+                    </Text>
+                    <Text style={{ color: colors.textDim, fontSize: 11 }}>
+                      {composeWorkflow.delivery}
+                    </Text>
+                  </View>
+                ) : null}
 
                 {isAccessGuestChannelType(composeType) ? (
                   <View style={{ marginTop: 12, gap: 8 }}>

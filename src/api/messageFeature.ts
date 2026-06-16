@@ -38,6 +38,41 @@ export async function propagateMessageFeatureMessage(payload: MessageFeaturePayl
   });
 }
 
+export type WellnessAcknowledgement = {
+  id: string;
+  owner_id: number;
+  status: string;
+  note?: string | null;
+  created_at: string;
+};
+
+export type WellnessAckSummary = {
+  message_event_id: string;
+  expected_recipient_ids: number[];
+  pending_recipient_ids: number[];
+  acknowledgements: WellnessAcknowledgement[];
+  response_tracking_enabled: boolean;
+  acknowledgement?: WellnessAcknowledgement;
+};
+
+export async function listWellnessAcknowledgements(messageEventId: string) {
+  return request<WellnessAckSummary>({
+    method: "GET",
+    url: `/message-feature/messages/${encodeURIComponent(messageEventId)}/wellness-acks`,
+  });
+}
+
+export async function acknowledgeWellnessCheck(
+  messageEventId: string,
+  payload: { status?: "ok" | "need_help"; note?: string } = {},
+) {
+  return request<WellnessAckSummary>({
+    method: "POST",
+    url: `/message-feature/messages/${encodeURIComponent(messageEventId)}/wellness-ack`,
+    data: payload,
+  });
+}
+
 export async function listMessageFeatureBlocks() {
   return request<MessageFeatureBlock[]>({
     method: "GET",
@@ -52,5 +87,78 @@ export async function refreshMessageFeatureMembershipLocation(
     method: "POST",
     url: "/message-feature/members/location",
     data: payload,
+  });
+}
+
+export type InZoneMember = {
+  id: number;
+  name: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  zone_id: string | null;
+};
+
+export type InZoneMembersResponse = {
+  zone_ids: string[];
+  members: InZoneMember[];
+};
+
+/** Members currently located inside the caller's zone(s) — valid PRIVATE
+ *  recipients per server delivery rules (cross-account, location-based). */
+export async function listInZoneMembers(position?: MessageFeaturePosition) {
+  return request<InZoneMembersResponse>({
+    method: "GET",
+    url: "/message-feature/members/in-zone",
+    params: position
+      ? { latitude: position.latitude, longitude: position.longitude }
+      : undefined,
+  });
+}
+
+export type EmergencyEvent = {
+  id: string;
+  messageEventId: string | null;
+  type: string;
+  senderId: number | null;
+  zoneId: string | null;
+  recipientCount: number;
+  latitude: number | null;
+  longitude: number | null;
+  text: string | null;
+  createdAt: string;
+};
+
+export async function listEmergencyEvents(params?: {
+  limit?: number;
+  skip?: number;
+  type?: "PANIC" | "NS_PANIC";
+}) {
+  return request<EmergencyEvent[]>({
+    method: "GET",
+    url: "/message-feature/emergency-events",
+    params: {
+      limit: params?.limit ?? 100,
+      skip: params?.skip ?? 0,
+      ...(params?.type ? { type: params.type } : {}),
+    },
+  });
+}
+
+export type PrivateThreadMessage = {
+  id: string;
+  type: string;
+  senderId: number | null;
+  receiverId: number | null;
+  text: string | null;
+  body: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export async function getPrivateThread(otherOwnerId: number, limit = 100) {
+  return request<PrivateThreadMessage[]>({
+    method: "GET",
+    url: "/message-feature/messages/private-thread",
+    params: { other_owner_id: otherOwnerId, limit },
   });
 }

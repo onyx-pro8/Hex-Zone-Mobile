@@ -10,6 +10,7 @@ import { shouldShowGeoPropagationInInbox } from "@/lib/messageSocket";
 import { listMessageFeatureBlocks, type MessageFeatureBlock } from "@/api/messageFeature";
 import { filterMessagesForBlocks } from "@/lib/messageBlocks";
 import {
+  handleWellnessAckFrame,
   parseMessageFeatureSocketEvent,
   parseMessageSocketPayload,
 } from "@/lib/messageSocket";
@@ -164,6 +165,7 @@ export function useMessagesFeed(options?: { limit?: number; zoneIds?: string[] }
 
   useEffect(() => {
     if (!lastMessage) return;
+    if (handleWellnessAckFrame(lastMessage)) return;
     const geoEvent = parseMessageFeatureSocketEvent(lastMessage);
     if (geoEvent?.type === "NEW_GEO_MESSAGE") {
       applyGeoPropagationToInbox(geoEvent.data);

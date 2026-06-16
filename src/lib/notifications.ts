@@ -80,6 +80,17 @@ export async function ensureAndroidChannels(): Promise<void> {
       sound: "default",
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+    // NS-PANIC gets a dedicated channel so it is audibly + haptically distinct
+    // from a regular PANIC (longer, more insistent vibration cadence).
+    await Notifications.setNotificationChannelAsync("ns_panic", {
+      name: "NS-PANIC (silent distress)",
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 600, 150, 600, 150, 600],
+      lightColor: "#B5179E",
+      sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+    });
   } catch {
     /* ignore */
   }
@@ -164,8 +175,8 @@ export async function presentLocalMessageNotification(payload: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
-  /** Android notification channel (`messages` or `alarms`). */
-  channelId?: "messages" | "alarms";
+  /** Android notification channel (`messages`, `alarms`, or `ns_panic`). */
+  channelId?: "messages" | "alarms" | "ns_panic";
 }) {
   try {
     await ensureAndroidChannels();

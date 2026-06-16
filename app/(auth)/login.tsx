@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { useAuth } from "@/context/AuthContext";
 import { AUTH_MAP_DEFAULT_CENTER } from "@/lib/h3";
+import { getLastEmail, setLastEmail } from "@/lib/storage";
 import { colors } from "@/theme/colors";
 
 export default function LoginScreen() {
@@ -33,6 +34,16 @@ export default function LoginScreen() {
     if (authError) setError(authError);
   }, [authError]);
 
+  useEffect(() => {
+    let active = true;
+    void getLastEmail().then((saved) => {
+      if (active && saved) setEmail(saved);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const center = AUTH_MAP_DEFAULT_CENTER;
 
   const onSubmit = async () => {
@@ -45,6 +56,7 @@ export default function LoginScreen() {
     setSubmitting(true);
     try {
       await login(email.trim(), password, { rememberMe });
+      void setLastEmail(email.trim());
       router.replace("/(tabs)");
     } catch (err) {
       const message =
