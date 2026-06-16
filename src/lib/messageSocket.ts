@@ -79,6 +79,41 @@ export function parseInboxSocketRefetchSignal(raw: string): boolean {
   }
 }
 
+/**
+ * Lightweight pub/sub so mounted wellness panels can reload when a WELLNESS_ACK
+ * realtime frame arrives, without each row owning a socket subscription.
+ */
+type WellnessAckListener = (messageEventId: string) => void;
+const wellnessAckListeners = new Set<WellnessAckListener>();
+
+export function subscribeWellnessAck(listener: WellnessAckListener): () => void {
+  wellnessAckListeners.add(listener);
+  return () => {
+    wellnessAckListeners.delete(listener);
+  };
+}
+
+export function emitWellnessAck(messageEventId: string): void {
+  for (const listener of wellnessAckListeners) listener(messageEventId);
+}
+
+/** Detect a WELLNESS_ACK frame and emit it to subscribers; returns true if handled. */
+export function handleWellnessAckFrame(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as { type?: unknown; data?: unknown };
+    if (parsed.type !== "WELLNESS_ACK") return false;
+    const data = parsed.data as Record<string, unknown> | undefined;
+    const id = data?.message_event_id;
+    if (typeof id === "string" && id) {
+      emitWellnessAck(id);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 export function parseMessageFeatureSocketEvent(
   raw: string,
 ): MessageFeatureSocketEvent | null {

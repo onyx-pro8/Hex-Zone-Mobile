@@ -35,9 +35,12 @@ function markNotified(id: string): boolean {
   return true;
 }
 
-function androidChannelForCategory(
+function androidChannelForMessage(
   category: string | undefined,
-): "messages" | "alarms" {
+  type: string | undefined,
+): "messages" | "alarms" | "ns_panic" {
+  const normalizedType = String(type ?? "").trim().toUpperCase().replace("-", "_");
+  if (normalizedType === "NS_PANIC") return "ns_panic";
   return category === "Alarm" ? "alarms" : "messages";
 }
 
@@ -73,7 +76,7 @@ export async function notifyIncomingGeoPropagation(
       ? `${broadcastName} · ${toMessageTypeLabel(type)}`
       : `Safe Zone Patrol ${toMessageTypeLabel(type)}`,
     body: text.slice(0, 240),
-    channelId: androidChannelForCategory(category),
+    channelId: androidChannelForMessage(category, propagation.type),
     data: {
       event: "NEW_GEO_MESSAGE",
       type: propagation.type,
@@ -96,7 +99,7 @@ export async function notifyIncomingInboxMessage(
       ? `${broadcastName} · ${toMessageTypeLabel(message.type)}`
       : `Safe Zone Patrol ${toMessageTypeLabel(message.type)}`,
     body: message.message.slice(0, 240),
-    channelId: androidChannelForCategory(message.category),
+    channelId: androidChannelForMessage(message.category, message.type),
     data: {
       event: "NEW_MESSAGE",
       type: message.type,

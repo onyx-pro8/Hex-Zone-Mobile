@@ -4,6 +4,7 @@ import { normalizeMapCenter, type MapCenter } from "@/lib/mapCenter";
 
 const TOKEN_KEY = "zoneweaver:token";
 const REMEMBER_KEY = "zoneweaver:remember";
+const LAST_EMAIL_KEY = "zoneweaver:last_email";
 const DEVICE_HID_KEY = "zoneweaver:device_hid";
 const PUSH_TOKEN_KEY = "zoneweaver:push_token";
 const MAP_CENTER_KEY = "zoneweaver:map_center";
@@ -47,6 +48,24 @@ export async function getRememberMe(): Promise<boolean> {
     return value === "1";
   } catch {
     return false;
+  }
+}
+
+export async function setLastEmail(email: string): Promise<void> {
+  const trimmed = email.trim();
+  if (!trimmed) return;
+  try {
+    await AsyncStorage.setItem(LAST_EMAIL_KEY, trimmed);
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getLastEmail(): Promise<string> {
+  try {
+    return (await AsyncStorage.getItem(LAST_EMAIL_KEY)) ?? "";
+  } catch {
+    return "";
   }
 }
 
