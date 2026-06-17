@@ -14,7 +14,6 @@ import { colors } from "@/theme/colors";
 
 export default function TabsLayout() {
   const { user } = useAuth();
-
   useLocationSync(Boolean(user));
 
   const isAdmin = useMemo(() => {
