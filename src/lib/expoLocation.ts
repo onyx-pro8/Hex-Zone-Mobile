@@ -50,6 +50,8 @@ export type ReadDeviceLocationOptions = {
   timeoutMs?: number;
   /** Ask the user for permission when not yet granted. Default true. */
   requestPermission?: boolean;
+  /** When false, skip OS last-known position (used for background presence sync). */
+  allowLastKnown?: boolean;
 };
 
 /**
@@ -66,6 +68,7 @@ export async function readDeviceLocation(
 ): Promise<DeviceLocationResult | null> {
   const timeoutMs = options?.timeoutMs ?? 8000;
   const requestPermission = options?.requestPermission ?? true;
+  const allowLastKnown = options?.allowLastKnown ?? true;
 
   const Location = await loadExpoLocation();
   if (!Location) return null;
@@ -104,7 +107,7 @@ export async function readDeviceLocation(
     // When services are reported off, a fresh fix will never arrive — use the
     // last cached fix if any, otherwise give up so the caller can fall back.
     if (!servicesOn) {
-      return await lastKnown();
+      return allowLastKnown ? await lastKnown() : null;
     }
 
     const fresh = await raceWithTimeout(
@@ -115,10 +118,11 @@ export async function readDeviceLocation(
     );
     if (fresh) return { coords: toCoords(fresh), source: "current" };
 
-    // Fresh fix timed out — fall back to the last known position.
-    return await lastKnown();
+    // Fresh fix timed out — fall back to the last known position when allowed.
+    return allowLastKnown ? await lastKnown() : null;
   } catch {
     // Any throw (e.g. "Current location is unavailable") falls back to cache.
+    if (!allowLastKnown) return null;
     try {
       const Loc = await loadExpoLocation();
       if (Loc) {
