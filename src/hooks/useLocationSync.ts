@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { readDeviceLocation } from "@/lib/expoLocation";
 import { updateLocation } from "@/api/members";
 
-const SYNC_INTERVAL_MS = 60_000;
+/** How often we push GPS to the server for in-zone recipient matching. */
+const SYNC_INTERVAL_MS = 30_000;
 
 /**
  * Periodically publishes the device's GPS position to the server
@@ -20,7 +21,10 @@ export function useLocationSync(enabled: boolean) {
 
     let cancelled = false;
     const push = async () => {
-      const result = await readDeviceLocation({ timeoutMs: 8000 });
+      const result = await readDeviceLocation({
+        timeoutMs: 8000,
+        allowLastKnown: false,
+      });
       if (cancelled || !result) return;
       await updateLocation({
         latitude: result.coords.latitude,

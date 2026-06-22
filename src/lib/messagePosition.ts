@@ -16,6 +16,16 @@ export type ResolvedMessagePosition = {
  *  button from hanging for ~60s on weak signal / indoors / emulator. */
 const SEND_GPS_TIMEOUT_MS = 7000;
 
+/** Best-effort: keep server-side presence current for geo message delivery. */
+export async function publishMemberLocation(position: MapCenter): Promise<void> {
+  try {
+    const { updateLocation } = await import("@/api/members");
+    await updateLocation(position);
+  } catch {
+    /* non-blocking */
+  }
+}
+
 /**
  * Resolves sender position for geo-propagation messages.
  *
@@ -31,13 +41,22 @@ export async function resolveMessagePropagationPosition(
   profileMapCenter?: MapCenter | null,
 ): Promise<ResolvedMessagePosition | { error: string }> {
   const gps = await tryReadGps();
-  if (gps) return { position: gps, source: "gps" };
+  if (gps) {
+    void publishMemberLocation(gps);
+    return { position: gps, source: "gps" };
+  }
 
   const fromProfile = normalizeMapCenter(profileMapCenter ?? null);
-  if (fromProfile) return { position: fromProfile, source: "profile" };
+  if (fromProfile) {
+    void publishMemberLocation(fromProfile);
+    return { position: fromProfile, source: "profile" };
+  }
 
   const stored = await getStoredMapCenter();
-  if (stored) return { position: stored, source: "stored" };
+  if (stored) {
+    void publishMemberLocation(stored);
+    return { position: stored, source: "stored" };
+  }
 
   return { error: MESSAGE_POSITION_REQUIRED };
 }
