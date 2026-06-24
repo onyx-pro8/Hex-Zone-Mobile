@@ -104,8 +104,7 @@ export type InZoneMembersResponse = {
   members: InZoneMember[];
 };
 
-/** Members currently located inside the caller's zone(s) — valid PRIVATE
- *  recipients per server delivery rules (cross-account, location-based). */
+/** Members currently located inside the caller's zone(s). */
 export async function listInZoneMembers(position?: MessageFeaturePosition) {
   return request<InZoneMembersResponse>({
     method: "GET",
@@ -113,6 +112,46 @@ export async function listInZoneMembers(position?: MessageFeaturePosition) {
     params: position
       ? { latitude: position.latitude, longitude: position.longitude }
       : undefined,
+  });
+}
+
+export type PrivateSearchMember = {
+  id: number;
+  display_name: string;
+  broadcast_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  zone_id: string | null;
+  subtitle: string;
+};
+
+export type PrivateSearchMembersResponse = {
+  zone_ids: string[];
+  members: PrivateSearchMember[];
+};
+
+export async function searchPrivateMessageRecipients(
+  query: string,
+  position?: MessageFeaturePosition,
+) {
+  const q = query.trim();
+  if (q.length < 2) {
+    return {
+      data: { zone_ids: [] as string[], members: [] as PrivateSearchMember[] },
+      error: null as string | null,
+      loading: false,
+    };
+  }
+  return request<PrivateSearchMembersResponse>({
+    method: "GET",
+    url: "/message-feature/members/search",
+    params: {
+      q,
+      ...(position
+        ? { latitude: position.latitude, longitude: position.longitude }
+        : {}),
+    },
   });
 }
 

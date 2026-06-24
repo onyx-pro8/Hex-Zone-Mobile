@@ -34,7 +34,7 @@ import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { sendMessage, type Message } from "@/api/messages";
-import { propagateMessageFeatureMessage, acknowledgeWellnessCheck, listWellnessAcknowledgements, listInZoneMembers } from "@/api/messageFeature";
+import { propagateMessageFeatureMessage, acknowledgeWellnessCheck, listWellnessAcknowledgements, listInZoneMembers, searchPrivateMessageRecipients, type PrivateSearchMember } from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
@@ -382,6 +382,10 @@ export default function MessagesScreen() {
   const [members, setMembers] = useState<
     { id: number; name: string; zoneId: string }[]
   >([]);
+  const [privateSearchQuery, setPrivateSearchQuery] = useState("");
+  const [privateSearchResults, setPrivateSearchResults] = useState<PrivateSearchMember[]>([]);
+  const [privateSearchLoading, setPrivateSearchLoading] = useState(false);
+  const [senderZoneIds, setSenderZoneIds] = useState<string[]>([]);
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
   const [guestOptions, setGuestOptions] = useState<
     { id: string; label: string }[]
@@ -471,32 +475,22 @@ export default function MessagesScreen() {
     let active = true;
     setLoadingComposeMeta(true);
     void Promise.all([
-      listInZoneMembers(),
+      isPrivateMessageType(composeType)
+        ? resolveMessagePropagationPosition(null).then(async (resolved) => {
+            const position = "error" in resolved ? undefined : resolved.position;
+            return listInZoneMembers(position);
+          })
+        : Promise.resolve({ data: { zone_ids: [], members: [] }, error: null }),
       composeZoneId
         ? listGuestRequests(composeZoneId)
         : Promise.resolve({ data: [], error: null, loading: false }),
     ])
-      .then(([membersRes, guestsRes]) => {
+      .then(([zoneRes, guestsRes]) => {
         if (!active) return;
-        // Recipients are the users physically located in the sender's current
-        // zone(s) — resolved server-side across accounts, matching delivery
-        // rules. Account-scoped zone_id label filtering is intentionally gone.
-        const list = membersRes.data?.members ?? [];
-        const receivers = list
-          .map((row) => {
-            const id = Number(row.id);
-            if (!Number.isFinite(id) || id <= 0 || id === ownerId) return null;
-            const name =
-              row.name ||
-              `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() ||
-              "Member";
-            const z = String(row.zone_id ?? "").trim();
-            return { id, name, zoneId: z };
-          })
-          .filter((r): r is { id: number; name: string; zoneId: string } =>
-            Boolean(r),
-          );
-        setMembers(receivers);
+        if (isPrivateMessageType(composeType)) {
+          setSenderZoneIds(zoneRes.data?.zone_ids ?? []);
+        }
+        setMembers([]);
 
         const guestRows = guestsRes.data ?? [];
         setGuestOptions(
@@ -514,11 +508,40 @@ export default function MessagesScreen() {
     return () => {
       active = false;
     };
-  }, [composeOpen, composeZoneId, ownerId]);
+  }, [composeOpen, composeZoneId, composeType]);
+
+  useEffect(() => {
+    if (!composeOpen || !isPrivateMessageType(composeType)) return;
+    const q = privateSearchQuery.trim();
+    if (q.length < 2) {
+      setPrivateSearchResults([]);
+      setPrivateSearchLoading(false);
+      return;
+    }
+    let active = true;
+    setPrivateSearchLoading(true);
+    const timer = setTimeout(() => {
+      void (async () => {
+        const resolved = await resolveMessagePropagationPosition(null);
+        const position = "error" in resolved ? undefined : resolved.position;
+        const result = await searchPrivateMessageRecipients(q, position);
+        if (!active) return;
+        setPrivateSearchLoading(false);
+        setSenderZoneIds(result.data?.zone_ids ?? []);
+        setPrivateSearchResults(result.data?.members ?? []);
+      })();
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [composeOpen, composeType, privateSearchQuery]);
 
   useEffect(() => {
     setComposeReceiverId("");
     setComposeStatus("");
+    setPrivateSearchQuery("");
+    setPrivateSearchResults([]);
   }, [composeType]);
 
   useEffect(() => {
@@ -1033,27 +1056,60 @@ export default function MessagesScreen() {
                 isPrivateMessageType(composeType) ? (
                   <View style={{ marginTop: 12, gap: 8 }}>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      Receiver (member)
+                      Search member by name or email (you must be inside a zone)
                     </Text>
                     {loadingComposeMeta ? (
                       <ActivityIndicator color={colors.accent} />
-                    ) : members.length === 0 ? (
+                    ) : senderZoneIds.length === 0 ? (
                       <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                        No other members in your zone.
+                        You are not inside any zone. Update your location first.
                       </Text>
                     ) : (
-                      members.map((m) => (
-                        <Pressable
-                          key={m.id}
-                          onPress={() => setComposeReceiverId(String(m.id))}
-                        >
-                          <Chip
-                            label={`${m.id} — ${m.name}`}
-                            active={composeReceiverId === String(m.id)}
-                            style={{ marginBottom: 6 }}
-                          />
-                        </Pressable>
-                      ))
+                      <>
+                        <TextInput
+                          placeholder="Name or email"
+                          placeholderTextColor={colors.textDim}
+                          value={privateSearchQuery}
+                          onChangeText={(text) => {
+                            setPrivateSearchQuery(text);
+                            setComposeReceiverId("");
+                          }}
+                          style={{
+                            backgroundColor: colors.bgCard,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            borderRadius: 12,
+                            padding: 12,
+                            color: colors.text,
+                            fontSize: 15,
+                          }}
+                        />
+                        {privateSearchLoading ? (
+                          <ActivityIndicator color={colors.accent} />
+                        ) : null}
+                        {privateSearchResults.map((m) => (
+                          <Pressable
+                            key={m.id}
+                            onPress={() => {
+                              setComposeReceiverId(String(m.id));
+                              setPrivateSearchQuery(m.display_name);
+                            }}
+                          >
+                            <Chip
+                              label={`${m.display_name} — ${m.subtitle || m.email}`}
+                              active={composeReceiverId === String(m.id)}
+                              style={{ marginBottom: 6 }}
+                            />
+                          </Pressable>
+                        ))}
+                        {privateSearchQuery.trim().length >= 2 &&
+                        !privateSearchLoading &&
+                        privateSearchResults.length === 0 ? (
+                          <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                            No members matched.
+                          </Text>
+                        ) : null}
+                      </>
                     )}
                   </View>
                 ) : null}
