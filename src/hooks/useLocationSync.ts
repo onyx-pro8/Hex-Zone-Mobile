@@ -7,8 +7,7 @@ const SYNC_INTERVAL_MS = 30_000;
 
 /**
  * Periodically publishes the device's GPS position to the server
- * (`POST /members/location`) so this user can be matched as an in-zone
- * recipient for geo messages (PA / PANIC / WELLNESS / PRIVATE, etc.).
+ * (`POST /members/location`) for dynamic zones and sender-side geo workflows.
  *
  * Zone-based delivery resolves recipients from each owner's stored
  * `owners.latitude/longitude`; without this sync a user physically inside a
