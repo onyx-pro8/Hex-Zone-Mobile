@@ -84,8 +84,8 @@
     },
     "extra": {
       "router": {},
-      "apiBaseUrl": "https://zone-weaver-server-7ksef.ondigitalocean.app/",
-      "webAppBaseUrl": "https://zone-weaver-server-7ksef.ondigitalocean.app/",
+      "apiBaseUrl": "https://safe-zone-patrol-server.onrender.com/",
+      "webAppBaseUrl": "https://safe-zone-patrol-server.onrender.com/",
       "eas": {
         "projectId": "8e70e1cf-1392-465c-b756-75c31e97a836"
       }

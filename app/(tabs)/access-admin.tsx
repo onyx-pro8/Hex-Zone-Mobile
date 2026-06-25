@@ -26,6 +26,7 @@ import {
 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { AlertBellButton } from "@/components/ui/AlertBellButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
@@ -709,7 +710,11 @@ export default function AccessScreen() {
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-          <ScreenHeader title="Access" subtitle="QR invites & guest arrivals" />
+          <ScreenHeader
+            title="Access"
+            subtitle="QR invites & guest arrivals"
+            right={<AlertBellButton />}
+          />
 
           <SegmentedTabs tab={tab} onChange={setTab} />
 

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   LayoutGrid,
   MessageSquare,
@@ -9,11 +10,13 @@ import {
   Users,
 } from "lucide-react-native";
 import { useAuth } from "@/context/AuthContext";
+import { AlarmInboxProvider } from "@/context/AlarmInboxContext";
 import { useLocationSync } from "@/hooks/useLocationSync";
 import { colors } from "@/theme/colors";
 
 export default function TabsLayout() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   useLocationSync(Boolean(user));
 
   const isAdmin = useMemo(() => {
@@ -25,7 +28,10 @@ export default function TabsLayout() {
     return regType !== "USER";
   }, [user?.role, user?.registrationType, user?.registration_type]);
 
+  const tabBarHeight = 72 + insets.bottom;
+
   return (
+    <AlarmInboxProvider>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -33,8 +39,8 @@ export default function TabsLayout() {
           backgroundColor: colors.bgElevated,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: 72,
-          paddingBottom: 10,
+          height: tabBarHeight,
+          paddingBottom: insets.bottom + 10,
           paddingTop: 8,
         },
         tabBarActiveTintColor: colors.accent,
@@ -100,6 +106,7 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen name="emergency-log" options={{ href: null }} />
+      <Tabs.Screen name="alerts" options={{ href: null }} />
       <Tabs.Screen name="private-thread" options={{ href: null }} />
       <Tabs.Screen name="devices" options={{ href: null }} />
       <Tabs.Screen name="guest-passes" options={{ href: null }} />
@@ -108,5 +115,6 @@ export default function TabsLayout() {
       <Tabs.Screen name="guest-arrival-messages" options={{ href: null }} />
       <Tabs.Screen name="api-docs" options={{ href: null }} />
     </Tabs>
+    </AlarmInboxProvider>
   );
 }

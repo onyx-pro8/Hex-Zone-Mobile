@@ -15,6 +15,7 @@ import { ZoneTypePanel } from "@/components/dashboard/ZoneTypePanel";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
+import { AlertBellButton } from "@/components/ui/AlertBellButton";
 import { useAuth } from "@/context/AuthContext";
 import { MAX_ZONE_NAME_LENGTH, useZoneBuilder } from "@/hooks/useZoneBuilder";
 import { colorForZoneType, summarizeZone } from "@/lib/zoneGeometry";
@@ -107,6 +108,8 @@ export default function DashboardScreen() {
               flexDirection: "row",
               alignItems: "center",
               gap: 8,
+              flex: 1,
+              justifyContent: "flex-end",
             }}
           >
             <View
@@ -154,6 +157,7 @@ export default function DashboardScreen() {
               </Text>
             </View>
           </View>
+          <AlertBellButton />
         </View>
       </SafeAreaView>
 

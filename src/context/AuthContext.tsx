@@ -17,17 +17,11 @@ import {
   type AuthUser,
   type RegisterPayload,
 } from "@/api/auth";
-import {
-  createDevice,
-  getDevices,
-  registerPushToken,
-  sendDeviceHeartbeat,
-} from "@/api/devices";
+import { registerPushToken } from "@/api/devices";
 import { getRemoteAppSettings } from "@/api/settings";
 import { updateAppSettings, type AppSettings } from "@/lib/appSettings";
 import {
   clearToken,
-  getOrCreateDeviceHid,
   getStoredPushToken,
   getToken,
   setRememberMe as persistRememberMe,
@@ -39,11 +33,10 @@ import { isRunningExpoGo } from "@/lib/pushSupport";
 import { onUnauthorized } from "@/lib/authEvents";
 import { devLog, devWarn } from "@/lib/devConsole";
 import {
-  accountTypeLabel,
-  getDeviceLimit,
-  normalizeAccountType,
-  type NormalizedAccountType,
-} from "@/lib/accountLimits";
+  describeDeviceSyncFailure,
+  setCurrentDeviceOffline,
+  syncCurrentDevice,
+} from "@/lib/deviceSync";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -95,125 +88,6 @@ function isExpired(token: string): boolean {
   return Date.now() >= exp * 1000;
 }
 
-type DeviceSyncResult =
-  | { status: "ok"; deviceId?: number | string }
-  | {
-      status: "limit-reached";
-      limit: number;
-      accountType: NormalizedAccountType;
-      existingHids: string[];
-    }
-  | { status: "error"; message: string };
-
-function describeLimitRefusal(
-  accountType: NormalizedAccountType,
-  limit: number,
-): string {
-  const label = accountTypeLabel(accountType);
-  const count = Number.isFinite(limit)
-    ? `${limit} device${limit === 1 ? "" : "s"}`
-    : "the configured number of devices";
-  return (
-    `Your ${label} account already has ${count} registered. ` +
-    `To use this phone, sign in on the web (or the existing device) and remove the previous device first.`
-  );
-}
-
-async function syncCurrentDevice(
-  user: AuthUser | null,
-): Promise<DeviceSyncResult> {
-  if (!user) return { status: "ok" };
-  try {
-    const localHid = await getOrCreateDeviceHid();
-    const display = user.name?.trim() || user.email?.trim() || "Mobile";
-    const ownerId = String(user.id ?? user.accountOwnerId ?? "").trim();
-    const accountType = normalizeAccountType(
-      user.accountType,
-      user.account_type,
-    );
-    const limit = getDeviceLimit(accountType);
-    const devices = await getDevices();
-    const list = devices.data ?? [];
-
-    // 1. If THIS phone is already registered (HID matches what we stored
-    //    locally), just heartbeat it. This is the normal re-open / restore
-    //    path on the same physical device.
-    const byLocalHid = list.find(
-      (d) => String(d.hid).toUpperCase() === localHid.toUpperCase(),
-    );
-    if (byLocalHid?.id != null) {
-      devLog("Device sync: matched stored HID", {
-        hid: localHid,
-        deviceId: byLocalHid.id,
-      });
-      await sendDeviceHeartbeat(byLocalHid.id);
-      return { status: "ok", deviceId: byLocalHid.id };
-    }
-
-    // 2. This phone is NOT yet registered. Count how many devices the
-    //    account already has (server-side truth, scoped to the owner).
-    const ownerDevices = ownerId
-      ? list.filter((d) => String(d.owner_id ?? "") === ownerId)
-      : list;
-
-    // 3. If the account is at its device limit, refuse outright. Previously
-    //    we silently "adopted" the first existing device, which let any
-    //    second phone impersonate the registered one — that is the bug
-    //    the user just reported on PRIVATE / EXCLUSIVE / ENHANCED accounts.
-    if (ownerDevices.length >= limit) {
-      devWarn("Device sync: limit reached, refusing this phone", {
-        accountType,
-        limit,
-        ownerDeviceCount: ownerDevices.length,
-        existingHids: ownerDevices.map((d) => String(d.hid)),
-      });
-      return {
-        status: "limit-reached",
-        limit,
-        accountType,
-        existingHids: ownerDevices.map((d) => String(d.hid)),
-      };
-    }
-
-    // 4. Under the limit → create a fresh device entry tied to this phone.
-    devLog("Device sync: creating new device", { hid: localHid });
-    const created = await createDevice({
-      hid: localHid,
-      name: `${display} (Mobile)`,
-      enable_notification: true,
-      propagate_enabled: true,
-      is_online: true,
-    });
-    if (created.error) {
-      // The server itself may reject with 403 if the limit calculation
-      // disagrees with ours (e.g. devices we couldn't see). Surface that
-      // as a limit-reached refusal so the user gets a clear message.
-      if (/limit|forbidden|max|403/i.test(created.error)) {
-        devWarn("Device sync: server refused create as limit reached", {
-          error: created.error,
-        });
-        return {
-          status: "limit-reached",
-          limit,
-          accountType,
-          existingHids: ownerDevices.map((d) => String(d.hid)),
-        };
-      }
-      devWarn("Device sync: create failed", { error: created.error });
-      return { status: "error", message: created.error };
-    }
-    if (created.data?.id != null) {
-      await sendDeviceHeartbeat(created.data.id);
-      return { status: "ok", deviceId: created.data.id };
-    }
-    return { status: "ok" };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    devWarn("Device sync: unexpected error", { message });
-    return { status: "error", message };
-  }
-}
-
 async function syncPushTokenToServer() {
   if (isRunningExpoGo()) return;
   try {
@@ -239,6 +113,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ownerZoneId, setOwnerZoneId] = useState<string>("");
 
   const performLogout = useCallback(async () => {
+    try {
+      await setCurrentDeviceOffline();
+    } catch {
+      /* proceed with local logout */
+    }
     setUser(null);
     setTokenState(null);
     setOwnerZoneId("");
@@ -285,14 +164,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token || !user) return;
     let cancelled = false;
     void (async () => {
-      const result = await syncCurrentDevice(user);
+      const result = await syncCurrentDevice(user, { platformLabel: "Mobile" });
       if (cancelled) return;
-      if (result.status === "limit-reached") {
-        const message = describeLimitRefusal(result.accountType, result.limit);
-        devWarn("Auth: signing out — device slot held elsewhere", {
-          message,
-          existingHids: result.existingHids,
-        });
+      if (result.status === "account-in-use" || result.status === "error") {
+        const message = describeDeviceSyncFailure(result);
+        devWarn("Auth: signing out — device session conflict", { message });
         setAuthError(message);
         await performLogout();
       }
@@ -409,16 +285,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Gate the session on device sync. If the account already has its
-        // maximum devices on file (e.g. PRIVATE = 1) AND this phone isn't
-        // one of them, refuse the login.
-        const sync = await syncCurrentDevice(normalized);
-        if (sync.status === "limit-reached") {
-          const message = describeLimitRefusal(sync.accountType, sync.limit);
-          devWarn("Login refused: device limit reached", {
-            message,
-            existingHids: sync.existingHids,
-          });
+        const sync = await syncCurrentDevice(normalized, {
+          platformLabel: "Mobile",
+        });
+        if (sync.status === "account-in-use" || sync.status === "error") {
+          const message = describeDeviceSyncFailure(sync);
+          devWarn("Login refused: device session conflict", { message });
           await clearToken();
           throw new Error(message);
         }

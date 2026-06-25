@@ -92,6 +92,13 @@ export async function updateDevice(
   });
 }
 
+export async function deleteDevice(deviceId: number | string) {
+  return request<{ success?: boolean }>({
+    method: "DELETE",
+    url: `/devices/${deviceId}`,
+  });
+}
+
 export async function sendDeviceHeartbeat(deviceId: number | string) {
   return request<{ success?: boolean }>({
     method: "POST",

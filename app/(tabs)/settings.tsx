@@ -16,6 +16,7 @@ import {
 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { AlertBellButton } from "@/components/ui/AlertBellButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
@@ -214,7 +215,11 @@ export default function SettingsScreen() {
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-          <ScreenHeader title="Settings" subtitle="Account & preferences" />
+          <ScreenHeader
+            title="Settings"
+            subtitle="Account & preferences"
+            right={<AlertBellButton />}
+          />
 
           <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
             <Card glow>

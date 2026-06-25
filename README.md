@@ -1,6 +1,6 @@
 # Hex Zone Mobile
 
-React Native (Expo **SDK 54**) + TypeScript mobile client for the [Zone Weaver API](https://zone-weaver-server-7ksef.ondigitalocean.app/).
+React Native (Expo **SDK 54**) + TypeScript mobile client for the [Zone Weaver API](https://safe-zone-patrol-server.onrender.com).
 
 Dark **UAX-inspired** UI: black backgrounds, neon magenta accents, rounded cards, and bottom tab navigation.
 
@@ -34,7 +34,7 @@ Dark **UAX-inspired** UI: black backgrounds, neon magenta accents, rounded cards
 Default API URL:
 
 ```
-https://zone-weaver-server-7ksef.ondigitalocean.app/
+https://safe-zone-patrol-server.onrender.com
 ```
 
 Override with `.env`:
