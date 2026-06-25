@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Tabs } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 import {
   LayoutGrid,
   MessageSquare,
@@ -16,7 +16,7 @@ import { colors } from "@/theme/colors";
 
 export default function TabsLayout() {
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
+  const bottomInset = useBottomSafeInset();
   useLocationSync(Boolean(user));
 
   const isAdmin = useMemo(() => {
@@ -28,11 +28,12 @@ export default function TabsLayout() {
     return regType !== "USER";
   }, [user?.role, user?.registrationType, user?.registration_type]);
 
-  const tabBarHeight = 72 + insets.bottom;
+  const tabBarHeight = 62 + bottomInset;
 
   return (
     <AlarmInboxProvider>
     <Tabs
+      safeAreaInsets={{ bottom: bottomInset }}
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -40,8 +41,8 @@ export default function TabsLayout() {
           borderTopColor: colors.border,
           borderTopWidth: 1,
           height: tabBarHeight,
-          paddingBottom: insets.bottom + 10,
-          paddingTop: 8,
+          paddingBottom: bottomInset + 8,
+          paddingTop: 6,
         },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textDim,

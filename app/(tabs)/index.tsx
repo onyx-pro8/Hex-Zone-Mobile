@@ -110,6 +110,7 @@ export default function DashboardScreen() {
               gap: 8,
               flex: 1,
               justifyContent: "flex-end",
+              paddingRight: 10,
             }}
           >
             <View

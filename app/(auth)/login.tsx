@@ -17,10 +17,12 @@ import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { useAuth } from "@/context/AuthContext";
 import { AUTH_MAP_DEFAULT_CENTER } from "@/lib/h3";
 import { getLastEmail, setLastEmail } from "@/lib/storage";
+import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 import { colors } from "@/theme/colors";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const bottomInset = useBottomSafeInset();
   const { login, authError, clearAuthError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -82,7 +84,10 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingBottom: Math.max(24, bottomInset + 16),
+          }}
           keyboardShouldPersistTaps="handled"
         >
           <AuthMapPanel
