@@ -50,7 +50,7 @@ export function defaultRealtimeWsBase(): string {
     const wsProto = u.protocol === "https:" ? "wss:" : "ws:";
     return `${wsProto}//${u.host}/ws`;
   } catch {
-    return "wss://zone-weaver-server-7ksef.ondigitalocean.app/ws";
+    return "wss://safe-zone-patrol-server.onrender.com/ws";
   }
 }
 

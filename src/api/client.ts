@@ -9,7 +9,7 @@ const expoConfigExtra = (Constants.expoConfig?.extra ?? {}) as ExtraConfig;
 
 export const API_BASE_URL =
   expoConfigExtra.apiBaseUrl ||
-  "https://zone-weaver-server-7ksef.ondigitalocean.app/";
+  "https://safe-zone-patrol-server.onrender.com/";
 
 const LOG_PREFIX = "[ZoneWeaver/api]";
 
