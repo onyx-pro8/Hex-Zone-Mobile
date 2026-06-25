@@ -135,23 +135,40 @@ export async function searchPrivateMessageRecipients(
   query: string,
   position?: MessageFeaturePosition,
 ) {
-  const q = query.trim();
-  if (q.length < 2) {
-    return {
-      data: { zone_ids: [] as string[], members: [] as PrivateSearchMember[] },
-      error: null as string | null,
-      loading: false,
-    };
-  }
   return request<PrivateSearchMembersResponse>({
     method: "GET",
     url: "/message-feature/members/search",
     params: {
-      q,
+      q: query.trim(),
       ...(position
         ? { latitude: position.latitude, longitude: position.longitude }
         : {}),
     },
+  });
+}
+
+export async function markAlarmRead(messageEventId: string) {
+  return request<{
+    message_event_id: string;
+    owner_id: number;
+    read_by_owner_ids: number[];
+    is_read_by_viewer: boolean;
+    created_at: string;
+  }>({
+    method: "POST",
+    url: `/message-feature/messages/${encodeURIComponent(messageEventId)}/alarm-read`,
+  });
+}
+
+export async function markAlarmsRead(messageIds: string[]) {
+  return request<{
+    marked_message_ids: string[];
+    skipped_message_ids: string[];
+    marked_count: number;
+  }>({
+    method: "POST",
+    url: "/message-feature/alarms/mark-read",
+    data: { message_ids: messageIds },
   });
 }
 

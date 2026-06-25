@@ -63,7 +63,7 @@ export default function LoginScreen() {
         err instanceof Error
           ? err.message
           : "Login failed. Check your credentials and try again.";
-      if (/device.*registered|device limit|already has/i.test(message)) {
+      if (/device.*registered|device limit|already has|already in use|sign out there first/i.test(message)) {
         setError(message);
       } else if (/inactive|expired|403/i.test(message)) {
         setError("Account is inactive or expired");

@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter, type Href } from "expo-router";
 import * as Notifications from "expo-notifications";
 import {
   addForegroundMessageListener,
@@ -46,6 +47,7 @@ function toPayload(
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
+  const router = useRouter();
   const [pushToken, setPushToken] = useState<string | null>(null);
   const [permissionError, setPermissionError] = useState<string | null>(() =>
     isRunningExpoGo() ? EXPO_GO_PUSH_MESSAGE : null,
@@ -74,12 +76,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
     const respSub = addNotificationResponseListener((response) => {
       setLastNotification(toPayload(response.notification));
+      const data = response.notification.request.content.data as
+        | Record<string, unknown>
+        | undefined;
+      const event = String(data?.event ?? "");
+      const channelId = response.notification.request.content
+        .channelId as string | undefined;
+      const isAlarm =
+        channelId === "alarms" ||
+        channelId === "ns_panic" ||
+        event === "NEW_GEO_MESSAGE" ||
+        /PANIC|SENSOR|UNKNOWN|NS_PANIC/i.test(String(data?.type ?? ""));
+      if (isAlarm && token) {
+        router.push("/(tabs)/alerts" as unknown as Href);
+      }
     });
     return () => {
       recvSub.remove();
       respSub.remove();
     };
-  }, []);
+  }, [router, token]);
 
   const value = useMemo<NotificationContextValue>(
     () => ({ pushToken, permissionError, lastNotification }),

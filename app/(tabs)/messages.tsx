@@ -27,6 +27,7 @@ import {
 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { AlertBellButton } from "@/components/ui/AlertBellButton";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
@@ -34,7 +35,7 @@ import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { sendMessage, type Message } from "@/api/messages";
-import { propagateMessageFeatureMessage, acknowledgeWellnessCheck, listWellnessAcknowledgements, listInZoneMembers, searchPrivateMessageRecipients, type PrivateSearchMember } from "@/api/messageFeature";
+import { propagateMessageFeatureMessage, acknowledgeWellnessCheck, listWellnessAcknowledgements, searchPrivateMessageRecipients, type PrivateSearchMember } from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
@@ -67,7 +68,7 @@ import {
 } from "@/lib/messageWorkflow";
 import { colors } from "@/theme/colors";
 
-type Filter = "All" | MessageCategory;
+type Filter = "All" | Exclude<MessageCategory, "Alarm">;
 
 type OwnerNameMap = Record<number, string>;
 
@@ -441,10 +442,15 @@ export default function MessagesScreen() {
     [],
   );
 
+  const nonAlarmMessages = useMemo(
+    () => messages.filter((m) => m.category !== "Alarm"),
+    [messages],
+  );
+
   const filtered = useMemo(() => {
-    if (filter === "All") return messages;
-    return messages.filter((m) => m.category === filter);
-  }, [messages, filter]);
+    if (filter === "All") return nonAlarmMessages;
+    return nonAlarmMessages.filter((m) => m.category === filter);
+  }, [nonAlarmMessages, filter]);
 
   // Load members once so inbox rows can resolve a friendly name for senders
   // that did not embed a broadcast name.
@@ -474,24 +480,11 @@ export default function MessagesScreen() {
     if (!composeOpen) return;
     let active = true;
     setLoadingComposeMeta(true);
-    void Promise.all([
-      isPrivateMessageType(composeType)
-        ? resolveMessagePropagationPosition(null).then(async (resolved) => {
-            const position = "error" in resolved ? undefined : resolved.position;
-            return listInZoneMembers(position);
-          })
-        : Promise.resolve({ data: { zone_ids: [], members: [] }, error: null }),
-      composeZoneId
-        ? listGuestRequests(composeZoneId)
-        : Promise.resolve({ data: [], error: null, loading: false }),
-    ])
-      .then(([zoneRes, guestsRes]) => {
+    void (composeZoneId
+      ? listGuestRequests(composeZoneId)
+      : Promise.resolve({ data: [], error: null, loading: false }))
+      .then((guestsRes) => {
         if (!active) return;
-        if (isPrivateMessageType(composeType)) {
-          setSenderZoneIds(zoneRes.data?.zone_ids ?? []);
-        }
-        setMembers([]);
-
         const guestRows = guestsRes.data ?? [];
         setGuestOptions(
           guestRows
@@ -508,34 +501,48 @@ export default function MessagesScreen() {
     return () => {
       active = false;
     };
-  }, [composeOpen, composeZoneId, composeType]);
+  }, [composeOpen, composeZoneId]);
 
   useEffect(() => {
-    if (!composeOpen || !isPrivateMessageType(composeType)) return;
-    const q = privateSearchQuery.trim();
-    if (q.length < 2) {
-      setPrivateSearchResults([]);
-      setPrivateSearchLoading(false);
+    if (!composeOpen || !isPrivateMessageType(composeType)) {
+      if (!isPrivateMessageType(composeType)) {
+        setSenderZoneIds([]);
+        setPrivateSearchResults([]);
+      }
       return;
     }
+
     let active = true;
     setPrivateSearchLoading(true);
+    const debounceMs = privateSearchQuery.trim().length >= 2 ? 300 : 0;
     const timer = setTimeout(() => {
       void (async () => {
-        const resolved = await resolveMessagePropagationPosition(null);
+        const resolved = await resolveMessagePropagationPosition(
+          user?.mapCenter ?? user?.map_center ?? null,
+        );
         const position = "error" in resolved ? undefined : resolved.position;
-        const result = await searchPrivateMessageRecipients(q, position);
+        const result = await searchPrivateMessageRecipients(
+          privateSearchQuery,
+          position,
+        );
         if (!active) return;
         setPrivateSearchLoading(false);
         setSenderZoneIds(result.data?.zone_ids ?? []);
         setPrivateSearchResults(result.data?.members ?? []);
       })();
-    }, 300);
+    }, debounceMs);
+
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [composeOpen, composeType, privateSearchQuery]);
+  }, [
+    composeOpen,
+    composeType,
+    privateSearchQuery,
+    user?.mapCenter,
+    user?.map_center,
+  ]);
 
   useEffect(() => {
     setComposeReceiverId("");
@@ -572,6 +579,12 @@ export default function MessagesScreen() {
   const sendQuickAlert = useCallback(
     async (type: QuickMessageType) => {
       if (quickBusy) return;
+      if (isPrivateMessageType(type as MessageType)) {
+        setComposeType(type as MessageType);
+        setDraft((settings.quickMessages[type] ?? "").trim());
+        setComposeOpen(true);
+        return;
+      }
       if (!(await confirmEmergencySend(type as MessageType))) return;
       const presetText = (settings.quickMessages[type] ?? "").trim();
       if (!presetText) {
@@ -827,6 +840,7 @@ export default function MessagesScreen() {
           subtitle={realtimeHint}
           right={
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <AlertBellButton />
               {isAdministrator ? (
                 <Pressable
                   onPress={() =>
@@ -893,7 +907,7 @@ export default function MessagesScreen() {
                     flexWrap: "wrap",
                   }}
                 >
-                  {(["All", "Alarm", "Alert", "Access"] as Filter[]).map((f) => (
+                  {(["All", "Alert", "Access"] as Filter[]).map((f) => (
                     <Pressable key={f} onPress={() => setFilter(f)}>
                       <Chip
                         label={f}
@@ -1056,9 +1070,11 @@ export default function MessagesScreen() {
                 isPrivateMessageType(composeType) ? (
                   <View style={{ marginTop: 12, gap: 8 }}>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      Search member by name or email (you must be inside a zone)
+                      Same location send flow as PANIC or PA: search admin and members
+                      reachable in this zone, then pick one recipient. You cannot select
+                      yourself.
                     </Text>
-                    {loadingComposeMeta ? (
+                    {privateSearchLoading && senderZoneIds.length === 0 ? (
                       <ActivityIndicator color={colors.accent} />
                     ) : senderZoneIds.length === 0 ? (
                       <Text style={{ color: colors.textDim, fontSize: 12 }}>

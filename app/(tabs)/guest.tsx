@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { CalendarRange, ChevronRight, Ticket } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { AlertBellButton } from "@/components/ui/AlertBellButton";
 import { Card } from "@/components/ui/Card";
 import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { colors } from "@/theme/colors";
@@ -45,6 +46,7 @@ export default function GuestHubScreen() {
           <ScreenHeader
             title="Guest"
             subtitle="Manage your expected visitors"
+            right={<AlertBellButton />}
           />
 
           {!zoneId ? (

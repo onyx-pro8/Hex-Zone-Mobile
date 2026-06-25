@@ -19,6 +19,7 @@ import {
 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { AlertBellButton } from "@/components/ui/AlertBellButton";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
@@ -279,6 +280,7 @@ export default function MembersScreen() {
         <ScreenHeader
           title="Members"
           subtitle={subtitle}
+          right={<AlertBellButton />}
         />
 
         <View style={{ paddingHorizontal: 20, paddingBottom: 10, gap: 10 }}>
