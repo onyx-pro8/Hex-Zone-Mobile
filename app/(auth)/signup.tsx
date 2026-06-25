@@ -38,6 +38,7 @@ import {
   type LatLng,
 } from "@/lib/h3";
 import { colors } from "@/theme/colors";
+import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 
 const accountOptions: {
   value: AccountType;
@@ -82,6 +83,7 @@ const labelStyle = {
 
 export default function SignupScreen() {
   const router = useRouter();
+  const bottomInset = useBottomSafeInset();
   const { register } = useAuth();
   const params = useLocalSearchParams<{ invite_token?: string | string[] }>();
   const inviteToken = useMemo(() => {
@@ -210,7 +212,10 @@ export default function SignupScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingBottom: Math.max(24, bottomInset + 16),
+          }}
           keyboardShouldPersistTaps="handled"
         >
           <AuthMapPanel
