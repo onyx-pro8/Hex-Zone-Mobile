@@ -30,7 +30,7 @@ void ensureAndroidChannels();
 const PUBLIC_ROOT_SEGMENTS = new Set(["access", "join", "guest"]);
 
 function ProtectedShell() {
-  const { token, initializing } = useAuth();
+  const { token, user, initializing, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -47,12 +47,13 @@ function ProtectedShell() {
       typeof firstSegment === "string" &&
       PUBLIC_ROOT_SEGMENTS.has(firstSegment);
     if (onPublicLanding) return;
-    if (!token && inTabsGroup) {
+    const sessionReady = Boolean(token && user);
+    if (!sessionReady && inTabsGroup) {
       router.replace("/(auth)/welcome");
-    } else if (token && (inAuthGroup || firstSegment == null)) {
+    } else if (sessionReady && !loading && (inAuthGroup || firstSegment == null)) {
       router.replace("/(tabs)");
     }
-  }, [token, segments, initializing, router]);
+  }, [token, user, loading, segments, initializing, router]);
 
   return (
     <Stack

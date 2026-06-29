@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Logo } from "@/components/ui/Logo";
 import { AlertBellButton } from "@/components/ui/AlertBellButton";
+import { RecentServicesSection } from "@/components/dashboard/RecentServicesSection";
 import { useAuth } from "@/context/AuthContext";
 import { MAX_ZONE_NAME_LENGTH, useZoneBuilder } from "@/hooks/useZoneBuilder";
 import { colorForZoneType, summarizeZone } from "@/lib/zoneGeometry";
@@ -159,6 +160,9 @@ export default function DashboardScreen() {
             </View>
           </View>
           <AlertBellButton />
+        </View>
+        <View style={{ marginHorizontal: 14, marginTop: 10 }}>
+          <RecentServicesSection zoneId={ownerZoneId || undefined} />
         </View>
       </SafeAreaView>
 

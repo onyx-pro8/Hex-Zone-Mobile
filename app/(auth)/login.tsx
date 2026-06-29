@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -8,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { AlertTriangle, Lock, Mail, QrCode } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -15,8 +17,16 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { useAuth } from "@/context/AuthContext";
+import {
+  DEVICE_CHANGE_DECLINED_MESSAGE,
+  DEVICE_CHANGE_PROMPT_MESSAGE,
+  DEVICE_CHANGE_PROMPT_TITLE,
+  isDeviceSessionConflictError,
+  isDeviceSessionConflictMessage,
+} from "@/lib/deviceSync";
 import { AUTH_MAP_DEFAULT_CENTER } from "@/lib/h3";
-import { getLastEmail, setLastEmail } from "@/lib/storage";
+import { getLastEmail, getRememberMe, setLastEmail } from "@/lib/storage";
+import { getSecureCredentials } from "@/lib/secureCredentials";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 import { colors } from "@/theme/colors";
 
@@ -29,35 +39,60 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deviceChangePromptVisible, setDeviceChangePromptVisible] =
+    useState(false);
 
   // Pick up errors from background device sync (e.g. account device limit
   // hit when restoring an existing token on a second phone).
   useEffect(() => {
-    if (authError) setError(authError);
+    if (!authError) return;
+    if (isDeviceSessionConflictMessage(authError)) {
+      setDeviceChangePromptVisible(true);
+      setError(null);
+      return;
+    }
+    setError(authError);
   }, [authError]);
 
-  useEffect(() => {
-    let active = true;
-    void getLastEmail().then((saved) => {
-      if (active && saved) setEmail(saved);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void (async () => {
+        const [savedEmail, savedRemember, creds] = await Promise.all([
+          getLastEmail(),
+          getRememberMe(),
+          getSecureCredentials(),
+        ]);
+        if (!active) return;
+        if (creds) {
+          setEmail(creds.email);
+          setPassword(creds.password);
+          setRememberMe(true);
+          return;
+        }
+        if (savedEmail) setEmail(savedEmail);
+        setPassword("");
+        setRememberMe(savedRemember);
+      })();
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const center = AUTH_MAP_DEFAULT_CENTER;
 
-  const onSubmit = async () => {
+  const onSubmit = async (forceDeviceTakeover = false) => {
     setError(null);
     clearAuthError();
+    setDeviceChangePromptVisible(false);
     if (!email.trim() || !password) {
       setError("Email and password are required.");
       return;
     }
     setSubmitting(true);
     try {
-      await login(email.trim(), password, { rememberMe });
+      await login(email.trim(), password, { rememberMe, forceDeviceTakeover });
       void setLastEmail(email.trim());
       router.replace("/(tabs)");
     } catch (err) {
@@ -65,9 +100,17 @@ export default function LoginScreen() {
         err instanceof Error
           ? err.message
           : "Login failed. Check your credentials and try again.";
-      if (/device.*registered|device limit|already has|already in use|sign out there first/i.test(message)) {
-        setError(message);
-      } else if (/inactive|expired|403/i.test(message)) {
+      const isConflict =
+        isDeviceSessionConflictError(err) ||
+        isDeviceSessionConflictMessage(message);
+      if (isConflict && !forceDeviceTakeover) {
+        setDeviceChangePromptVisible(true);
+        return;
+      }
+      if (
+        !isDeviceSessionConflictMessage(message) &&
+        /inactive|expired/i.test(message)
+      ) {
         setError("Account is inactive or expired");
       } else {
         setError(message);
@@ -77,8 +120,108 @@ export default function LoginScreen() {
     }
   };
 
+  const onDeclineDeviceChange = () => {
+    setDeviceChangePromptVisible(false);
+    setError(DEVICE_CHANGE_DECLINED_MESSAGE);
+  };
+
+  const onAcceptDeviceChange = () => {
+    setDeviceChangePromptVisible(false);
+    void onSubmit(true);
+  };
+
   return (
     <GradientBackground>
+      <Modal
+        visible={deviceChangePromptVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={onDeclineDeviceChange}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            justifyContent: "center",
+            paddingHorizontal: 28,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.bgSurface,
+              borderRadius: 16,
+              padding: 24,
+              borderWidth: 1,
+              borderColor: colors.border,
+              gap: 16,
+            }}
+          >
+            <Text
+              style={{
+                color: colors.text,
+                fontSize: 20,
+                fontWeight: "800",
+                textAlign: "center",
+              }}
+            >
+              {DEVICE_CHANGE_PROMPT_TITLE}
+            </Text>
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: 14,
+                lineHeight: 21,
+                textAlign: "center",
+              }}
+            >
+              {DEVICE_CHANGE_PROMPT_MESSAGE}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+              <Pressable
+                onPress={onDeclineDeviceChange}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 15,
+                    fontWeight: "700",
+                  }}
+                >
+                  No
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={onAcceptDeviceChange}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  backgroundColor: colors.accent,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontSize: 15,
+                    fontWeight: "700",
+                  }}
+                >
+                  Yes
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -152,7 +295,7 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          {error && /device|already has/i.test(error) ? (
+          {error ? (
             <View
               style={{
                 marginHorizontal: 24,
@@ -164,14 +307,14 @@ export default function LoginScreen() {
                 paddingVertical: 12,
                 borderRadius: 12,
                 borderWidth: 1,
-                borderColor: "rgba(255, 77, 109, 0.5)",
-                backgroundColor: "rgba(255, 77, 109, 0.1)",
+                borderColor: "rgba(255, 179, 71, 0.5)",
+                backgroundColor: "rgba(255, 179, 71, 0.1)",
               }}
             >
-              <AlertTriangle size={16} color={colors.danger} />
+              <AlertTriangle size={16} color={colors.warning} />
               <Text
                 style={{
-                  color: colors.danger,
+                  color: colors.textMuted,
                   fontSize: 12,
                   lineHeight: 18,
                   flex: 1,
@@ -202,7 +345,9 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               leftIcon={<Lock size={18} color={colors.textMuted} />}
               error={
-                error && !/device|already has/i.test(error) ? error : undefined
+                error && /inactive|expired|credentials/i.test(error)
+                  ? error
+                  : undefined
               }
             />
 
@@ -267,7 +412,7 @@ export default function LoginScreen() {
 
             <Button
               label="Login"
-              onPress={onSubmit}
+              onPress={() => void onSubmit(false)}
               loading={submitting}
               fullWidth
               size="lg"

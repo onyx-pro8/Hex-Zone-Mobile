@@ -51,13 +51,13 @@ export function accountTypeLabel(type: NormalizedAccountType): string {
 export function deviceLimitDescription(type: NormalizedAccountType): string {
   switch (type) {
     case "PRIVATE":
-      return "Private accounts allow 1 registered device per user. Sign out on another device before signing in here.";
+      return "Private accounts allow 1 registered device per user. You can switch devices from the login screen or Devices settings.";
     case "PRIVATE_PLUS":
-      return "Private+ accounts allow up to 10 registered devices per user.";
+      return "Private+ accounts allow up to 10 registered devices per user. Only one device can be active at a time.";
     case "EXCLUSIVE":
-      return "Exclusive accounts allow 1 active device per user at a time.";
+      return "Exclusive accounts allow 1 active device per user at a time. Use \"Use this device instead\" on login to switch phones.";
     case "ENHANCED":
-      return "Enhanced accounts allow 1 active device per user at a time.";
+      return "Enhanced accounts allow 1 active device per user at a time. Use \"Use this device instead\" on login to switch phones.";
     case "ENHANCED_PLUS":
       return "Enhanced+ accounts have no device cap, but only one session can be active at a time.";
   }

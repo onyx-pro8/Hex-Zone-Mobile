@@ -99,6 +99,14 @@ export async function deleteDevice(deviceId: number | string) {
   });
 }
 
+export async function claimDeviceSession(hid?: string) {
+  return request<{ released: number }>({
+    method: "POST",
+    url: "/devices/claim-session",
+    data: hid ? { hid } : {},
+  });
+}
+
 export async function sendDeviceHeartbeat(deviceId: number | string) {
   return request<{ success?: boolean }>({
     method: "POST",
