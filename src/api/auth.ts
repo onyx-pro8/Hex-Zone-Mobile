@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { normalizeAccountType } from "@/lib/accountLimits";
 import { normalizeMapCenter, type MapCenter } from "@/lib/mapCenter";
 
 export type AccountType =
@@ -281,18 +282,10 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
   const last = raw.last_name ?? "";
   const fullName =
     raw.name || `${first} ${last}`.trim() || raw.email || "Member";
-  const accountTypeRaw =
-    raw.accountType ?? String(raw.account_type ?? "").toUpperCase();
-  const normalizedAccountType: AccountType =
-    accountTypeRaw === "PRIVATE_PLUS"
-      ? "PRIVATE_PLUS"
-      : accountTypeRaw === "EXCLUSIVE"
-        ? "EXCLUSIVE"
-        : accountTypeRaw === "ENHANCED"
-          ? "ENHANCED"
-          : accountTypeRaw === "ENHANCED_PLUS"
-            ? "ENHANCED_PLUS"
-            : "PRIVATE";
+  const normalizedAccountType: AccountType = normalizeAccountType(
+    raw.accountType,
+    raw.account_type,
+  );
   const role =
     raw.role ??
     (String(

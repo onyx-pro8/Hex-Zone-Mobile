@@ -49,6 +49,10 @@ import {
 import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { devLog } from "@/lib/devConsole";
 import { presentLocalMessageNotification } from "@/lib/notifications";
+import {
+  canAdministratorInviteUserMember,
+  MEMBER_INVITE_UNAVAILABLE_HINT,
+} from "@/lib/accountLimits";
 import { colors } from "@/theme/colors";
 
 type Tab = "member" | "guest";
@@ -226,7 +230,7 @@ function MemberInviteSection({ disabled }: { disabled: boolean }) {
       </Text>
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
         Generates a single-use registration link your invitee can open to join
-        your account (Private / Exclusive admin only).
+        your account as a member user.
       </Text>
 
       <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
@@ -264,8 +268,7 @@ function MemberInviteSection({ disabled }: { disabled: boolean }) {
       />
       {disabled ? (
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
-          Member invite QR is only available to administrators of Private and
-          Exclusive accounts.
+          {MEMBER_INVITE_UNAVAILABLE_HINT}
         </Text>
       ) : null}
     </Card>
@@ -617,14 +620,15 @@ export default function AccessScreen() {
     }
   }, [params.gt, params.tab, params.mode]);
 
-  const memberInviteDisabled = useMemo(() => {
-    const role = String(user?.role ?? "").toLowerCase();
-    if (role !== "administrator") return true;
-    const accountType = String(
-      user?.accountType ?? user?.account_type ?? "",
-    ).toUpperCase();
-    return !(accountType === "PRIVATE" || accountType === "EXCLUSIVE");
-  }, [user]);
+  const memberInviteDisabled = useMemo(
+    () =>
+      !canAdministratorInviteUserMember({
+        role: user?.role,
+        accountType: user?.accountType,
+        legacyAccountType: user?.account_type,
+      }),
+    [user],
+  );
 
   const loadRequests = useCallback(async () => {
     if (!effectiveZoneId) return;
