@@ -12,6 +12,7 @@ import { getMembers } from "@/api/members";
 import { messageBroadcastLabel } from "@/lib/messageBroadcast";
 import { resolveBroadcastName } from "@/lib/appSettings";
 import { toMessageTypeLabel } from "@/lib/messageTypes";
+import { isUnknownMessageType } from "@/lib/messageWorkflow";
 import { useEffect, useMemo, useState } from "react";
 import { colors } from "@/theme/colors";
 
@@ -125,6 +126,7 @@ export default function AlertsScreen() {
               </Card>
             }
             renderItem={({ item }) => {
+              const isUnknown = isUnknownMessageType(item.type);
               const broadcast = messageBroadcastLabel(item, {
                 selfOwnerId: ownerId,
                 selfBroadcastName,
@@ -134,7 +136,9 @@ export default function AlertsScreen() {
                 <Card
                   style={{
                     marginBottom: 10,
-                    borderColor: "rgba(226,59,78,0.35)",
+                    borderColor: isUnknown ? "#B71C1C" : "rgba(226,59,78,0.35)",
+                    borderWidth: isUnknown ? 2 : 1,
+                    backgroundColor: isUnknown ? "#FFEBEE" : undefined,
                   }}
                 >
                   <View
@@ -147,7 +151,7 @@ export default function AlertsScreen() {
                   >
                     <Chip
                       label={toMessageTypeLabel(item.type)}
-                      tone="danger"
+                      tone={isUnknown ? "critical" : "danger"}
                     />
                     <Text style={{ color: colors.textDim, fontSize: 11 }}>
                       {new Date(item.created_at).toLocaleString()}
@@ -155,8 +159,8 @@ export default function AlertsScreen() {
                   </View>
                   <Text
                     style={{
-                      color: colors.text,
-                      fontSize: 16,
+                      color: isUnknown ? "#B71C1C" : colors.text,
+                      fontSize: isUnknown ? 18 : 16,
                       fontWeight: "800",
                       marginTop: 10,
                     }}
@@ -165,9 +169,9 @@ export default function AlertsScreen() {
                   </Text>
                   <Text
                     style={{
-                      color: colors.text,
-                      fontSize: 15,
-                      fontWeight: "500",
+                      color: isUnknown ? "#7A1622" : colors.text,
+                      fontSize: isUnknown ? 17 : 15,
+                      fontWeight: isUnknown ? "700" : "500",
                       marginTop: 4,
                       lineHeight: 22,
                     }}

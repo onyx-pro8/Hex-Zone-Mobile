@@ -10,15 +10,22 @@ const PUSH_TOKEN_KEY = "zoneweaver:push_token";
 const MAP_CENTER_KEY = "zoneweaver:map_center";
 const GUEST_SESSION_KEY = "zoneweaver:guest_session";
 
+/** In-memory cache so the API client sees a new token immediately after login. */
+let memoryToken: string | null | undefined;
+
 export async function getToken(): Promise<string | null> {
+  if (memoryToken !== undefined) return memoryToken;
   try {
-    return await AsyncStorage.getItem(TOKEN_KEY);
+    memoryToken = await AsyncStorage.getItem(TOKEN_KEY);
+    return memoryToken;
   } catch {
+    memoryToken = null;
     return null;
   }
 }
 
 export async function setToken(token: string): Promise<void> {
+  memoryToken = token;
   try {
     await AsyncStorage.setItem(TOKEN_KEY, token);
   } catch {
@@ -27,6 +34,7 @@ export async function setToken(token: string): Promise<void> {
 }
 
 export async function clearToken(): Promise<void> {
+  memoryToken = null;
   try {
     await AsyncStorage.removeItem(TOKEN_KEY);
   } catch {

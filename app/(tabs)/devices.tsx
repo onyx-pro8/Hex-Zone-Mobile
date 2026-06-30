@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   Text,
   View,
@@ -22,6 +24,12 @@ import {
   getDeviceLimit,
   normalizeAccountType,
 } from "@/lib/accountLimits";
+import {
+  deriveDeviceOnline,
+  removeDevice,
+  signOutDevice,
+} from "@/lib/deviceSync";
+import { getOrCreateDeviceHid } from "@/lib/storage";
 import { colors } from "@/theme/colors";
 
 function ownerLabel(device: DeviceRecord): string {
@@ -43,20 +51,20 @@ function formatLastSeen(value?: string): string {
   return t.toLocaleString();
 }
 
-function deriveOnline(device: DeviceRecord): boolean {
-  if (typeof device.is_online === "boolean") return device.is_online;
-  if (typeof device.status === "boolean") return device.status;
-  return device.active !== false;
-}
-
 function DeviceRow({
   device,
-  isMine,
+  isThisPhone,
+  busy,
+  onSignOut,
+  onRemove,
 }: {
   device: DeviceRecord;
-  isMine: boolean;
+  isThisPhone: boolean;
+  busy: boolean;
+  onSignOut: () => void;
+  onRemove: () => void;
 }) {
-  const online = deriveOnline(device);
+  const online = deriveDeviceOnline(device);
   const owner = ownerLabel(device);
   const zone = zoneLabel(device.h3_cell_id);
   return (
@@ -64,7 +72,7 @@ function DeviceRow({
       style={{
         marginBottom: 10,
         gap: 10,
-        borderColor: isMine ? colors.accent : colors.border,
+        borderColor: isThisPhone ? colors.accent : colors.border,
       }}
     >
       <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
@@ -88,7 +96,7 @@ function DeviceRow({
             >
               {device.name ?? device.hid}
             </Text>
-            {isMine ? (
+            {isThisPhone ? (
               <Chip label="This phone" tone="default" />
             ) : null}
           </View>
@@ -147,6 +155,47 @@ function DeviceRow({
           tone={device.propagate_enabled ? "default" : "muted"}
         />
       </View>
+
+      {!isThisPhone ? (
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+          {online ? (
+            <Pressable
+              onPress={onSignOut}
+              disabled={busy}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: "center",
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600" }}>
+                Sign out device
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={onRemove}
+            disabled={busy}
+            style={{
+              flex: 1,
+              paddingVertical: 10,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "rgba(255, 77, 109, 0.4)",
+              alignItems: "center",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: colors.danger, fontSize: 13, fontWeight: "600" }}>
+              Remove
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -157,12 +206,18 @@ export default function DevicesScreen() {
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [localHid, setLocalHid] = useState("");
+  const [actionId, setActionId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await getDevices();
+      const [hid, result] = await Promise.all([
+        getOrCreateDeviceHid(),
+        getDevices(),
+      ]);
+      setLocalHid(hid);
       if (result.error) {
         setError(result.error);
         return;
@@ -183,7 +238,6 @@ export default function DevicesScreen() {
   );
   const limit = useMemo(() => getDeviceLimit(accountType), [accountType]);
 
-  // Owner-scoped device count drives the "X / Y" tracker.
   const ownerId = String(user?.id ?? user?.accountOwnerId ?? "").trim();
   const myDevices = useMemo(() => {
     if (!ownerId) return devices;
@@ -197,6 +251,53 @@ export default function DevicesScreen() {
       return bt - at;
     });
   }, [devices]);
+
+  const confirmRemove = (device: DeviceRecord) => {
+    Alert.alert(
+      "Remove device?",
+      `Remove "${device.name ?? device.hid}" from your account? You can sign in again on that phone later.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              if (!device.id) return;
+              setActionId(String(device.id));
+              try {
+                await removeDevice(device.id);
+                await load();
+              } catch (err) {
+                setError(
+                  err instanceof Error ? err.message : "Could not remove device.",
+                );
+              } finally {
+                setActionId(null);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleSignOut = (device: DeviceRecord) => {
+    void (async () => {
+      if (!device.id) return;
+      setActionId(String(device.id));
+      try {
+        await signOutDevice(device.id);
+        await load();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not sign out device.",
+        );
+      } finally {
+        setActionId(null);
+      }
+    })();
+  };
 
   return (
     <GradientBackground>
@@ -246,12 +347,20 @@ export default function DevicesScreen() {
           <FlatList
             data={sorted}
             keyExtractor={(item) => String(item.id)}
-            renderItem={({ item }) => (
-              <DeviceRow
-                device={item}
-                isMine={ownerId ? String(item.owner_id ?? "") === ownerId : false}
-              />
-            )}
+            renderItem={({ item }) => {
+              const isThisPhone =
+                localHid.length > 0 &&
+                String(item.hid).toUpperCase() === localHid.toUpperCase();
+              return (
+                <DeviceRow
+                  device={item}
+                  isThisPhone={isThisPhone}
+                  busy={actionId === String(item.id)}
+                  onSignOut={() => handleSignOut(item)}
+                  onRemove={() => confirmRemove(item)}
+                />
+              );
+            }}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
             refreshControl={
               <RefreshControl

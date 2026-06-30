@@ -215,11 +215,12 @@ export function ConfigForm() {
         />
       </Card>
 
-      <SectionTitle>Shared-notification settings</SectionTitle>
+      <SectionTitle>Smart-home integration</SectionTitle>
       <Card style={{ gap: 14 }}>
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-          Used to communicate with sharednotification.com. These are managed
-          automatically and cannot be edited here.
+          Configure how your smart-home device receives zone alerts. Use the
+          API key and zone id on the device. Set a webhook for push delivery, or
+          leave it blank and rely on periodical polling.
         </Text>
         <Field
           label="Hardware identification (HID)"
@@ -228,11 +229,14 @@ export function ConfigForm() {
           placeholder="123456789-ABCD01"
           editable={false}
         />
+        <Text style={{ color: colors.textDim, fontSize: 11, marginTop: -8 }}>
+          Smart-home device id registered in Device Manager.
+        </Text>
         <Field
-          label="Network identification"
+          label="Network identification (Zone ID)"
           value={draft.sharedNotification.networkId}
           onChangeText={() => {}}
-          placeholder="Fred Young Drive"
+          placeholder="ZONE-ABC123"
           editable={false}
         />
         <Field
@@ -242,19 +246,46 @@ export function ConfigForm() {
           placeholder="66c5b8a0-e30c-…"
           editable={false}
         />
+        <Text style={{ color: colors.textDim, fontSize: 11, marginTop: -8 }}>
+          Authenticates the smart-home device when talking to the server.
+        </Text>
         <Field
           label="Webhook"
           value={draft.sharedNotification.webhook}
-          onChangeText={() => {}}
-          placeholder="/alertname"
-          editable={false}
+          onChangeText={(v) =>
+            update({
+              sharedNotification: { ...draft.sharedNotification, webhook: v },
+            })
+          }
+          placeholder="https://your-device.local/alert"
         />
+        <Text style={{ color: colors.textDim, fontSize: 11, marginTop: -8 }}>
+          Optional callback URL on the device to accept pushed notifications.
+        </Text>
         <Field
           label="Periodical check (sec)"
           value={draft.sharedNotification.periodicalCheckSec}
-          onChangeText={() => {}}
+          onChangeText={(v) =>
+            update({
+              sharedNotification: {
+                ...draft.sharedNotification,
+                periodicalCheckSec: v,
+              },
+            })
+          }
           placeholder="86400"
-          editable={false}
+          keyboardType="numeric"
+        />
+        <Text style={{ color: colors.textDim, fontSize: 11, marginTop: -8 }}>
+          How often the device polls the server when no webhook is set.
+        </Text>
+        <Button
+          label={
+            saving ? "Saving…" : saved ? "Saved" : "Update smart-home settings"
+          }
+          onPress={() => void onSave()}
+          disabled={loading || saving}
+          fullWidth
         />
       </Card>
 

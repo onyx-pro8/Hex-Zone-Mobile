@@ -12,7 +12,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, type Href } from "expo-router";
+import { useRouter, useLocalSearchParams, type Href } from "expo-router";
 import {
   BellRing,
   HeartPulse,
@@ -35,7 +35,13 @@ import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { sendMessage, type Message } from "@/api/messages";
-import { propagateMessageFeatureMessage, acknowledgeWellnessCheck, listWellnessAcknowledgements, searchPrivateMessageRecipients, type PrivateSearchMember } from "@/api/messageFeature";
+import {
+  propagateMessageFeatureMessage,
+  acknowledgeWellnessCheck,
+  listWellnessAcknowledgements,
+  searchPrivateMessageRecipients,
+  type PrivateSearchMember,
+} from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
@@ -49,6 +55,7 @@ import {
   groupMessageTypesForUI,
   isAccessGuestChannelType,
   isPrivateMessageType,
+  toMessageType,
   toMessageTypeLabel,
   usesGeoPropagationMessageType,
   type MessageCategory,
@@ -64,8 +71,17 @@ import { subscribeWellnessAck } from "@/lib/messageSocket";
 import {
   getMessageWorkflow,
   isEmergencyMessageType,
-  requiresAdminToSendType,
+  isUnknownMessageType,
 } from "@/lib/messageWorkflow";
+import {
+  SERVICE_PA_TOPICS,
+  buildServicePaMsgPayload,
+  getTopicOption,
+  isServicePaMessageType,
+  serviceTopicRequiresSubtopic,
+  validateServicePaCompose,
+  type ServicePaComposeFields,
+} from "@/lib/servicePaTopics";
 import { colors } from "@/theme/colors";
 
 type Filter = "All" | Exclude<MessageCategory, "Alarm">;
@@ -91,7 +107,9 @@ function WellnessAckInline({
     setSummaryText(
       `${data.acknowledgements.length}/${data.expected_recipient_ids.length} responded`,
     );
-    const mine = data.acknowledgements.some((row) => row.owner_id === selfOwnerId);
+    const mine = data.acknowledgements.some(
+      (row) => row.owner_id === selfOwnerId,
+    );
     setAcked(mine);
     setCanAck(
       selfOwnerId != null &&
@@ -126,7 +144,9 @@ function WellnessAckInline({
   return (
     <View style={{ marginTop: 10, gap: 8 }}>
       {summaryText ? (
-        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{summaryText}</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          {summaryText}
+        </Text>
       ) : null}
       {canAck ? (
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -163,7 +183,9 @@ function WellnessAckInline({
         </View>
       ) : null}
       {acked ? (
-        <Text style={{ color: colors.success, fontSize: 12, fontWeight: "600" }}>
+        <Text
+          style={{ color: colors.success, fontSize: 12, fontWeight: "600" }}
+        >
           You acknowledged this wellness check.
         </Text>
       ) : null}
@@ -176,15 +198,19 @@ function MessageRow({
   selfOwnerId,
   selfBroadcastName,
   ownerNames,
+  highlighted = false,
 }: {
   item: Message;
   selfOwnerId: number | null;
   selfBroadcastName: string;
   ownerNames: OwnerNameMap;
+  highlighted?: boolean;
 }) {
   const router = useRouter();
-  const tone =
-    item.category === "Alarm"
+  const isUnknown = isUnknownMessageType(item.type);
+  const tone = isUnknown
+    ? "critical"
+    : item.category === "Alarm"
       ? "danger"
       : item.category === "Access"
         ? "warning"
@@ -206,7 +232,23 @@ function MessageRow({
       : null;
 
   return (
-    <Card style={{ marginBottom: 10 }}>
+    <Card
+      style={{
+        marginBottom: 10,
+        ...(highlighted
+          ? {
+              borderColor: colors.accent,
+              borderWidth: 2,
+            }
+          : null),
+        ...(isUnknown
+          ? {
+              borderColor: "#B71C1C",
+              backgroundColor: "#FFEBEE",
+            }
+          : null),
+      }}
+    >
       <View
         style={{
           flexDirection: "row",
@@ -216,32 +258,52 @@ function MessageRow({
           gap: 6,
         }}
       >
-        <Chip label={toMessageTypeLabel(item.type)} tone={tone} />
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 6,
+          }}
+        >
+          <Chip label={toMessageTypeLabel(item.type)} tone={tone} />
+          {item.topic_label ? (
+            <Chip label={item.topic_label} tone="warning" />
+          ) : null}
+        </View>
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
           {new Date(item.created_at).toLocaleString()}
         </Text>
       </View>
       <Text
         style={{
-          color: colors.text,
-          fontSize: 16,
+          color: isUnknown ? "#B71C1C" : colors.text,
+          fontSize: item.subject ? 17 : isUnknown ? 18 : 16,
           fontWeight: "800",
           marginTop: 10,
         }}
       >
-        {broadcast}
+        {item.subject || broadcast}
       </Text>
-      <Text
-        style={{
-          color: colors.text,
-          fontSize: 15,
-          fontWeight: "500",
-          marginTop: 4,
-          lineHeight: 22,
-        }}
-      >
-        {item.message}
-      </Text>
+      {item.subject ? (
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+          {broadcast}
+        </Text>
+      ) : null}
+      {item.message && item.message !== item.subject ? (
+        <Text
+          style={{
+            color: isUnknown ? "#7A1622" : colors.text,
+            fontSize: isUnknown ? 17 : 15,
+            fontWeight: isUnknown ? "700" : "500",
+            marginTop: 4,
+            lineHeight: 22,
+          }}
+        >
+          {item.message}
+        </Text>
+      ) : null}
       <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>
         Zone {item.zone_id}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
@@ -274,7 +336,9 @@ function MessageRow({
           }}
         >
           <MessageSquare size={14} color={colors.accent} />
-          <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+          <Text
+            style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}
+          >
             View private thread
           </Text>
         </Pressable>
@@ -298,10 +362,25 @@ const ALARM_ACTIONS: QuickAction[] = [
 ];
 
 const MESSAGING_ACTIONS: QuickAction[] = [
-  { type: "PRIVATE", label: "PRIVATE MESSAGE", icon: MessageSquare, tone: "messaging" },
-  { type: "PA", label: "PUBLIC ANNOUNCEMENT", icon: Megaphone, tone: "messaging" },
+  {
+    type: "PRIVATE",
+    label: "PRIVATE MESSAGE",
+    icon: MessageSquare,
+    tone: "messaging",
+  },
+  {
+    type: "PA",
+    label: "PUBLIC ANNOUNCEMENT",
+    icon: Megaphone,
+    tone: "messaging",
+  },
   { type: "SERVICE", label: "SERVICES", icon: Wrench, tone: "messaging" },
-  { type: "WELLNESS_CHECK", label: "WELLNESS CHECK", icon: HeartPulse, tone: "messaging" },
+  {
+    type: "WELLNESS_CHECK",
+    label: "WELLNESS CHECK",
+    icon: HeartPulse,
+    tone: "messaging",
+  },
 ];
 
 function QuickActionButton({
@@ -315,10 +394,24 @@ function QuickActionButton({
 }) {
   const Icon = action.icon;
   const isAlarm = action.tone === "alarm";
+  const isUnknown = isUnknownMessageType(action.type as MessageType);
   const urgent = isEmergencyMessageType(action.type as MessageType);
-  const bg = urgent ? colors.danger : isAlarm ? "#FCE7EA" : "#FBEFD8";
-  const border = urgent ? colors.danger : isAlarm ? "#F3C2CA" : "#F0DBB0";
-  const fg = urgent ? "#fff" : isAlarm ? colors.danger : colors.warning;
+  const bg = isUnknown
+    ? "#C62828"
+    : urgent
+      ? colors.danger
+      : isAlarm
+        ? "#FCE7EA"
+        : "#FBEFD8";
+  const border = isUnknown
+    ? "#B71C1C"
+    : urgent
+      ? colors.danger
+      : isAlarm
+        ? "#F3C2CA"
+        : "#F0DBB0";
+  const fg =
+    isUnknown || urgent ? "#fff" : isAlarm ? colors.danger : colors.warning;
   return (
     <Pressable
       onPress={onPress}
@@ -357,6 +450,7 @@ function QuickActionButton({
 export default function MessagesScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useLocalSearchParams<{ type?: string; message?: string }>();
   const isAdministrator = useIsAdmin();
   const settings = useAppSettings();
   const selfBroadcastName = resolveBroadcastName(user?.name);
@@ -372,10 +466,14 @@ export default function MessagesScreen() {
   } = useMessagesFeed();
   const { pushToken, permissionError } = useNotifications();
   const [filter, setFilter] = useState<Filter>("All");
+  const [typeFilter, setTypeFilter] = useState<"all" | MessageType>("all");
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<MessageType>("PA");
   const [composeReceiverId, setComposeReceiverId] = useState("");
   const [draft, setDraft] = useState("");
+  const [composeServicePaFields, setComposeServicePaFields] =
+    useState<ServicePaComposeFields>({ subject: "", topic: "", subtopic: "" });
   const [sending, setSending] = useState(false);
   const [composeStatus, setComposeStatus] = useState("");
   const [quickStatus, setQuickStatus] = useState("");
@@ -384,7 +482,9 @@ export default function MessagesScreen() {
     { id: number; name: string; zoneId: string }[]
   >([]);
   const [privateSearchQuery, setPrivateSearchQuery] = useState("");
-  const [privateSearchResults, setPrivateSearchResults] = useState<PrivateSearchMember[]>([]);
+  const [privateSearchResults, setPrivateSearchResults] = useState<
+    PrivateSearchMember[]
+  >([]);
   const [privateSearchLoading, setPrivateSearchLoading] = useState(false);
   const [senderZoneIds, setSenderZoneIds] = useState<string[]>([]);
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
@@ -404,24 +504,28 @@ export default function MessagesScreen() {
       groupedTypeOptions
         .map((group) => ({
           ...group,
-          options: group.options.filter((o) => {
-            if (o.type === "PERMISSION") return false;
-            if (requiresAdminToSendType(o.type) && !isAdministrator) return false;
-            return true;
-          }),
+          options: group.options.filter((o) => o.type !== "PERMISSION"),
         }))
         .filter((group) => group.options.length > 0),
-    [groupedTypeOptions, isAdministrator],
+    [groupedTypeOptions],
   );
-  const visibleMessagingActions = useMemo(
-    () =>
-      MESSAGING_ACTIONS.filter(
-        (action) =>
-          !requiresAdminToSendType(action.type as MessageType) || isAdministrator,
-      ),
-    [isAdministrator],
-  );
+  const visibleMessagingActions = MESSAGING_ACTIONS;
   const composeWorkflow = getMessageWorkflow(composeType);
+
+  useEffect(() => {
+    const typeParam =
+      typeof searchParams.type === "string" ? searchParams.type.trim() : "";
+    const messageParam =
+      typeof searchParams.message === "string" ? searchParams.message.trim() : "";
+    if (typeParam) {
+      const resolved = toMessageType(typeParam);
+      if (resolved) {
+        setTypeFilter(resolved);
+        if (resolved === "SERVICE" || resolved === "PA") setFilter("Alert");
+      }
+    }
+    if (messageParam) setHighlightMessageId(messageParam);
+  }, [searchParams.type, searchParams.message]);
 
   const confirmEmergencySend = useCallback(
     (type: MessageType): Promise<boolean> =>
@@ -435,7 +539,11 @@ export default function MessagesScreen() {
           `${toMessageTypeLabel(type)} broadcasts to everyone in your zone with maximum priority. Block filters are bypassed.`,
           [
             { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-            { text: "Send", style: "destructive", onPress: () => resolve(true) },
+            {
+              text: "Send",
+              style: "destructive",
+              onPress: () => resolve(true),
+            },
           ],
         );
       }),
@@ -448,9 +556,15 @@ export default function MessagesScreen() {
   );
 
   const filtered = useMemo(() => {
-    if (filter === "All") return nonAlarmMessages;
-    return nonAlarmMessages.filter((m) => m.category === filter);
-  }, [nonAlarmMessages, filter]);
+    let rows = nonAlarmMessages;
+    if (filter !== "All") {
+      rows = rows.filter((m) => m.category === filter);
+    }
+    if (typeFilter !== "all") {
+      rows = rows.filter((m) => m.type === typeFilter);
+    }
+    return rows;
+  }, [nonAlarmMessages, filter, typeFilter]);
 
   // Load members once so inbox rows can resolve a friendly name for senders
   // that did not embed a broadcast name.
@@ -480,9 +594,11 @@ export default function MessagesScreen() {
     if (!composeOpen) return;
     let active = true;
     setLoadingComposeMeta(true);
-    void (composeZoneId
-      ? listGuestRequests(composeZoneId)
-      : Promise.resolve({ data: [], error: null, loading: false }))
+    void (
+      composeZoneId
+        ? listGuestRequests(composeZoneId)
+        : Promise.resolve({ data: [], error: null, loading: false })
+    )
       .then((guestsRes) => {
         if (!active) return;
         const guestRows = guestsRes.data ?? [];
@@ -650,18 +766,24 @@ export default function MessagesScreen() {
   const openCompose = useCallback((type: MessageType) => {
     setComposeType(type);
     setDraft("");
+    setComposeServicePaFields({ subject: "", topic: "", subtopic: "" });
     setComposeStatus("");
     setComposeOpen(true);
   }, []);
 
   const onSend = useCallback(async () => {
     const text = draft.trim();
-    if (!text) return;
-
-    if (requiresAdminToSendType(composeType) && !isAdministrator) {
-      setComposeStatus("Only administrators can send SERVICE messages.");
+    const servicePaValidation = validateServicePaCompose(
+      composeType,
+      composeServicePaFields,
+      text,
+    );
+    if (servicePaValidation) {
+      setComposeStatus(servicePaValidation);
       return;
     }
+    if (!text && !isServicePaMessageType(composeType)) return;
+
     if (!(await confirmEmergencySend(composeType))) return;
 
     const accessGuest = isAccessGuestChannelType(composeType);
@@ -669,7 +791,11 @@ export default function MessagesScreen() {
       setComposeStatus("Select a guest for Access CHAT.");
       return;
     }
-    if (!accessGuest && isPrivateMessageType(composeType) && !composeReceiverId) {
+    if (
+      !accessGuest &&
+      isPrivateMessageType(composeType) &&
+      !composeReceiverId
+    ) {
       setComposeStatus("Select a receiver for private messages.");
       return;
     }
@@ -701,7 +827,11 @@ export default function MessagesScreen() {
         const result = await propagateMessageFeatureMessage({
           type: composeType,
           hid,
-          msg: { description: text, broadcast_name: selfBroadcastName },
+          msg: isServicePaMessageType(composeType)
+            ? buildServicePaMsgPayload(composeServicePaFields, text, {
+                broadcast_name: selfBroadcastName,
+              })
+            : { description: text, broadcast_name: selfBroadcastName },
           position: resolved.position,
           ...(isPrivateMessageType(composeType)
             ? { receiver_owner_id: parsedReceiverId }
@@ -714,10 +844,7 @@ export default function MessagesScreen() {
             ...body,
             sender_id: body.sender_id ?? ownerId,
             zone_id:
-              body.zone_id ??
-              body.zone_ids?.[0] ??
-              composeZoneId ??
-              undefined,
+              body.zone_id ?? body.zone_ids?.[0] ?? composeZoneId ?? undefined,
           });
         }
         const sourceLabel =
@@ -727,6 +854,7 @@ export default function MessagesScreen() {
               ? "account address"
               : "last map center";
         setDraft("");
+        setComposeServicePaFields({ subject: "", topic: "", subtopic: "" });
         setComposeOpen(false);
         setComposeStatus(`Sent · ${sourceLabel}`);
         void refresh();
@@ -773,7 +901,7 @@ export default function MessagesScreen() {
     selfBroadcastName,
     applyGeoPropagationToInbox,
     ownerId,
-    isAdministrator,
+    composeServicePaFields,
     confirmEmergencySend,
   ]);
 
@@ -839,7 +967,9 @@ export default function MessagesScreen() {
           title="Messages"
           subtitle={realtimeHint}
           right={
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
               <AlertBellButton />
               {isAdministrator ? (
                 <Pressable
@@ -861,7 +991,7 @@ export default function MessagesScreen() {
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={() => openCompose(isAdministrator ? "SERVICE" : "PA")}
+                onPress={() => openCompose("SERVICE")}
                 style={{
                   width: 42,
                   height: 42,
@@ -893,6 +1023,7 @@ export default function MessagesScreen() {
                 selfOwnerId={ownerId}
                 selfBroadcastName={selfBroadcastName}
                 ownerNames={ownerNames}
+                highlighted={highlightMessageId === item.id}
               />
             )}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
@@ -974,7 +1105,10 @@ export default function MessagesScreen() {
                 Sending as {selfBroadcastName}
               </Text>
 
-              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                style={{ maxHeight: 420 }}
+              >
                 <Text
                   style={{
                     color: colors.textMuted,
@@ -995,7 +1129,14 @@ export default function MessagesScreen() {
                     group.options.map((opt) => (
                       <Pressable
                         key={opt.type}
-                        onPress={() => setComposeType(opt.type)}
+                        onPress={() => {
+                          setComposeType(opt.type);
+                          setComposeServicePaFields({
+                            subject: "",
+                            topic: "",
+                            subtopic: "",
+                          });
+                        }}
                         style={{ marginRight: 8 }}
                       >
                         <Chip
@@ -1026,7 +1167,13 @@ export default function MessagesScreen() {
                       gap: 4,
                     }}
                   >
-                    <Text style={{ color: colors.text, fontWeight: "700", fontSize: 12 }}>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: "700",
+                        fontSize: 12,
+                      }}
+                    >
                       {toMessageTypeLabel(composeType)} workflow
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -1070,9 +1217,9 @@ export default function MessagesScreen() {
                 isPrivateMessageType(composeType) ? (
                   <View style={{ marginTop: 12, gap: 8 }}>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      Same location send flow as PANIC or PA: search admin and members
-                      reachable in this zone, then pick one recipient. You cannot select
-                      yourself.
+                      Same location send flow as PANIC or PA: search admin and
+                      members reachable in this zone, then pick one recipient.
+                      You cannot select yourself.
                     </Text>
                     {privateSearchLoading && senderZoneIds.length === 0 ? (
                       <ActivityIndicator color={colors.accent} />
@@ -1130,8 +1277,113 @@ export default function MessagesScreen() {
                   </View>
                 ) : null}
 
+                {isServicePaMessageType(composeType) ? (
+                  <View style={{ marginTop: 12, gap: 10 }}>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: "700",
+                        fontSize: 12,
+                      }}
+                    >
+                      {composeType === "SERVICE"
+                        ? "Service listing"
+                        : "Public announcement"}
+                    </Text>
+                    <TextInput
+                      placeholder="Subject"
+                      placeholderTextColor={colors.textDim}
+                      value={composeServicePaFields.subject}
+                      onChangeText={(subject) =>
+                        setComposeServicePaFields((prev) => ({
+                          ...prev,
+                          subject,
+                        }))
+                      }
+                      maxLength={200}
+                      style={{
+                        backgroundColor: colors.bgCard,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 12,
+                        padding: 12,
+                        color: colors.text,
+                        fontSize: 15,
+                      }}
+                    />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Topic
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {SERVICE_PA_TOPICS.map((topic) => (
+                        <Pressable
+                          key={topic.id}
+                          onPress={() =>
+                            setComposeServicePaFields((prev) => ({
+                              ...prev,
+                              topic: topic.id,
+                              subtopic: "",
+                            }))
+                          }
+                          style={{ marginRight: 8 }}
+                        >
+                          <Chip
+                            label={topic.label}
+                            active={composeServicePaFields.topic === topic.id}
+                          />
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                    {serviceTopicRequiresSubtopic(
+                      composeType,
+                      composeServicePaFields.topic,
+                    ) ? (
+                      <>
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                          Products subtopic
+                        </Text>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                        >
+                          {(
+                            getTopicOption(composeServicePaFields.topic)
+                              ?.subtopics ?? []
+                          ).map((subtopic) => (
+                            <Pressable
+                              key={subtopic.id}
+                              onPress={() =>
+                                setComposeServicePaFields((prev) => ({
+                                  ...prev,
+                                  subtopic: subtopic.id,
+                                }))
+                              }
+                              style={{ marginRight: 8 }}
+                            >
+                              <Chip
+                                label={subtopic.label}
+                                active={
+                                  composeServicePaFields.subtopic ===
+                                  subtopic.id
+                                }
+                              />
+                            </Pressable>
+                          ))}
+                        </ScrollView>
+                      </>
+                    ) : null}
+                  </View>
+                ) : null}
+
                 <TextInput
-                  placeholder="Type your message…"
+                  placeholder={
+                    isServicePaMessageType(composeType)
+                      ? "Message body…"
+                      : "Type your message…"
+                  }
                   placeholderTextColor={colors.textDim}
                   value={draft}
                   onChangeText={setDraft}

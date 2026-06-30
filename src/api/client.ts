@@ -13,6 +13,18 @@ export const API_BASE_URL =
 
 const LOG_PREFIX = "[ZoneWeaver/api]";
 
+const AUTH_FREE_PATHS = [
+  "/login",
+  "/register",
+  "/owners/login",
+  "/owners/register",
+];
+
+function isAuthFreeRequest(url: string | undefined): boolean {
+  if (!url) return false;
+  return AUTH_FREE_PATHS.some((path) => url.includes(path));
+}
+
 if (__DEV__) {
   console.log(`${LOG_PREFIX} API_BASE_URL =`, API_BASE_URL);
 }
@@ -51,9 +63,13 @@ export const apiClient: AxiosInstance = axios.create({
 type TimedConfig = AxiosRequestConfig & { metadata?: { startedAt: number } };
 
 apiClient.interceptors.request.use(async (config) => {
-  const token = await getToken();
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (!isAuthFreeRequest(config.url)) {
+    const token = await getToken();
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } else if (config.headers) {
+    delete config.headers.Authorization;
   }
   if (__DEV__) {
     (config as TimedConfig).metadata = { startedAt: Date.now() };
@@ -98,7 +114,7 @@ apiClient.interceptors.response.use(
         },
       );
     }
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !isAuthFreeRequest(error.config?.url)) {
       await clearToken();
       emitUnauthorized();
     }

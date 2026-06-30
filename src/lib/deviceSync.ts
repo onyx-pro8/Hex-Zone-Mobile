@@ -1,4 +1,5 @@
 import {
+  claimDeviceSession,
   createDevice,
   deleteDevice,
   getDevices,
@@ -6,33 +7,92 @@ import {
   updateDevice,
   type DeviceRecord,
 } from "@/api/devices";
-import {
-  getDeviceLimit,
-  normalizeAccountType,
-  type NormalizedAccountType,
-} from "@/lib/accountLimits";
+import { normalizeAccountType, type NormalizedAccountType } from "@/lib/accountLimits";
 import { getOrCreateDeviceHid } from "@/lib/storage";
 import type { AuthUser } from "@/api/auth";
 
-export const ACCOUNT_IN_USE_MESSAGE =
-  "This account is already in use on another device. Sign out there first.";
+/** Thrown when login succeeds but another device holds the active session. */
+export class DeviceSessionConflictError extends Error {
+  constructor(
+    message = "This account is already active on another device.",
+  ) {
+    super(message);
+    this.name = "DeviceSessionConflictError";
+  }
+}
+
+export function isDeviceSessionConflictError(
+  err: unknown,
+): err is DeviceSessionConflictError {
+  return (
+    err instanceof DeviceSessionConflictError ||
+    (err instanceof Error && err.name === "DeviceSessionConflictError")
+  );
+}
+
+export function isDeviceSessionConflictMessage(message: string): boolean {
+  return /already in use|sign out there first|already active on another device|change the device/i.test(
+    message,
+  );
+}
+
+export const DEVICE_PRESENCE_TIMEOUT_MS = 30 * 60 * 1000;
+
+export const DEVICE_CHANGE_PROMPT_TITLE = "Change the device?";
+export const DEVICE_CHANGE_PROMPT_MESSAGE =
+  "This account is already active on another device. Use this device instead? The other device will be signed out.";
+export const DEVICE_CHANGE_DECLINED_MESSAGE =
+  "Login cancelled. Sign out on the other device first, or choose to change the device when prompted.";
+export const DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE =
+  "You were signed out because this account is now active on another device.";
+
+export const ACCOUNT_IN_USE_MESSAGE = DEVICE_CHANGE_PROMPT_MESSAGE;
 
 export type DeviceSyncResult =
   | { status: "ok"; deviceId?: number | string }
   | { status: "account-in-use" }
   | { status: "error"; message: string };
 
-export function deriveDeviceOnline(device: DeviceRecord): boolean {
-  if (typeof device.is_online === "boolean") return device.is_online;
-  if (typeof device.status === "boolean") return device.status;
-  return device.active !== false;
+function deviceLastSeenMs(device: DeviceRecord): number | null {
+  const raw = device.last_seen ?? device.updated_at ?? device.created_at;
+  if (!raw) return null;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
-function deviceRecency(device: DeviceRecord): number {
-  const raw = device.last_seen ?? device.updated_at ?? device.created_at;
-  if (!raw) return 0;
-  const t = new Date(raw).getTime();
-  return Number.isNaN(t) ? 0 : t;
+/** Whether another device currently holds the account session (login gate). */
+export function isDeviceSessionBlocking(device: DeviceRecord): boolean {
+  return device.is_online === true;
+}
+
+/** UI presence: online flag plus optional stale timeout for display. */
+export function deriveDeviceOnline(device: DeviceRecord): boolean {
+  if (device.is_online !== true) return false;
+  const seen = deviceLastSeenMs(device);
+  if (seen == null) return true;
+  return Date.now() - seen <= DEVICE_PRESENCE_TIMEOUT_MS;
+}
+
+export function isAccountInUseError(message: string): boolean {
+  return isDeviceSessionConflictMessage(message);
+}
+
+/** True while this hardware id still holds the active account session. */
+export async function isLocalDeviceSessionActive(
+  ownerId: string,
+): Promise<boolean> {
+  const localHid = await getOrCreateDeviceHid();
+  const devices = await getDevices();
+  if (devices.error) return true;
+  const id = String(ownerId ?? "").trim();
+  const mine = (devices.data ?? []).filter(
+    (d) => !id || String(d.owner_id ?? "") === id,
+  );
+  const local = mine.find(
+    (d) => String(d.hid).toUpperCase() === localHid.toUpperCase(),
+  );
+  if (!local) return false;
+  return local.is_online === true;
 }
 
 function ownerDevicesForUser(
@@ -43,22 +103,14 @@ function ownerDevicesForUser(
   return list.filter((d) => String(d.owner_id ?? "") === ownerId);
 }
 
-async function evictOfflineDevices(
-  devices: DeviceRecord[],
-  limit: number,
-): Promise<void> {
-  if (!Number.isFinite(limit)) return;
-  let remaining = [...devices];
-  while (remaining.length >= limit) {
-    const offline = remaining.filter((d) => !deriveDeviceOnline(d));
-    if (offline.length === 0) break;
-    const oldest = offline.sort(
-      (a, b) => deviceRecency(a) - deviceRecency(b),
-    )[0];
-    if (!oldest?.id) break;
-    await deleteDevice(oldest.id);
-    remaining = remaining.filter((d) => d.id !== oldest.id);
+function mapCreateError(error: string): DeviceSyncResult {
+  if (isAccountInUseError(error)) {
+    return { status: "account-in-use" };
   }
+  if (/allows at most \d+ device/i.test(error)) {
+    return { status: "account-in-use" };
+  }
+  return { status: "error", message: error };
 }
 
 export async function setCurrentDeviceOffline(): Promise<void> {
@@ -71,9 +123,17 @@ export async function setCurrentDeviceOffline(): Promise<void> {
   await updateDevice(existing.id, { is_online: false });
 }
 
+export async function signOutDevice(deviceId: number | string): Promise<void> {
+  await updateDevice(deviceId, { is_online: false });
+}
+
+export async function removeDevice(deviceId: number | string): Promise<void> {
+  await deleteDevice(deviceId);
+}
+
 export async function syncCurrentDevice(
   user: AuthUser | null,
-  options?: { platformLabel?: string },
+  options?: { platformLabel?: string; forceTakeover?: boolean },
 ): Promise<DeviceSyncResult> {
   if (!user) return { status: "ok" };
   const platformLabel = options?.platformLabel ?? "Mobile";
@@ -81,11 +141,13 @@ export async function syncCurrentDevice(
     const localHid = await getOrCreateDeviceHid();
     const display = user.name?.trim() || user.email?.trim() || platformLabel;
     const ownerId = String(user.id ?? "").trim();
-    const accountType = normalizeAccountType(
-      user.accountType,
-      user.account_type,
-    );
-    const limit = getDeviceLimit(accountType);
+
+    if (options?.forceTakeover) {
+      const claim = await claimDeviceSession(localHid);
+      if (claim.error) {
+        return { status: "error", message: claim.error };
+      }
+    }
 
     const devicesResult = await getDevices();
     if (devicesResult.error) {
@@ -98,26 +160,30 @@ export async function syncCurrentDevice(
       (d) => String(d.hid).toUpperCase() === localHid.toUpperCase(),
     );
     if (byLocalHid?.id != null) {
-      const otherOnline = mine.filter(
-        (d) =>
-          String(d.hid).toUpperCase() !== localHid.toUpperCase() &&
-          deriveDeviceOnline(d),
-      );
-      if (otherOnline.length > 0) {
-        return { status: "account-in-use" };
+      if (!options?.forceTakeover) {
+        const otherOnline = mine.filter(
+          (d) =>
+            String(d.hid).toUpperCase() !== localHid.toUpperCase() &&
+            isDeviceSessionBlocking(d),
+        );
+        if (otherOnline.length > 0) {
+          return { status: "account-in-use" };
+        }
       }
       await updateDevice(byLocalHid.id, { is_online: true });
       await sendDeviceHeartbeat(byLocalHid.id);
       return { status: "ok", deviceId: byLocalHid.id };
     }
 
-    const otherOnline = mine.filter((d) => deriveDeviceOnline(d));
-    if (otherOnline.length > 0) {
-      return { status: "account-in-use" };
+    if (!options?.forceTakeover) {
+      const otherOnline = mine.filter((d) => isDeviceSessionBlocking(d));
+      if (otherOnline.length > 0) {
+        return { status: "account-in-use" };
+      }
     }
 
-    await evictOfflineDevices(mine, limit);
-
+    // Let the server evict offline devices when at capacity — never delete from
+    // the client during login sync (that was removing the other platform's row).
     const created = await createDevice({
       hid: localHid,
       name: `${display} (${platformLabel})`,
@@ -126,10 +192,7 @@ export async function syncCurrentDevice(
       is_online: true,
     });
     if (created.error) {
-      if (/already in use|sign out there first/i.test(created.error)) {
-        return { status: "account-in-use" };
-      }
-      return { status: "error", message: created.error };
+      return mapCreateError(created.error);
     }
     if (created.data?.id != null) {
       await sendDeviceHeartbeat(created.data.id);
@@ -138,10 +201,7 @@ export async function syncCurrentDevice(
     return { status: "ok" };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (/already in use|sign out there first/i.test(message)) {
-      return { status: "account-in-use" };
-    }
-    return { status: "error", message };
+    return mapCreateError(message);
   }
 }
 

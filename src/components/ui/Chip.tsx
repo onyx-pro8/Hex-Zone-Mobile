@@ -4,7 +4,7 @@ import { colors } from "@/theme/colors";
 type ChipProps = {
   label: string;
   active?: boolean;
-  tone?: "default" | "success" | "warning" | "danger" | "muted";
+  tone?: "default" | "success" | "warning" | "danger" | "critical" | "muted";
   style?: ViewStyle;
 };
 
@@ -23,6 +23,8 @@ export function Chip({ label, active, tone = "default", style }: ChipProps) {
       return { bg: "#FBEFD8", fg: colors.warning, border: "#F0DBB0" };
     if (tone === "danger")
       return { bg: "#FCE7EA", fg: colors.danger, border: "#F3C2CA" };
+    if (tone === "critical")
+      return { bg: "#C62828", fg: "#fff", border: "#B71C1C" };
     if (tone === "muted")
       return {
         bg: colors.bgSurface,
@@ -54,8 +56,8 @@ export function Chip({ label, active, tone = "default", style }: ChipProps) {
       <Text
         style={{
           color: palette.fg,
-          fontSize: 11,
-          fontWeight: "600",
+          fontSize: tone === "critical" ? 13 : 11,
+          fontWeight: tone === "critical" ? "800" : "600",
           letterSpacing: 0.6,
           textTransform: "uppercase",
         }}

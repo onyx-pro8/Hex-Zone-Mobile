@@ -1,6 +1,6 @@
 import type { MessageType } from "./messageTypes";
 
-export type MessagePriority = "MAX" | "HIGH" | "MEDIUM" | "LOW";
+export type MessagePriority = "CRITICAL" | "MAX" | "HIGH" | "MEDIUM" | "LOW";
 
 export type MessageWorkflowMeta = {
   priority: MessagePriority;
@@ -17,6 +17,7 @@ export const MESSAGE_WORKFLOW: Record<
   | "SENSOR"
   | "PANIC"
   | "NS_PANIC"
+  | "UNKNOWN"
   | "PRIVATE"
   | "PA"
   | "SERVICE"
@@ -56,6 +57,17 @@ export const MESSAGE_WORKFLOW: Record<
     responseTracking: false,
     confirmBeforeSend: true,
   },
+  UNKNOWN: {
+    priority: "CRITICAL",
+    description:
+      "Highest-priority alarm. Nearest-neighbour fan-out with maximum visual urgency.",
+    delivery: "Instant push + WebSocket; displayed above all other alarm types.",
+    requiresAdmin: false,
+    requiresRecipient: false,
+    requiresLocation: true,
+    responseTracking: false,
+    confirmBeforeSend: false,
+  },
   PRIVATE: {
     priority: "MEDIUM",
     description:
@@ -81,9 +93,9 @@ export const MESSAGE_WORKFLOW: Record<
   SERVICE: {
     priority: "LOW",
     description:
-      "System or maintenance informational broadcast. Administrators only.",
+      "Zone service listing or maintenance informational broadcast.",
     delivery: "WebSocket; push optional.",
-    requiresAdmin: true,
+    requiresAdmin: false,
     requiresRecipient: false,
     requiresLocation: true,
     responseTracking: false,
@@ -113,12 +125,18 @@ export function isEmergencyMessageType(type: MessageType): boolean {
   return type === "PANIC" || type === "NS_PANIC";
 }
 
+export function isUnknownMessageType(type: MessageType): boolean {
+  return type === "UNKNOWN";
+}
+
 export function requiresAdminToSendType(type: MessageType): boolean {
   return getMessageWorkflow(type)?.requiresAdmin ?? false;
 }
 
 export function priorityColor(priority: MessagePriority): string {
   switch (priority) {
+    case "CRITICAL":
+      return "#C62828";
     case "MAX":
       return "#E23B4E";
     case "HIGH":

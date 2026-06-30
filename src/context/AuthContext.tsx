@@ -4,9 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { Alert, AppState } from "react-native";
 import {
   extractZoneId,
   fetchOwnerProfile,
@@ -22,18 +24,27 @@ import { getRemoteAppSettings } from "@/api/settings";
 import { updateAppSettings, type AppSettings } from "@/lib/appSettings";
 import {
   clearToken,
+  getRememberMe,
   getStoredPushToken,
   getToken,
   setRememberMe as persistRememberMe,
   setToken,
   setStoredMapCenter,
 } from "@/lib/storage";
+import {
+  clearSecureCredentials,
+  getSecureCredentials,
+  setSecureCredentials,
+} from "@/lib/secureCredentials";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { isRunningExpoGo } from "@/lib/pushSupport";
 import { onUnauthorized } from "@/lib/authEvents";
 import { devLog, devWarn } from "@/lib/devConsole";
 import {
   describeDeviceSyncFailure,
+  DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE,
+  DeviceSessionConflictError,
+  isLocalDeviceSessionActive,
   setCurrentDeviceOffline,
   syncCurrentDevice,
 } from "@/lib/deviceSync";
@@ -55,7 +66,7 @@ type AuthContextValue = {
   login: (
     email: string,
     password: string,
-    options?: { rememberMe?: boolean },
+    options?: { rememberMe?: boolean; forceDeviceTakeover?: boolean },
   ) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => Promise<void>;
@@ -111,6 +122,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [ownerZoneId, setOwnerZoneId] = useState<string>("");
+  const reauthInProgress = useRef(false);
+  const sessionInProgress = useRef(false);
 
   const performLogout = useCallback(async () => {
     try {
@@ -124,28 +137,129 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearToken();
   }, []);
 
+  const establishSession = useCallback(
+    async (
+      email: string,
+      password: string,
+      remember: boolean,
+      options?: { forceDeviceTakeover?: boolean },
+    ): Promise<AuthUser> => {
+      sessionInProgress.current = true;
+      try {
+        const result = await loginRequest({ email, password });
+        if (!result.data) {
+          throw new Error(result.error ?? "Login failed");
+        }
+        // Keep token in storage for API calls during device sync, but do not
+        // expose it in React state until sync succeeds — otherwise the root
+        // layout navigates away from login before the conflict modal can show.
+        await setToken(result.data.token);
+        await persistRememberMe(remember);
+        if (remember) {
+          await setSecureCredentials(email, password);
+        } else {
+          await clearSecureCredentials();
+        }
+
+        const loginUser = result.data.user;
+        const loginHasEmail =
+          typeof loginUser?.email === "string" && loginUser.email.trim() !== "";
+        let normalized: AuthUser;
+        if (loginUser?.id != null && loginHasEmail) {
+          const user = normalizeUser(loginUser);
+          if (!user) throw new Error("Could not load profile");
+          normalized = user;
+        } else {
+          const me = await fetchProfile();
+          if (me.data) {
+            const user = normalizeUser(me.data);
+            if (!user) throw new Error("Could not load profile");
+            normalized = user;
+          } else if (loginUser?.id != null) {
+            const user = normalizeUser(loginUser);
+            if (!user) throw new Error("Could not load profile");
+            normalized = user;
+          } else {
+            throw new Error(me.error ?? "Could not load profile");
+          }
+        }
+
+        const sync = await syncCurrentDevice(normalized, {
+          platformLabel: "Mobile",
+          forceTakeover: options?.forceDeviceTakeover,
+        });
+        if (sync.status === "account-in-use") {
+          devWarn("Login refused: device session conflict");
+          await clearToken();
+          setTokenState(null);
+          throw new DeviceSessionConflictError();
+        }
+        if (sync.status === "error") {
+          const message = describeDeviceSyncFailure(sync);
+          devWarn("Login refused: device sync error", { message });
+          await clearToken();
+          setTokenState(null);
+          throw new Error(message);
+        }
+
+        setTokenState(result.data.token);
+        setUser(normalized);
+        return normalized;
+      } finally {
+        sessionInProgress.current = false;
+      }
+    },
+    [],
+  );
+
+  const trySilentReauth = useCallback(async (): Promise<boolean> => {
+    if (reauthInProgress.current) return false;
+    const remember = await getRememberMe();
+    if (!remember) return false;
+    const creds = await getSecureCredentials();
+    if (!creds) return false;
+
+    reauthInProgress.current = true;
+    try {
+      await establishSession(creds.email, creds.password, true);
+      return true;
+    } catch (err) {
+      devWarn("Silent re-auth failed", { err });
+      return false;
+    } finally {
+      reauthInProgress.current = false;
+    }
+  }, [establishSession]);
+
   const clearAuthError = useCallback(() => setAuthError(null), []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const stored = await getToken();
-      if (cancelled) return;
-      if (!stored) {
-        setInitializing(false);
-        return;
-      }
-      if (isExpired(stored)) {
-        await clearToken();
-        setInitializing(false);
-        return;
-      }
-      setTokenState(stored);
       try {
-        const profile = await fetchProfile();
-        if (!cancelled && profile.data) {
-          setUser(normalizeUser(profile.data));
+        const stored = await getToken();
+        if (cancelled) return;
+
+        if (stored && !isExpired(stored)) {
+          setTokenState(stored);
+          const profile = await fetchProfile();
+          if (!cancelled && profile.data) {
+            setUser(normalizeUser(profile.data));
+            return;
+          }
+          if (!cancelled && profile.unauthorized) {
+            await clearToken();
+            setTokenState(null);
+            const restored = await trySilentReauth();
+            if (cancelled || restored) return;
+          }
+          return;
         }
+
+        if (stored) await clearToken();
+
+        const restored = await trySilentReauth();
+        if (cancelled || restored) return;
       } finally {
         if (!cancelled) setInitializing(false);
       }
@@ -153,7 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [trySilentReauth]);
 
   useEffect(() => {
     const center = user?.mapCenter ?? user?.map_center;
@@ -176,6 +290,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void syncPushTokenToServer();
     return () => {
       cancelled = true;
+    };
+  }, [token, user, performLogout]);
+
+  // Sign out this phone when another device takes over the account session.
+  useEffect(() => {
+    if (!token || !user?.id) return;
+    const ownerId = String(user.id);
+    let cancelled = false;
+    let alerted = false;
+
+    const checkRemoteSignOut = async () => {
+      const active = await isLocalDeviceSessionActive(ownerId);
+      if (cancelled || active) return;
+      if (!alerted) {
+        alerted = true;
+        Alert.alert("Signed out", DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE);
+      }
+      setAuthError(DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE);
+      await performLogout();
+    };
+
+    const interval = setInterval(() => {
+      void checkRemoteSignOut();
+    }, 30_000);
+
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void checkRemoteSignOut();
+    });
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      sub.remove();
     };
   }, [token, user, performLogout]);
 
@@ -233,9 +380,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return onUnauthorized(() => {
-      void performLogout();
+      void (async () => {
+        if (sessionInProgress.current || reauthInProgress.current) return;
+        const restored = await trySilentReauth();
+        if (!restored) {
+          await performLogout();
+        }
+      })();
     });
-  }, [performLogout]);
+  }, [performLogout, trySilentReauth]);
 
   const refreshUser = useCallback(async () => {
     if (!token) return;
@@ -252,56 +405,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (
       email: string,
       password: string,
-      options?: { rememberMe?: boolean },
+      options?: { rememberMe?: boolean; forceDeviceTakeover?: boolean },
     ) => {
       setLoading(true);
       setAuthError(null);
       try {
         const remember = options?.rememberMe ?? true;
-        const result = await loginRequest({ email, password });
-        if (!result.data) {
-          throw new Error(result.error ?? "Login failed");
-        }
-        await setToken(result.data.token);
-        await persistRememberMe(remember);
-        let normalized: AuthUser | null = null;
-        const loginUser = result.data.user;
-        // The login payload often omits email (or returns a thin user). Always
-        // hydrate from the profile endpoints when email is missing so the
-        // Settings header doesn't show "—". Fall back to the login user only
-        // if the profile fetch fails entirely.
-        const loginHasEmail =
-          typeof loginUser?.email === "string" && loginUser.email.trim() !== "";
-        if (loginUser?.id != null && loginHasEmail) {
-          normalized = normalizeUser(loginUser);
-        } else {
-          const me = await fetchProfile();
-          if (me.data) {
-            normalized = normalizeUser(me.data);
-          } else if (loginUser?.id != null) {
-            normalized = normalizeUser(loginUser);
-          } else {
-            throw new Error(me.error ?? "Could not load profile");
-          }
-        }
-
-        const sync = await syncCurrentDevice(normalized, {
-          platformLabel: "Mobile",
+        await establishSession(email, password, remember, {
+          forceDeviceTakeover: options?.forceDeviceTakeover,
         });
-        if (sync.status === "account-in-use" || sync.status === "error") {
-          const message = describeDeviceSyncFailure(sync);
-          devWarn("Login refused: device session conflict", { message });
-          await clearToken();
-          throw new Error(message);
-        }
-
-        setTokenState(result.data.token);
-        setUser(normalized);
+      } catch (err) {
+        throw err;
       } finally {
         setLoading(false);
       }
     },
-    [],
+    [establishSession],
   );
 
   const register = useCallback(async (payload: RegisterPayload) => {
