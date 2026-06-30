@@ -72,7 +72,6 @@ import {
   getMessageWorkflow,
   isEmergencyMessageType,
   isUnknownMessageType,
-  requiresAdminToSendType,
 } from "@/lib/messageWorkflow";
 import {
   SERVICE_PA_TOPICS,
@@ -505,25 +504,12 @@ export default function MessagesScreen() {
       groupedTypeOptions
         .map((group) => ({
           ...group,
-          options: group.options.filter((o) => {
-            if (o.type === "PERMISSION") return false;
-            if (requiresAdminToSendType(o.type) && !isAdministrator)
-              return false;
-            return true;
-          }),
+          options: group.options.filter((o) => o.type !== "PERMISSION"),
         }))
         .filter((group) => group.options.length > 0),
-    [groupedTypeOptions, isAdministrator],
+    [groupedTypeOptions],
   );
-  const visibleMessagingActions = useMemo(
-    () =>
-      MESSAGING_ACTIONS.filter(
-        (action) =>
-          !requiresAdminToSendType(action.type as MessageType) ||
-          isAdministrator,
-      ),
-    [isAdministrator],
-  );
+  const visibleMessagingActions = MESSAGING_ACTIONS;
   const composeWorkflow = getMessageWorkflow(composeType);
 
   useEffect(() => {
@@ -798,10 +784,6 @@ export default function MessagesScreen() {
     }
     if (!text && !isServicePaMessageType(composeType)) return;
 
-    if (requiresAdminToSendType(composeType) && !isAdministrator) {
-      setComposeStatus("Only administrators can send SERVICE messages.");
-      return;
-    }
     if (!(await confirmEmergencySend(composeType))) return;
 
     const accessGuest = isAccessGuestChannelType(composeType);
@@ -919,7 +901,6 @@ export default function MessagesScreen() {
     selfBroadcastName,
     applyGeoPropagationToInbox,
     ownerId,
-    isAdministrator,
     composeServicePaFields,
     confirmEmergencySend,
   ]);
@@ -1010,7 +991,7 @@ export default function MessagesScreen() {
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={() => openCompose(isAdministrator ? "SERVICE" : "PA")}
+                onPress={() => openCompose("SERVICE")}
                 style={{
                   width: 42,
                   height: 42,

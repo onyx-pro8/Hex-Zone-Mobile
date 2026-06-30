@@ -150,7 +150,7 @@ export function RecentServicesSection({ zoneId }: Props) {
 
           {!loading && services.length === 0 ? (
             <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18 }}>
-              No service messages yet. Administrators can publish from Messages → SERVICES.
+              No service messages yet. Publish from Messages → SERVICES.
             </Text>
           ) : null}
 
