@@ -66,7 +66,7 @@ export default function AlertsScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScreenHeader
           title="Incoming alarms"
-          subtitle="PANIC, SENSOR, NS-PANIC & other alarms"
+          subtitle="PANIC, SENSOR, NS-PANIC, WELLNESS CHECK & other alarms"
           showBack
           onBack={() => router.back()}
         />

@@ -150,6 +150,7 @@ export async function joinWithQrToken(
 export type AnonymousGuestPermissionBody = {
   guest_qr_token?: string;
   zone_id?: string;
+  network_id?: string;
   guest_name: string;
   event_id?: string;
   device_id?: string;
@@ -174,8 +175,9 @@ export async function submitAnonymousGuestPermission(
 ): Promise<AnonymousGuestPermissionResult> {
   const hasToken = Boolean(body.guest_qr_token?.trim());
   const hasZone = Boolean(body.zone_id?.trim());
-  if (!hasToken && !hasZone) {
-    return { ok: false, message: "Missing zone or guest access token." };
+  const hasNetwork = Boolean(body.network_id?.trim());
+  if (!hasToken && !hasZone && !hasNetwork) {
+    return { ok: false, message: "Missing zone, network id, or guest access token." };
   }
   try {
     const res = await guestAxios.post<unknown>(

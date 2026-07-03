@@ -262,7 +262,7 @@ export default function LoginScreen() {
           >
             <QrCode size={16} color={colors.accent} />
             <Text style={{ color: colors.accent, fontSize: 12, flex: 1 }}>
-              Have a QR code? Scan to auto-populate your Zone ID
+              Have a QR code? Scan to auto-populate your Network ID
             </Text>
           </View>
 

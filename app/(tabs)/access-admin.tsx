@@ -34,6 +34,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   approveGuestRequest,
   createGuestAccessQrToken,
+  fetchNetworkAccessQrToken,
   generateMemberInviteQr,
   getGuestAccessQrLink,
   getGuestAccessQrTokenLink,
@@ -512,7 +513,7 @@ function GuestAccessSection({
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
           {zonesLoading
             ? "Looking up your zones…"
-            : "No zone id is linked to this account yet. Create a zone on the Dashboard, then come back here."}
+            : "No network id is linked to this account yet. Create a zone on the Dashboard, then come back here."}
         </Text>
       ) : null}
 
@@ -580,6 +581,79 @@ function GuestAccessSection({
           ))}
         </View>
       )}
+    </Card>
+  );
+}
+
+function NetworkAccessSection({ zoneId }: { zoneId: string }) {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!zoneId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchNetworkAccessQrToken(zoneId);
+      if (res.error || !res.data) {
+        throw new Error(res.error ?? "Could not load network access QR.");
+      }
+      const next = toAccessDeepLink(res.data.path_with_query);
+      if (!next) throw new Error("Could not build network access link.");
+      setUrl(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load network QR.");
+      setUrl("");
+    } finally {
+      setLoading(false);
+    }
+  }, [zoneId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  if (!zoneId) return null;
+
+  return (
+    <Card glow style={{ gap: 12 }}>
+      <Text
+        style={{
+          color: colors.textMuted,
+          fontSize: 11,
+          letterSpacing: 1,
+          textTransform: "uppercase",
+          fontWeight: "700",
+        }}
+      >
+        Network guest QR
+      </Text>
+      <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
+        One reusable link per network. Guests request access; an administrator must approve before
+        they can sign in. After approval they can use access messages (CHAT); map zones are optional.
+      </Text>
+      {loading ? <ActivityIndicator color={colors.accent} /> : null}
+      {error ? (
+        <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
+      ) : null}
+      {url ? (
+        <View style={{ alignItems: "center", gap: 10 }}>
+          <QRCode value={url} size={160} />
+          <Pressable
+            onPress={async () => {
+              const ok = await copyToClipboard(url);
+              alertCopyResult(ok);
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Copy size={14} color={colors.accent} />
+              <Text style={{ color: colors.accent, fontSize: 12 }}>Copy link</Text>
+            </View>
+          </Pressable>
+        </View>
+      ) : null}
+      <Button label="Refresh network QR" variant="secondary" onPress={() => void refresh()} />
     </Card>
   );
 }
@@ -726,13 +800,9 @@ export default function AccessScreen() {
             {tab === "member" ? (
               <MemberInviteSection disabled={memberInviteDisabled} />
             ) : (
-              <GuestAccessSection
-                zoneId={effectiveZoneId}
-                candidateZoneIds={candidateZoneIds}
-                zonesLoading={zonesLoading}
-                onPickZoneId={setPickedZoneId}
-                onRefreshZones={() => void refreshZones()}
-              />
+              <>
+                <NetworkAccessSection zoneId={effectiveZoneId} />
+              </>
             )}
 
             <Pressable onPress={() => router.push("/(tabs)/guest-passes")}>

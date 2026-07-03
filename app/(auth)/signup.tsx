@@ -46,11 +46,6 @@ const accountOptions: {
   lines: [string, string];
 }[] = [
   {
-    value: "PRIVATE",
-    title: "Private",
-    lines: ["Many users, 1 device each", "Shared zone type"],
-  },
-  {
     value: "EXCLUSIVE",
     title: "Exclusive",
     lines: ["1 user, 1 device", "Any zone type"],
@@ -99,7 +94,7 @@ export default function SignupScreen() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [accountType, setAccountType] = useState<AccountType>("PRIVATE");
+  const [accountType, setAccountType] = useState<AccountType>("EXCLUSIVE");
   const [registrationType, setRegistrationType] =
     useState<RegistrationType>("ADMINISTRATOR");
   const [accountOwnerId, setAccountOwnerId] = useState("");
@@ -247,7 +242,7 @@ export default function SignupScreen() {
           >
             <QrCode size={16} color={colors.accent} />
             <Text style={{ color: colors.accent, fontSize: 12, flex: 1 }}>
-              Have a QR code? Scan to auto-populate your Zone ID
+              Have a QR code? Scan to auto-populate your Network ID
             </Text>
           </View>
 
@@ -568,7 +563,7 @@ export default function SignupScreen() {
               ) : null}
             </View>
 
-            {/* Zone ID */}
+            {/* Network ID */}
             <View
               style={{
                 padding: 14,
@@ -578,7 +573,7 @@ export default function SignupScreen() {
                 backgroundColor: colors.bgCard,
               }}
             >
-              <Text style={labelStyle}>Zone ID</Text>
+              <Text style={labelStyle}>Network ID</Text>
               <View style={{ flexDirection: "row", gap: 8 }}>
                 <Pressable
                   onPress={() => setUseExistingZone(false)}

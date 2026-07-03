@@ -29,6 +29,7 @@ import {
   fetchGuestZoneDashboard,
 } from "@/api/guestSession";
 import {
+  networkZonesFromGuestDashboard,
   tryParseGuestDashboardMap,
   type GuestDashboardMapView,
 } from "@/lib/guestDashboardMap";
@@ -221,6 +222,14 @@ export default function GuestDashboardScreen() {
     };
   }, [primaryZone, memberToken, leaveGuest]);
 
+  const networkZones = useMemo(
+    () => networkZonesFromGuestDashboard(rawDashboard),
+    [rawDashboard],
+  );
+  const zoneChips = networkZones.length
+    ? networkZones.map((z) => ({ key: String(z.id), label: z.name }))
+    : zones.filter(Boolean).map((z) => ({ key: z, label: z }));
+
   const hasMapGeometry = useMemo(
     () =>
       !!mapModel &&
@@ -288,10 +297,8 @@ export default function GuestDashboardScreen() {
               Your zone{zones.length > 1 ? "s" : ""}
             </Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              {zones.filter(Boolean).map((z) => (
-                <Pressable key={z} onPress={() => setPrimaryZone(z)}>
-                  <Chip label={z} active={z === primaryZone} />
-                </Pressable>
+              {zoneChips.map((z) => (
+                <Chip key={z.key} label={z.label} active={z.key === primaryZone || z.label === primaryZone} />
               ))}
             </View>
             <Text style={{ color: colors.textDim, fontSize: 12 }}>
