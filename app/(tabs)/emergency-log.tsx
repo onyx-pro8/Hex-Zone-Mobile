@@ -191,7 +191,7 @@ export default function EmergencyLogScreen() {
                         {item.senderId != null ? (
                           <Chip label={`Sender ${item.senderId}`} />
                         ) : null}
-                        {item.zoneId ? <Chip label={`Zone ${item.zoneId}`} /> : null}
+                        {item.zoneId ? <Chip label={item.zoneId} /> : null}
                         <Chip label={`Reached ${item.recipientCount}`} />
                         {item.latitude != null && item.longitude != null ? (
                           <Pressable

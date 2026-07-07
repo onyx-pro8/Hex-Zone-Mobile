@@ -309,7 +309,7 @@ function MessageRow({
         </Text>
       ) : null}
       <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>
-        Zone {item.zone_id}
+        {item.zone_id}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
       </Text>
       {item.type === "WELLNESS_CHECK" ? (

@@ -627,7 +627,7 @@ export default function SignupScreen() {
                   onChangeText={(v) =>
                     useExistingZone ? setExistingZoneId(v) : undefined
                   }
-                  placeholder="ZN-XXXXXXXX"
+                  placeholder="Network-XXXXXXXX"
                   placeholderTextColor={colors.textDim}
                   autoCapitalize="characters"
                   style={{

@@ -126,11 +126,11 @@ function MemberRow({
         />
         {member.zone_id ? (
           <Chip
-            label={`Zone ${member.zone_id}`}
+            label={member.zone_id}
             tone={sameZone ? "default" : "muted"}
           />
         ) : (
-          <Chip label="No zone" tone="muted" />
+          <Chip label="No network ID" tone="muted" />
         )}
       </View>
 
@@ -268,7 +268,7 @@ export default function MembersScreen() {
     const inZone = sameZoneMembers.length;
     if (filter === "same-zone") {
       return myZoneId
-        ? `Zone ${myZoneId} · ${formatLimit(inZone, memberLimit)} members`
+        ? `${myZoneId} · ${formatLimit(inZone, memberLimit)} members`
         : `${visible.length} member${visible.length === 1 ? "" : "s"}`;
     }
     return `${members.length} member${members.length === 1 ? "" : "s"} on this account`;

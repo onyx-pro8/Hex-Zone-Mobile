@@ -181,7 +181,7 @@ export default function AlertsScreen() {
                   <Text
                     style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}
                   >
-                    Zone {item.zone_id}
+                    {item.zone_id}
                   </Text>
                 </Card>
               );

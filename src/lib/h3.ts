@@ -6,7 +6,7 @@ export type LatLng = [number, number];
 export const AUTH_MAP_DEFAULT_CENTER: LatLng = [40.7527, -73.9772];
 
 export function generateZoneId(): string {
-  return `ZN-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  return `Network-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
 /** Deterministic mock geocode when the user types without picking a suggestion. */
