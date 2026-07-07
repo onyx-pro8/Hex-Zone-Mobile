@@ -37,9 +37,7 @@ export async function publishMemberLocation(position: MapCenter): Promise<void> 
  * Priority:
  *   1. Live GPS, but bounded by a short timeout with a last-known-position
  *      fallback so sending never blocks for long.
- *   2. Profile `mapCenter` saved on the account — backfilled from the
- *      address geocode at registration, so it always exists once the
- *      account is created with a valid address.
+ *   2. Profile `mapCenter` — geocoded registered home address from the account.
  *   3. Last Dashboard map center stored locally on this device.
  */
 export async function resolveMessagePropagationPosition(
@@ -79,7 +77,6 @@ export async function resolveMessagePropagationPositionForType(
   if (usesRegisteredAddressForType(messageType)) {
     const fromProfile = normalizeMapCenter(profileMapCenter ?? null);
     if (fromProfile) {
-      void publishMemberLocation(fromProfile);
       return { position: fromProfile, source: "profile" };
     }
     return { error: REGISTERED_ADDRESS_REQUIRED };

@@ -24,11 +24,13 @@ import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
-import { getMembers, setMemberActive, type Member } from "@/api/members";
+import { getMembers, setMemberAccountType, setMemberActive, type Member } from "@/api/members";
 import {
   accountTypeLabel,
+  ADMIN_ASSIGNABLE_ACCOUNT_TYPES,
   formatLimit,
   getMemberLimit,
+  isSystemAdministrator,
   normalizeAccountType,
 } from "@/lib/accountLimits";
 import { devLog, devWarn } from "@/lib/devConsole";
@@ -41,18 +43,29 @@ function MemberRow({
   isSelf,
   sameZone,
   canManage,
+  canManageAccountType,
   busy,
   onToggleActive,
+  onChangeAccountType,
 }: {
   member: Member;
   isSelf: boolean;
   sameZone: boolean;
   canManage: boolean;
+  canManageAccountType: boolean;
   busy: boolean;
   onToggleActive: (member: Member) => void;
+  onChangeAccountType: (member: Member) => void;
 }) {
   const isAdmin = String(member.role ?? "").toLowerCase() === "administrator";
   const isActive = member.active !== false;
+  const memberAccountType = normalizeAccountType(member.account_type);
+  const memberAccountTypeText = isSystemAdministrator({
+    role: member.role,
+    accountType: member.account_type,
+  })
+    ? `${accountTypeLabel(memberAccountType)} (System Admin)`
+    : accountTypeLabel(memberAccountType);
   return (
     <Card
       style={{
@@ -120,6 +133,7 @@ function MemberRow({
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         <Chip label={isAdmin ? "Administrator" : "Member"} tone="muted" />
+        <Chip label={memberAccountTypeText} tone="muted" />
         <Chip
           label={isActive ? "Active" : "Inactive"}
           tone={isActive ? "success" : "danger"}
@@ -133,6 +147,16 @@ function MemberRow({
           <Chip label="No network ID" tone="muted" />
         )}
       </View>
+
+      {canManageAccountType ? (
+        <Button
+          label="Change account type"
+          variant="outline"
+          size="sm"
+          loading={busy}
+          onPress={() => onChangeAccountType(member)}
+        />
+      ) : null}
 
       {canManage ? (
         <Button
@@ -197,6 +221,10 @@ export default function MembersScreen() {
   const myZoneId = (ownerZoneId || String(user?.zoneId ?? "")).trim();
   const myId = String(user?.id ?? "").trim();
   const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
+  const isSystemAdmin = isSystemAdministrator({
+    role: user?.role,
+    accountType: user?.accountType ?? user?.account_type,
+  });
 
   const applyActiveChange = useCallback(
     (memberId: string, active: boolean) => {
@@ -257,6 +285,45 @@ export default function MembersScreen() {
     [isAdmin, pendingId, runToggleActive],
   );
 
+  const runChangeAccountType = useCallback(
+    async (member: Member, accountType: string) => {
+      setPendingId(member.id);
+      const result = await setMemberAccountType(member.id, accountType);
+      setPendingId(null);
+      if (result.error) {
+        Alert.alert("Could not update account type", result.error);
+        return;
+      }
+      setMembers((prev) =>
+        prev.map((row) =>
+          row.id === member.id ? { ...row, account_type: accountType } : row,
+        ),
+      );
+    },
+    [],
+  );
+
+  const onChangeAccountType = useCallback(
+    (member: Member) => {
+      if (!isSystemAdmin || pendingId) return;
+      const current = String(member.account_type ?? "").toLowerCase();
+      Alert.alert(
+        "Set account type",
+        `Choose a pricing tier for ${member.name}. Private grants system administrator access.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          ...ADMIN_ASSIGNABLE_ACCOUNT_TYPES.filter(
+            (option) => option.apiValue !== current,
+          ).map((option) => ({
+            text: option.label,
+            onPress: () => void runChangeAccountType(member, option.apiValue),
+          })),
+        ],
+      );
+    },
+    [isSystemAdmin, pendingId, runChangeAccountType],
+  );
+
   const sameZoneMembers = useMemo(() => {
     if (!myZoneId) return members;
     return members.filter((m) => String(m.zone_id ?? "") === myZoneId);
@@ -307,9 +374,11 @@ export default function MembersScreen() {
                 ? ` · up to ${memberLimit} member${memberLimit === 1 ? "" : "s"} per account`
                 : " · unlimited members"}
               . Each user shares zones defined by the account owner.
-              {isAdmin
-                ? " As administrator you can activate or deactivate other members in your zone — inactive users cannot sign in."
-                : ""}
+              {isSystemAdmin
+                ? " As system administrator you can set account types for other administrators and activate or deactivate members."
+                : isAdmin
+                  ? " As administrator you can activate or deactivate other members in your zone — inactive users cannot sign in."
+                  : ""}
             </Text>
           </Card>
 
@@ -357,14 +426,20 @@ export default function MembersScreen() {
               // on rows that belong to a different account/zone.
               const canManage =
                 isAdmin && !isSelf && sameZone && !!item.zone_id;
+              const canManageAccountType =
+                isSystemAdmin &&
+                !isSelf &&
+                String(item.role ?? "").toLowerCase() === "administrator";
               return (
                 <MemberRow
                   member={item}
                   isSelf={isSelf}
                   sameZone={sameZone}
                   canManage={canManage}
+                  canManageAccountType={canManageAccountType}
                   busy={pendingId === item.id}
                   onToggleActive={onToggleActive}
+                  onChangeAccountType={onChangeAccountType}
                 />
               );
             }}

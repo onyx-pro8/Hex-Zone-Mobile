@@ -97,6 +97,18 @@ export function accountTypeLabel(type: NormalizedAccountType): string {
   }
 }
 
+export const ADMIN_ASSIGNABLE_ACCOUNT_TYPES: {
+  value: NormalizedAccountType;
+  apiValue: string;
+  label: string;
+}[] = [
+  { value: "PRIVATE", apiValue: "private", label: "Private (System Admin)" },
+  { value: "PRIVATE_PLUS", apiValue: "private_plus", label: "Private+" },
+  { value: "EXCLUSIVE", apiValue: "exclusive", label: "Exclusive" },
+  { value: "ENHANCED", apiValue: "enhanced", label: "Enhanced" },
+  { value: "ENHANCED_PLUS", apiValue: "enhanced_plus", label: "Enhanced+" },
+];
+
 export function deviceLimitDescription(type: NormalizedAccountType): string {
   switch (type) {
     case "PRIVATE":
