@@ -66,7 +66,7 @@ export default function AlertsScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScreenHeader
           title="Incoming alarms"
-          subtitle="PANIC, SENSOR, NS-PANIC & other alarms"
+          subtitle="PANIC, SENSOR, NS-PANIC, WELLNESS CHECK & other alarms"
           showBack
           onBack={() => router.back()}
         />
@@ -181,7 +181,7 @@ export default function AlertsScreen() {
                   <Text
                     style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}
                   >
-                    Zone {item.zone_id}
+                    {item.zone_id}
                   </Text>
                 </Card>
               );

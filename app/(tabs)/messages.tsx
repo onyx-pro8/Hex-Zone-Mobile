@@ -46,7 +46,11 @@ import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { presentLocalMessageNotification } from "@/lib/notifications";
-import { resolveMessagePropagationPosition } from "@/lib/messagePosition";
+import {
+  privateLocationStatusMessage,
+  type PrivateLocationStatus,
+} from "@/lib/privateMessageLocation";
+import { messagePositionSourceLabel, resolveMessagePropagationPositionForType } from "@/lib/messagePosition";
 import { getOrCreateDeviceHid } from "@/lib/storage";
 import { isRunningExpoGo } from "@/lib/pushSupport";
 import {
@@ -305,7 +309,7 @@ function MessageRow({
         </Text>
       ) : null}
       <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>
-        Zone {item.zone_id}
+        {item.zone_id}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
       </Text>
       {item.type === "WELLNESS_CHECK" ? (
@@ -359,6 +363,7 @@ const ALARM_ACTIONS: QuickAction[] = [
   { type: "SENSOR", label: "SENSOR", icon: Radar, tone: "alarm" },
   { type: "NS_PANIC", label: "NS PANIC", icon: Siren, tone: "alarm" },
   { type: "UNKNOWN", label: "UNKNOWN", icon: HelpCircle, tone: "alarm" },
+  { type: "WELLNESS_CHECK", label: "WELLNESS CHECK", icon: HeartPulse, tone: "alarm" },
 ];
 
 const MESSAGING_ACTIONS: QuickAction[] = [
@@ -375,12 +380,6 @@ const MESSAGING_ACTIONS: QuickAction[] = [
     tone: "messaging",
   },
   { type: "SERVICE", label: "SERVICES", icon: Wrench, tone: "messaging" },
-  {
-    type: "WELLNESS_CHECK",
-    label: "WELLNESS CHECK",
-    icon: HeartPulse,
-    tone: "messaging",
-  },
 ];
 
 function QuickActionButton({
@@ -487,6 +486,8 @@ export default function MessagesScreen() {
   >([]);
   const [privateSearchLoading, setPrivateSearchLoading] = useState(false);
   const [senderZoneIds, setSenderZoneIds] = useState<string[]>([]);
+  const [privateLocationStatus, setPrivateLocationStatus] =
+    useState<PrivateLocationStatus | null>(null);
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
   const [guestOptions, setGuestOptions] = useState<
     { id: string; label: string }[]
@@ -536,7 +537,7 @@ export default function MessagesScreen() {
         }
         Alert.alert(
           "Emergency alert",
-          `${toMessageTypeLabel(type)} broadcasts to everyone in your zone with maximum priority. Block filters are bypassed.`,
+          `${toMessageTypeLabel(type)} uses your current location. Inside the admin primary zone, all invited members and the administrator are notified; outside the primary zone, no one receives it. Block filters are bypassed.`,
           [
             { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
             {
@@ -623,6 +624,7 @@ export default function MessagesScreen() {
     if (!composeOpen || !isPrivateMessageType(composeType)) {
       if (!isPrivateMessageType(composeType)) {
         setSenderZoneIds([]);
+        setPrivateLocationStatus(null);
         setPrivateSearchResults([]);
       }
       return;
@@ -633,7 +635,8 @@ export default function MessagesScreen() {
     const debounceMs = privateSearchQuery.trim().length >= 2 ? 300 : 0;
     const timer = setTimeout(() => {
       void (async () => {
-        const resolved = await resolveMessagePropagationPosition(
+        const resolved = await resolveMessagePropagationPositionForType(
+          "PRIVATE",
           user?.mapCenter ?? user?.map_center ?? null,
         );
         const position = "error" in resolved ? undefined : resolved.position;
@@ -644,6 +647,7 @@ export default function MessagesScreen() {
         if (!active) return;
         setPrivateSearchLoading(false);
         setSenderZoneIds(result.data?.zone_ids ?? []);
+        setPrivateLocationStatus(result.data?.location_status ?? null);
         setPrivateSearchResults(result.data?.members ?? []);
       })();
     }, debounceMs);
@@ -713,7 +717,8 @@ export default function MessagesScreen() {
       setQuickBusy(type);
       setQuickStatus(`Sending ${toMessageTypeLabel(type as MessageType)}…`);
       try {
-        const resolved = await resolveMessagePropagationPosition(
+        const resolved = await resolveMessagePropagationPositionForType(
+          type as MessageType,
           user?.mapCenter ?? user?.map_center ?? null,
         );
         if ("error" in resolved) throw new Error(resolved.error);
@@ -734,7 +739,9 @@ export default function MessagesScreen() {
               body.zone_id ?? body.zone_ids?.[0] ?? composeZoneId ?? undefined,
           });
         }
-        setQuickStatus(`${toMessageTypeLabel(type as MessageType)} sent`);
+        setQuickStatus(
+          `${toMessageTypeLabel(type as MessageType)} sent · ${messagePositionSourceLabel(resolved.source)}`,
+        );
         void refresh();
       } catch (err) {
         const msg =
@@ -811,7 +818,7 @@ export default function MessagesScreen() {
     }
 
     if (accessGuest && !composeZoneId) {
-      setComposeStatus("Your account has no zone id; cannot message guests.");
+      setComposeStatus("Your account has no network id; cannot message guests.");
       return;
     }
 
@@ -819,7 +826,8 @@ export default function MessagesScreen() {
     setComposeStatus("Sending…");
     try {
       if (usesGeoPropagationMessageType(composeType)) {
-        const resolved = await resolveMessagePropagationPosition(
+        const resolved = await resolveMessagePropagationPositionForType(
+          composeType,
           user?.mapCenter ?? user?.map_center ?? null,
         );
         if ("error" in resolved) throw new Error(resolved.error);
@@ -847,16 +855,10 @@ export default function MessagesScreen() {
               body.zone_id ?? body.zone_ids?.[0] ?? composeZoneId ?? undefined,
           });
         }
-        const sourceLabel =
-          resolved.source === "gps"
-            ? "live GPS"
-            : resolved.source === "profile"
-              ? "account address"
-              : "last map center";
         setDraft("");
         setComposeServicePaFields({ subject: "", topic: "", subtopic: "" });
         setComposeOpen(false);
-        setComposeStatus(`Sent · ${sourceLabel}`);
+        setComposeStatus(`Sent · ${messagePositionSourceLabel(resolved.source)}`);
         void refresh();
         return;
       }
@@ -933,23 +935,14 @@ export default function MessagesScreen() {
           </Text>
         </View>
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-          {visibleMessagingActions.map((action) => {
-            // WELLNESS CHECK sends in one tap using its preset copy; other
-            // messaging types open the composer for editing.
-            const oneTap = action.type === "WELLNESS_CHECK";
-            return (
-              <QuickActionButton
-                key={action.type}
-                action={action}
-                busy={oneTap && quickBusy === action.type}
-                onPress={() =>
-                  oneTap
-                    ? void sendQuickAlert(action.type)
-                    : openCompose(action.type as MessageType)
-                }
-              />
-            );
-          })}
+          {visibleMessagingActions.map((action) => (
+            <QuickActionButton
+              key={action.type}
+              action={action}
+              busy={false}
+              onPress={() => openCompose(action.type as MessageType)}
+            />
+          ))}
         </View>
         {quickStatus ? (
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -1221,11 +1214,11 @@ export default function MessagesScreen() {
                       members reachable in this zone, then pick one recipient.
                       You cannot select yourself.
                     </Text>
-                    {privateSearchLoading && senderZoneIds.length === 0 ? (
+                    {privateSearchLoading && privateLocationStatus === null ? (
                       <ActivityIndicator color={colors.accent} />
-                    ) : senderZoneIds.length === 0 ? (
+                    ) : privateLocationStatusMessage(privateLocationStatus) ? (
                       <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                        You are not inside any zone. Update your location first.
+                        {privateLocationStatusMessage(privateLocationStatus)}
                       </Text>
                     ) : (
                       <>

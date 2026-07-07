@@ -1,7 +1,7 @@
 /**
  * Guest chat (post-approval). Mirrors web `pages/guest/GuestMessages.tsx`.
  *
- * The guest picks a host/admin (peer) in their zone and exchanges CHAT
+ * The guest picks any network member or administrator and exchanges CHAT
  * messages. PERMISSION rows from the access workflow are shown read-only.
  * Guests can only SEND the CHAT type. Runs on the stored guest token.
  */
@@ -249,7 +249,7 @@ export default function GuestMessagesScreen() {
         <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
           <ScreenHeader
             title="Guest chat"
-            subtitle="Message the zone hosts"
+            subtitle="Message network members"
             showBack
             onBack={() => router.replace("/guest/dashboard")}
           />
@@ -289,7 +289,7 @@ export default function GuestMessagesScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Hosts in this zone
+                  Members in this network
                 </Text>
                 <Pressable
                   onPress={() => void loadPeers()}
@@ -307,7 +307,7 @@ export default function GuestMessagesScreen() {
                 </Text>
               ) : peers.length === 0 ? (
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  No hosts are available to chat in this zone yet.
+                  No network members are available to chat yet.
                 </Text>
               ) : (
                 <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
@@ -330,7 +330,7 @@ export default function GuestMessagesScreen() {
               {!peerId ? (
                 <View style={{ paddingTop: 24, alignItems: "center" }}>
                   <Text style={{ color: colors.textDim, fontSize: 13 }}>
-                    Select a host to start chatting.
+                    Select a member to start chatting.
                   </Text>
                 </View>
               ) : (

@@ -11,6 +11,7 @@ import {
 } from "@/lib/appSettings";
 import { getRemoteAppSettings, updateRemoteAppSettings } from "@/api";
 import { useAuth } from "@/context/AuthContext";
+import { canEditNetworkId } from "@/lib/accountLimits";
 import { colors } from "@/theme/colors";
 
 function Field({
@@ -89,6 +90,10 @@ function SectionTitle({ children }: { children: string }) {
 export function ConfigForm() {
   const { user } = useAuth();
   const accountName = (user?.name ?? "").trim();
+  const networkIdEditable = canEditNetworkId({
+    accountType: user?.accountType,
+    legacyAccountType: user?.account_type,
+  });
   const settings = useAppSettings();
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [loading, setLoading] = useState(true);
@@ -219,7 +224,7 @@ export function ConfigForm() {
       <Card style={{ gap: 14 }}>
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
           Configure how your smart-home device receives zone alerts. Use the
-          API key and zone id on the device. Set a webhook for push delivery, or
+          API key and network id on the device. Set a webhook for push delivery, or
           leave it blank and rely on periodical polling.
         </Text>
         <Field
@@ -233,12 +238,21 @@ export function ConfigForm() {
           Smart-home device id registered in Device Manager.
         </Text>
         <Field
-          label="Network identification (Zone ID)"
+          label="Network ID"
           value={draft.sharedNotification.networkId}
-          onChangeText={() => {}}
+          onChangeText={(v) =>
+            update({
+              sharedNotification: { ...draft.sharedNotification, networkId: v },
+            })
+          }
           placeholder="ZONE-ABC123"
-          editable={false}
+          editable={networkIdEditable}
         />
+        <Text style={{ color: colors.textDim, fontSize: 11, marginTop: -8 }}>
+          {networkIdEditable
+            ? "System administrators may personalize the network ID (e.g. DISTRICT 11)."
+            : "Network ID is assigned by your administrator and cannot be changed."}
+        </Text>
         <Field
           label="API key"
           value={draft.sharedNotification.apiKey}

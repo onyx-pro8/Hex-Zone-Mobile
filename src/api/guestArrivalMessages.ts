@@ -182,7 +182,7 @@ export async function getGuestArrivalMessages(
   zoneId: string,
 ): Promise<GuestArrivalMessagesResult> {
   const z = zoneId.trim();
-  if (!z) return { ok: false, status: 400, message: "Missing zone id." };
+  if (!z) return { ok: false, status: 400, message: "Missing network id." };
   try {
     const res = await apiClient.get<unknown>(buildPath(z), {
       validateStatus: () => true,
@@ -229,7 +229,7 @@ export async function updateGuestArrivalMessages(
   payload: GuestArrivalMessagesUpdate,
 ): Promise<GuestArrivalMessagesResult> {
   const z = zoneId.trim();
-  if (!z) return { ok: false, status: 400, message: "Missing zone id." };
+  if (!z) return { ok: false, status: 400, message: "Missing network id." };
   try {
     const res = await apiClient.request<unknown>({
       method: "patch",

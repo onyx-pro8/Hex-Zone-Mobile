@@ -129,7 +129,14 @@ export type PrivateSearchMember = {
 export type PrivateSearchMembersResponse = {
   zone_ids: string[];
   members: PrivateSearchMember[];
+  location_status?: PrivateLocationStatus;
 };
+
+export type PrivateLocationStatus =
+  | "inside_zone"
+  | "outside_zone"
+  | "no_coordinates"
+  | "not_in_network";
 
 export async function searchPrivateMessageRecipients(
   query: string,

@@ -113,6 +113,59 @@ function readStringArray(raw: unknown): string[] {
     .map((s) => s.trim());
 }
 
+function appendZoneRecordGeometry(zoneRaw: unknown, polygons: LatLng[][]) {
+  const z = asRecord(zoneRaw);
+  if (!z) return;
+  const bags = [z];
+  const geom = asRecord(z.geometry);
+  if (geom) bags.push(geom);
+  const config = asRecord(z.config);
+  if (config) bags.push(config);
+
+  const pick = (key: string): unknown => {
+    for (const b of bags) {
+      if (Object.prototype.hasOwnProperty.call(b, key)) return b[key];
+    }
+    return undefined;
+  };
+
+  const gj = pick("geo_fence_polygon") ?? pick("geojson");
+  if (gj) extractPolygonsFromGeoJson(gj, polygons);
+}
+
+export type GuestNetworkZoneSummary = {
+  id: number | string;
+  networkId: string;
+  name: string;
+};
+
+export function networkZonesFromGuestDashboard(
+  dashboard: unknown,
+): GuestNetworkZoneSummary[] {
+  const root = asRecord(dashboard);
+  if (!root || !Array.isArray(root.zones)) return [];
+  const out: GuestNetworkZoneSummary[] = [];
+  for (const raw of root.zones) {
+    const z = asRecord(raw);
+    if (!z) continue;
+    const networkId = String(z.zone_id ?? root.zone_id ?? "").trim();
+    const idRaw = z.id ?? z.zone_id;
+    const name =
+      String(z.name ?? "").trim() ||
+      (networkId ? `Zone ${String(idRaw ?? "")}` : "");
+    if (idRaw == null && !networkId) continue;
+    out.push({
+      id:
+        typeof idRaw === "number" || typeof idRaw === "string"
+          ? idRaw
+          : String(idRaw ?? networkId),
+      networkId,
+      name,
+    });
+  }
+  return out;
+}
+
 export function tryParseGuestDashboardMap(
   dashboard: unknown,
 ): GuestDashboardMapView | null {
@@ -129,6 +182,10 @@ export function tryParseGuestDashboardMap(
   };
 
   const polygons: LatLng[][] = [];
+
+  if (Array.isArray(root.zones)) {
+    for (const zoneRow of root.zones) appendZoneRecordGeometry(zoneRow, polygons);
+  }
 
   // H3 cells can't be converted to lat/lng on RN (h3 module is a stub), so we
   // pass them through for the map WebView (which loads h3-js) to draw + fit.

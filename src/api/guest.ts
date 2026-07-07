@@ -297,6 +297,33 @@ export async function getGuestAccessQrTokenLink(
   });
 }
 
+export async function fetchNetworkAccessQrToken(zoneId: string) {
+  return request<{
+    url: string | null;
+    path_with_query: string;
+    token_suffix?: string;
+    zone_id: string;
+  }>({
+    method: "GET",
+    url: "/api/access/qr-tokens/network",
+    params: { zone_id: zoneId.trim() },
+  });
+}
+
+export async function rotateNetworkAccessQrToken(zoneId: string) {
+  return request<{
+    url: string | null;
+    path_with_query: string;
+    token_suffix?: string;
+    zone_id: string;
+  }>({
+    method: "POST",
+    url: "/api/access/qr-tokens/network/rotate",
+    params: { zone_id: zoneId.trim() },
+    data: {},
+  });
+}
+
 /** Backwards-compatible helper used by older callers (Messages compose etc.). */
 export async function generateAccessQrToken(payload: {
   zone_id: string;
@@ -398,7 +425,7 @@ export async function approveGuestRequest(requestId: string, zoneId: string) {
   if (!id || !zid) {
     return {
       data: null,
-      error: "Missing guest request or zone id.",
+      error: "Missing guest request or network id.",
       loading: false,
     };
   }
@@ -415,7 +442,7 @@ export async function rejectGuestRequest(requestId: string, zoneId: string) {
   if (!id || !zid) {
     return {
       data: null,
-      error: "Missing guest request or zone id.",
+      error: "Missing guest request or network id.",
       loading: false,
     };
   }

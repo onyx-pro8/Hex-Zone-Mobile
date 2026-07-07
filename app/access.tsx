@@ -84,15 +84,17 @@ export default function GuestAccessScreen() {
   const params = useLocalSearchParams<{
     gt?: string;
     zid?: string;
+    nid?: string;
     eid?: string;
     sig?: string;
   }>();
 
   const gt = String(params.gt ?? "").trim();
   const zid = String(params.zid ?? "").trim();
+  const nid = String(params.nid ?? "").trim();
   const eidFromQuery = String(params.eid ?? "").trim();
   const sigFromQuery = String(params.sig ?? "").trim();
-  const hasInvite = Boolean(gt || zid);
+  const hasInvite = Boolean(gt || zid || nid);
 
   const [guestName, setGuestName] = useState("");
   const [eventId, setEventId] = useState(eidFromQuery);
@@ -172,15 +174,22 @@ export default function GuestAccessScreen() {
           : primaryZone
             ? [primaryZone]
             : [];
+        const allowed = ex.data.guest.allowed_message_types?.length
+          ? ex.data.guest.allowed_message_types
+          : ["CHAT"];
+        const network_geo_messaging = allowed.some((t) =>
+          ["PANIC", "NS_PANIC", "NS-PANIC", "PA", "SERVICE", "UNKNOWN", "PRIVATE"].includes(
+            String(t).trim().toUpperCase(),
+          ),
+        );
         await setStoredGuestSession({
           access_token: ex.data.access_token,
           guest_id: ex.data.guest.guest_id,
           display_name: ex.data.guest.display_name,
           zone_id: primaryZone,
           zone_ids: resolvedZoneIds,
-          allowed_message_types: ex.data.guest.allowed_message_types?.length
-            ? ex.data.guest.allowed_message_types
-            : ["PERMISSION", "CHAT"],
+          allowed_message_types: allowed,
+          ...(network_geo_messaging ? { network_geo_messaging: true } : {}),
           saved_at: Date.now(),
         });
         return true;
@@ -327,8 +336,8 @@ export default function GuestAccessScreen() {
   };
 
   const submit = async () => {
-    if (!gt && !zid) {
-      setFormError("This link is missing a guest token or zone id.");
+    if (!gt && !zid && !nid) {
+      setFormError("This link is missing a guest token or network id.");
       return;
     }
     const name = guestName.trim();
@@ -345,6 +354,7 @@ export default function GuestAccessScreen() {
         device_id: hid,
         ...(gt ? { guest_qr_token: gt } : {}),
         ...(zid ? { zone_id: zid } : {}),
+        ...(nid ? { network_id: nid } : {}),
         ...(eventId.trim() ? { event_id: eventId.trim() } : {}),
         ...(position
           ? { location: { lat: position.lat, lng: position.lng } }
@@ -356,7 +366,7 @@ export default function GuestAccessScreen() {
         setFormError(result.message);
         return;
       }
-      const pollZoneId = (result.zoneId ?? zid).trim();
+      const pollZoneId = (result.zoneId ?? zid ?? nid).trim();
       const guestId = (result.guestId ?? "").trim();
 
       if (result.status === "EXPECTED") {
@@ -431,7 +441,7 @@ export default function GuestAccessScreen() {
               </View>
               <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                 Ask your host for a guest link that includes an invitation
-                token or a zone id.
+                token or a network id.
               </Text>
               <Button
                 label={memberToken ? "Back to dashboard" : "Back to welcome"}

@@ -140,6 +140,7 @@ export type StoredGuestSession = {
   zone_id: string;
   zone_ids: string[];
   allowed_message_types: string[];
+  network_geo_messaging?: boolean;
   saved_at: number;
 };
 
