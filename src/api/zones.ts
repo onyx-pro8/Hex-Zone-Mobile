@@ -82,8 +82,9 @@ export async function updateZone(id: string | number, payload: UpdateZonePayload
   });
 }
 
+/** Delete a saved zone by DB record id (`zone.id`). */
 export async function deleteZone(id: string | number) {
-  return request<{ success: boolean }>({
+  return request<null>({
     method: "DELETE",
     url: `/zones/${id}`,
   });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PermissionsAndroid, Platform } from "react-native";
+import { Alert, PermissionsAndroid, Platform } from "react-native";
 import {
   loadExpoLocation,
   readDeviceLocation,
@@ -26,9 +26,11 @@ import { setStoredMapCenter } from "@/lib/storage";
 import {
   circleToGeoJsonPolygon,
   colorForZoneType,
+  canDeleteSavedZone,
   isClosedPolygon,
   latLngRingToGeoJsonPolygon,
   ringsFromGeoJsonPolygon,
+  savedZoneRecordId,
   zoneRecordToLayer,
   type MapZoneLayer,
   type ZoneCircle,
@@ -56,7 +58,15 @@ export type ZoneBuilderState = ReturnType<typeof useZoneBuilder>;
 
 export const MAX_ZONE_NAME_LENGTH = 120;
 
-export function useZoneBuilder(ownerZoneId: string | undefined) {
+export type ZoneBuilderScope = {
+  currentUserId?: string;
+  isAccountAdministrator?: boolean;
+};
+
+export function useZoneBuilder(
+  ownerZoneId: string | undefined,
+  scope?: ZoneBuilderScope,
+) {
   const [layers, setLayers] = useState<MapZoneLayer[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -854,18 +864,54 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
   ]);
 
   const remove = useCallback(
-    async (id: string) => {
-      setStatus("Deleting zone…");
-      const result = await deleteZone(id);
-      if (result.error) {
-        setError(result.error);
-        setStatus(null);
+    (layer: MapZoneLayer) => {
+      if (
+        !canDeleteSavedZone(layer.raw, {
+          currentUserId: scope?.currentUserId,
+          isAccountAdministrator: scope?.isAccountAdministrator,
+        })
+      ) {
+        setError("You can delete only your own zones, or member zones as the account administrator.");
         return;
       }
-      setStatus("Zone deleted.");
-      await refresh();
+
+      const recordId = savedZoneRecordId(layer.raw);
+      Alert.alert(
+        "Delete zone",
+        `Remove "${layer.name}"? This cannot be undone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              void (async () => {
+                setError(null);
+                setStatus("Deleting zone…");
+                const result = await deleteZone(recordId);
+                if (result.error) {
+                  setError(result.error);
+                  setStatus(null);
+                  return;
+                }
+                setStatus("Zone deleted.");
+                await refresh();
+              })();
+            },
+          },
+        ],
+      );
     },
-    [refresh],
+    [refresh, scope?.currentUserId, scope?.isAccountAdministrator],
+  );
+
+  const canDeleteLayer = useCallback(
+    (layer: MapZoneLayer) =>
+      canDeleteSavedZone(layer.raw, {
+        currentUserId: scope?.currentUserId,
+        isAccountAdministrator: scope?.isAccountAdministrator,
+      }),
+    [scope?.currentUserId, scope?.isAccountAdministrator],
   );
 
   const draftColor = useMemo(() => colorForZoneType(zoneType), [zoneType]);
@@ -916,6 +962,7 @@ export function useZoneBuilder(ownerZoneId: string | undefined) {
     listError,
     refresh,
     remove,
+    canDeleteLayer,
     capabilities,
 
     // form

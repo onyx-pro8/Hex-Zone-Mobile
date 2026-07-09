@@ -23,11 +23,14 @@ import { colorForZoneType, summarizeZone } from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
 export default function DashboardScreen() {
-  const { ownerZoneId } = useAuth();
+  const { ownerZoneId, user } = useAuth();
   // Always create zones against the account owner's zone_id, not the
   // signed-in user's. For admins they're the same; for non-admin USERS
   // the owner's zone is the canonical one for the whole account.
-  const builder = useZoneBuilder(ownerZoneId || undefined);
+  const builder = useZoneBuilder(ownerZoneId || undefined, {
+    currentUserId: user?.id != null ? String(user.id) : undefined,
+    isAccountAdministrator: String(user?.role ?? "").toLowerCase() === "administrator",
+  });
   const [panelOpen, setPanelOpen] = useState(true);
 
   const dragResponder = useRef(
@@ -153,9 +156,12 @@ export default function DashboardScreen() {
               >
                 {builder.loadingList
                   ? "…"
-                  : builder.capabilities?.max_total != null
-                    ? `${builder.layers.length}/${builder.capabilities.max_total}`
-                    : `${builder.layers.length} saved`}
+                  : builder.capabilities?.max_total != null &&
+                      typeof builder.capabilities.remaining_total === "number"
+                    ? `${builder.capabilities.max_total - builder.capabilities.remaining_total}/${builder.capabilities.max_total}`
+                    : builder.capabilities?.max_total != null
+                      ? `${builder.layers.length}/${builder.capabilities.max_total}`
+                      : `${builder.layers.length} saved`}
               </Text>
             </View>
           </View>
@@ -263,7 +269,7 @@ export default function DashboardScreen() {
               >
                 <Text style={{ color: colors.danger, fontSize: 12, lineHeight: 18 }}>
                   {builder.capabilities.reason ??
-                    "You've reached the zone limit for this account. Delete a zone to free a slot."}
+                    "You've reached the zone limit for this user. Delete a zone to free a slot."}
                 </Text>
               </View>
             ) : null}
@@ -276,45 +282,27 @@ export default function DashboardScreen() {
               </Text>
             ) : null}
 
-              {builder.error ? (
-                <Text style={{ color: colors.danger, fontSize: 12 }}>
-                  {builder.error}
+            {builder.loadingList && builder.layers.length === 0 ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : null}
+
+            {builder.layers.length > 0 ? (
+              <View style={{ gap: 8 }}>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 10,
+                    fontWeight: "800",
+                    letterSpacing: 1.6,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Saved zones ({builder.layers.length})
                 </Text>
-              ) : null}
-              {builder.status ? (
-                <Text style={{ color: colors.accent, fontSize: 12 }}>
-                  {builder.status}
+                <Text style={{ color: colors.textDim, fontSize: 11, lineHeight: 16 }}>
+                  Tap the red trash icon to delete a saved zone.
                 </Text>
-              ) : null}
-
-              <Button
-                label={builder.saving ? "Saving…" : "Save zone"}
-                onPress={() => void builder.save()}
-                loading={builder.saving}
-                disabled={!builder.canSave}
-                fullWidth
-                size="lg"
-                leftIcon={<Save size={18} color="#fff" />}
-              />
-
-              {builder.loadingList && builder.layers.length === 0 ? (
-                <ActivityIndicator color={colors.accent} />
-              ) : null}
-
-              {builder.layers.length > 0 ? (
-                <View style={{ gap: 8 }}>
-                  <Text
-                    style={{
-                      color: colors.textMuted,
-                      fontSize: 10,
-                      fontWeight: "800",
-                      letterSpacing: 1.6,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Saved zones
-                  </Text>
-                {builder.layers.map((layer) => {
+              {builder.layers.map((layer) => {
                   const summary = summarizeZone(layer.raw);
                   return (
                     <View
@@ -371,21 +359,55 @@ export default function DashboardScreen() {
                         </Text>
                       </Pressable>
                       <Pressable
-                        onPress={() => void builder.remove(layer.id)}
+                        onPress={() => builder.remove(layer)}
+                        disabled={!builder.canDeleteLayer(layer)}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete zone ${layer.name}`}
                         style={{
                           padding: 8,
                           borderRadius: 10,
-                          backgroundColor: "rgba(255,82,82,0.1)",
+                          backgroundColor: builder.canDeleteLayer(layer)
+                            ? "rgba(255,82,82,0.1)"
+                            : "rgba(148,163,184,0.12)",
+                          opacity: builder.canDeleteLayer(layer) ? 1 : 0.45,
                         }}
                       >
-                        <Trash2 size={14} color={colors.danger} />
+                        <Trash2
+                          size={14}
+                          color={
+                            builder.canDeleteLayer(layer)
+                              ? colors.danger
+                              : colors.textDim
+                          }
+                        />
                       </Pressable>
                     </View>
                   );
                 })}
                 </View>
               ) : null}
+
+              {builder.error ? (
+                <Text style={{ color: colors.danger, fontSize: 12 }}>
+                  {builder.error}
+                </Text>
+              ) : null}
+              {builder.status ? (
+                <Text style={{ color: colors.accent, fontSize: 12 }}>
+                  {builder.status}
+                </Text>
+              ) : null}
+
+              <Button
+                label={builder.saving ? "Saving…" : "Save zone"}
+                onPress={() => void builder.save()}
+                loading={builder.saving}
+                disabled={!builder.canSave}
+                fullWidth
+                size="lg"
+                leftIcon={<Save size={18} color="#fff" />}
+              />
             </ScrollView>
           </View>
         ) : (
@@ -424,6 +446,9 @@ export default function DashboardScreen() {
               style={{ color: colors.text, fontSize: 13, fontWeight: "700" }}
             >
               Zone tools
+              {builder.layers.length > 0
+                ? ` · ${builder.layers.length} saved`
+                : ""}
             </Text>
             <ChevronUp size={16} color={colors.accent} />
           </Pressable>

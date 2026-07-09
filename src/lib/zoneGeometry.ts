@@ -257,6 +257,30 @@ export function readZoneCenter(zone: SavedZone): LatLng | null {
   return null;
 }
 
+/** DB record id used for PATCH/DELETE (`zone.id`). */
+export function savedZoneRecordId(zone: SavedZone): string {
+  return String(zone.id);
+}
+
+export function canDeleteSavedZone(
+  zone: SavedZone,
+  scope?: {
+    currentUserId?: string;
+    isAccountAdministrator?: boolean;
+  },
+): boolean {
+  if (!scope?.currentUserId) return true;
+  const ownerId =
+    zone.owner_id != null
+      ? String(zone.owner_id)
+      : (zone as { ownerId?: string | number }).ownerId != null
+        ? String((zone as { ownerId?: string | number }).ownerId)
+        : null;
+  if (!ownerId) return false;
+  if (ownerId === scope.currentUserId) return true;
+  return Boolean(scope.isAccountAdministrator);
+}
+
 export function zoneRecordToLayer(
   zone: SavedZone,
   index: number,
