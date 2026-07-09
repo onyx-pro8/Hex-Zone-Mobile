@@ -7,12 +7,9 @@ const SYNC_INTERVAL_MS = 30_000;
 
 /**
  * Periodically publishes the device's GPS position to the server
- * (`POST /members/location`) for dynamic zones and sender-side geo workflows.
- *
- * Zone-based delivery resolves recipients from each owner's stored
- * `owners.latitude/longitude`; without this sync a user physically inside a
- * zone is never found and silently receives nothing. No-op when not enabled
- * (e.g. signed out) or when native location is unavailable.
+ * (`POST /members/location`) for dynamic zones and sender-side live geo workflows.
+ * Live fixes are stored in `member_locations`; registered home address coords
+ * on the owner profile are unchanged.
  */
 export function useLocationSync(enabled: boolean) {
   useEffect(() => {

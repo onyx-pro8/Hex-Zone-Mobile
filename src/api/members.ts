@@ -102,3 +102,15 @@ export async function setMemberActive(
     data: { active },
   });
 }
+
+/** System-admin only: assign a pricing tier to an administrator account. */
+export async function setMemberAccountType(
+  memberId: string | number,
+  accountType: string,
+) {
+  return request<unknown>({
+    method: "PATCH",
+    url: `/owners/${encodeURIComponent(String(memberId))}`,
+    data: { account_type: accountType },
+  });
+}

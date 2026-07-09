@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TextInput, View } from "react-native";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
 import {
   QUICK_MESSAGE_LABELS,
   QUICK_MESSAGE_TYPES,
@@ -172,44 +173,15 @@ export function ConfigForm() {
           onChangeText={(v) => update({ broadcastName: v })}
           placeholder={accountName || "e.g. THE BLACK GUY"}
         />
-        <Field
-          label="Number / Street #"
-          value={draft.address.numberStreet}
-          onChangeText={(v) =>
-            update({ address: { ...draft.address, numberStreet: v } })
-          }
-          placeholder="169"
+        <AddressAutocompleteInput
+          label="Address"
+          value={draft.address}
+          onChange={(addr) => update({ address: addr })}
+          placeholder="169 Fred Young Drive, Toronto, Ontario"
         />
-        <Field
-          label="Street name"
-          value={draft.address.streetName}
-          onChangeText={(v) =>
-            update({ address: { ...draft.address, streetName: v } })
-          }
-          placeholder="Fred Young Drive"
-        />
-        <Field
-          label="City"
-          value={draft.address.city}
-          onChangeText={(v) => update({ address: { ...draft.address, city: v } })}
-          placeholder="Toronto"
-        />
-        <Field
-          label="State / Province / Parish"
-          value={draft.address.stateProvince}
-          onChangeText={(v) =>
-            update({ address: { ...draft.address, stateProvince: v } })
-          }
-          placeholder="Ontario"
-        />
-        <Field
-          label="City code"
-          value={draft.address.cityCode}
-          onChangeText={(v) =>
-            update({ address: { ...draft.address, cityCode: v } })
-          }
-          placeholder="M3L 0A6"
-        />
+        <Text style={{ color: colors.textDim, fontSize: 11, marginTop: -8 }}>
+          Start typing and pick a suggestion to set your home address.
+        </Text>
         <Button
           label={
             saving ? "Saving…" : saved ? "Saved" : "Update address & broadcast name"
