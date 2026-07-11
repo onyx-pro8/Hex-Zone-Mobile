@@ -32,6 +32,9 @@ export type Message = {
   visibility: MessageVisibility;
   message: string;
   created_at: string;
+  /** Sender coordinates when provided by the server or geo-propagation metadata. */
+  latitude?: number | null;
+  longitude?: number | null;
   raw_payload: Record<string, unknown> | null;
   guest_sender_id?: string;
   guest_id?: string | null;
@@ -98,6 +101,47 @@ function coerceMessageScope(value: unknown): MessageScope | null {
   if (typeof value !== "string") return null;
   const key = value.trim().toLowerCase();
   if (key === "public" || key === "private") return key;
+  return null;
+}
+
+function readCoordinate(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function extractMessagePosition(
+  ...sources: Array<Record<string, unknown> | null | undefined>
+): { latitude: number; longitude: number } | null {
+  for (const source of sources) {
+    if (!source) continue;
+    const lat = readCoordinate(source.latitude ?? source.lat);
+    const lng = readCoordinate(source.longitude ?? source.lng ?? source.lon);
+    if (lat != null && lng != null) {
+      return { latitude: lat, longitude: lng };
+    }
+    const position = source.position;
+    if (position && typeof position === "object" && !Array.isArray(position)) {
+      const nested = position as Record<string, unknown>;
+      const nestedLat = readCoordinate(nested.latitude ?? nested.lat);
+      const nestedLng = readCoordinate(nested.longitude ?? nested.lng ?? nested.lon);
+      if (nestedLat != null && nestedLng != null) {
+        return { latitude: nestedLat, longitude: nestedLng };
+      }
+    }
+    const origin = source.origin;
+    if (origin && typeof origin === "object" && !Array.isArray(origin)) {
+      const nested = origin as Record<string, unknown>;
+      const nestedLat = readCoordinate(nested.latitude ?? nested.lat);
+      const nestedLng = readCoordinate(nested.longitude ?? nested.lng ?? nested.lon);
+      if (nestedLat != null && nestedLng != null) {
+        return { latitude: nestedLat, longitude: nestedLng };
+      }
+    }
+  }
   return null;
 }
 
@@ -403,6 +447,7 @@ export function normalizeMessage(raw: unknown): Message | null {
     : null;
   const is_read_by_viewer =
     typeof row.is_read_by_viewer === "boolean" ? row.is_read_by_viewer : undefined;
+  const coordinates = extractMessagePosition(row, msgRecord, rowStructuredPayload, raw_payload);
 
   return {
     id: String(id),
@@ -415,6 +460,9 @@ export function normalizeMessage(raw: unknown): Message | null {
     visibility: scope,
     message: textValue,
     created_at: createdAt,
+    ...(coordinates
+      ? { latitude: coordinates.latitude, longitude: coordinates.longitude }
+      : {}),
     raw_payload,
     ...(useGuestLogicalSender && guestSenderIdRaw
       ? { guest_sender_id: guestSenderIdRaw }
@@ -506,6 +554,10 @@ export function messageFromGeoPropagation(
   if (id == null || !zoneId || typeof createdAt !== "string") {
     return null;
   }
+  const coordinates = extractMessagePosition(
+    propagation as unknown as Record<string, unknown>,
+    meta,
+  );
   return normalizeMessage({
     id,
     zone_id: zoneId,
@@ -521,6 +573,9 @@ export function messageFromGeoPropagation(
     ...(servicePa.subject ? { subject: servicePa.subject } : {}),
     ...(servicePa.topic ? { topic: servicePa.topic } : {}),
     ...(servicePa.subtopic ? { subtopic: servicePa.subtopic } : {}),
+    ...(coordinates
+      ? { latitude: coordinates.latitude, longitude: coordinates.longitude }
+      : {}),
     raw_payload: propagation.metadata ?? null,
   });
 }

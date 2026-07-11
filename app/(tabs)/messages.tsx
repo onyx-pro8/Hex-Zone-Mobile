@@ -71,6 +71,7 @@ import {
   type QuickMessageType,
 } from "@/lib/appSettings";
 import { messageBroadcastLabel } from "@/lib/messageBroadcast";
+import { formatMessageCoordinatesLabel } from "@/lib/messageCoordinates";
 import { subscribeWellnessAck } from "@/lib/messageSocket";
 import {
   getMessageWorkflow,
@@ -275,6 +276,10 @@ function MessageRow({
           {item.topic_label ? (
             <Chip label={item.topic_label} tone="warning" />
           ) : null}
+          <Chip
+            label={formatMessageCoordinatesLabel(item)}
+            tone="default"
+          />
         </View>
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
           {new Date(item.created_at).toLocaleString()}
