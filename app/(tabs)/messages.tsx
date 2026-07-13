@@ -32,13 +32,16 @@ import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { useMessagesFeed } from "@/hooks/useMessagesFeed";
+import { useZoneNameLookup } from "@/hooks/useZoneNameLookup";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { sendMessage, type Message } from "@/api/messages";
 import {
   propagateMessageFeatureMessage,
   acknowledgeWellnessCheck,
+  askWellnessSender,
   listWellnessAcknowledgements,
+  replyToWellnessAsks,
   searchPrivateMessageRecipients,
   type PrivateSearchMember,
 } from "@/api/messageFeature";
@@ -71,12 +74,16 @@ import {
   type QuickMessageType,
 } from "@/lib/appSettings";
 import { messageBroadcastLabel } from "@/lib/messageBroadcast";
+import { messageZoneLabel, type ZoneNameLookup } from "@/lib/messageZoneLabel";
 import { formatMessageCoordinatesLabel } from "@/lib/messageCoordinates";
 import { subscribeWellnessAck } from "@/lib/messageSocket";
 import {
   getMessageWorkflow,
   isEmergencyMessageType,
   isUnknownMessageType,
+  isServiceMessageType,
+  SERVICE_MESSAGE_UI,
+  UNKNOWN_MESSAGE_UI,
 } from "@/lib/messageWorkflow";
 import {
   SERVICE_PA_TOPICS,
@@ -96,14 +103,21 @@ type OwnerNameMap = Record<number, string>;
 function WellnessAckInline({
   messageEventId,
   selfOwnerId,
+  senderId,
 }: {
   messageEventId: string;
   selfOwnerId: number | null;
+  senderId: number | null;
 }) {
   const [busy, setBusy] = useState(false);
   const [canAck, setCanAck] = useState(false);
   const [acked, setAcked] = useState(false);
+  const [canAskSender, setCanAskSender] = useState(false);
+  const [waitingForSender, setWaitingForSender] = useState(false);
+  const [canReplyAsSender, setCanReplyAsSender] = useState(false);
+  const [senderReplyText, setSenderReplyText] = useState<string | null>(null);
   const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [pendingAskCount, setPendingAskCount] = useState(0);
 
   const load = useCallback(async () => {
     const res = await listWellnessAcknowledgements(messageEventId);
@@ -116,12 +130,29 @@ function WellnessAckInline({
       (row) => row.owner_id === selfOwnerId,
     );
     setAcked(mine);
-    setCanAck(
+    const isExpected =
+      selfOwnerId != null && data.expected_recipient_ids.includes(selfOwnerId);
+    setCanAck(isExpected && !mine);
+    const pendingAskFromMe =
       selfOwnerId != null &&
-        data.expected_recipient_ids.includes(selfOwnerId) &&
-        !mine,
+      data.pending_sender_asks.some((row) => row.asker_owner_id === selfOwnerId);
+    setCanAskSender(isExpected && !pendingAskFromMe);
+    setWaitingForSender(Boolean(pendingAskFromMe));
+    const isSender = selfOwnerId != null && senderId === selfOwnerId;
+    setCanReplyAsSender(isSender && data.pending_sender_asks.length > 0);
+    setPendingAskCount(data.pending_sender_asks.length);
+    const latestReply =
+      selfOwnerId != null && !isSender
+        ? [...data.sender_replies]
+            .reverse()
+            .find((row) => row.answered_asker_ids.includes(selfOwnerId))
+        : null;
+    setSenderReplyText(
+      latestReply
+        ? `Sender replied: ${latestReply.status === "need_help" ? "Needs help" : "OK"}`
+        : null,
     );
-  }, [messageEventId, selfOwnerId]);
+  }, [messageEventId, selfOwnerId, senderId]);
 
   useEffect(() => {
     void load();
@@ -139,11 +170,23 @@ function WellnessAckInline({
     const res = await acknowledgeWellnessCheck(messageEventId, { status });
     setBusy(false);
     if (res.error || !res.data) return;
-    setAcked(true);
-    setCanAck(false);
-    setSummaryText(
-      `${res.data.acknowledgements.length}/${res.data.expected_recipient_ids.length} responded`,
-    );
+    await load();
+  };
+
+  const askSender = async () => {
+    setBusy(true);
+    const res = await askWellnessSender(messageEventId);
+    setBusy(false);
+    if (res.error || !res.data) return;
+    await load();
+  };
+
+  const replyAsSender = async (status: "ok" | "need_help") => {
+    setBusy(true);
+    const res = await replyToWellnessAsks(messageEventId, { status });
+    setBusy(false);
+    if (res.error || !res.data) return;
+    await load();
   };
 
   return (
@@ -194,6 +237,76 @@ function WellnessAckInline({
           You acknowledged this wellness check.
         </Text>
       ) : null}
+      {canAskSender ? (
+        <Pressable
+          disabled={busy}
+          onPress={() => void askSender()}
+          style={{
+            alignSelf: "flex-start",
+            borderWidth: 1,
+            borderColor: colors.warning,
+            backgroundColor: "#fff",
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 10,
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: colors.warning, fontWeight: "700", fontSize: 12 }}>
+            Ask sender to respond
+          </Text>
+        </Pressable>
+      ) : null}
+      {waitingForSender ? (
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          Waiting for the sender to respond to your ask.
+        </Text>
+      ) : null}
+      {senderReplyText ? (
+        <Text style={{ color: colors.text, fontSize: 12, fontWeight: "600" }}>
+          {senderReplyText}
+        </Text>
+      ) : null}
+      {canReplyAsSender ? (
+        <View style={{ gap: 8 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+            {pendingAskCount} member(s) asked you to respond. One reply answers all
+            pending asks.
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Pressable
+              disabled={busy}
+              onPress={() => void replyAsSender("ok")}
+              style={{
+                backgroundColor: colors.success,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 10,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
+                I&apos;m OK
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={busy}
+              onPress={() => void replyAsSender("need_help")}
+              style={{
+                backgroundColor: colors.danger,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 10,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
+                Need help
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -203,23 +316,28 @@ function MessageRow({
   selfOwnerId,
   selfBroadcastName,
   ownerNames,
+  zoneNames,
   highlighted = false,
 }: {
   item: Message;
   selfOwnerId: number | null;
   selfBroadcastName: string;
   ownerNames: OwnerNameMap;
+  zoneNames?: ZoneNameLookup;
   highlighted?: boolean;
 }) {
   const router = useRouter();
   const isUnknown = isUnknownMessageType(item.type);
+  const isService = isServiceMessageType(item.type);
   const tone = isUnknown
     ? "critical"
-    : item.category === "Alarm"
-      ? "danger"
-      : item.category === "Access"
-        ? "warning"
-        : "default";
+    : isService
+      ? "service"
+      : item.category === "Alarm"
+        ? "danger"
+        : item.category === "Access"
+          ? "warning"
+          : "default";
 
   const broadcast = messageBroadcastLabel(item, {
     selfOwnerId,
@@ -248,10 +366,15 @@ function MessageRow({
           : null),
         ...(isUnknown
           ? {
-              borderColor: "#B71C1C",
-              backgroundColor: "#FFEBEE",
+              borderColor: UNKNOWN_MESSAGE_UI.border,
+              backgroundColor: UNKNOWN_MESSAGE_UI.surface,
             }
-          : null),
+          : isService
+            ? {
+                borderColor: SERVICE_MESSAGE_UI.border,
+                backgroundColor: SERVICE_MESSAGE_UI.surface,
+              }
+            : null),
       }}
     >
       <View
@@ -273,7 +396,7 @@ function MessageRow({
           }}
         >
           <Chip label={toMessageTypeLabel(item.type)} tone={tone} />
-          {item.topic_label ? (
+          {item.type !== "PA" && item.topic_label ? (
             <Chip label={item.topic_label} tone="warning" />
           ) : null}
           <Chip
@@ -287,8 +410,12 @@ function MessageRow({
       </View>
       <Text
         style={{
-          color: isUnknown ? "#B71C1C" : colors.text,
-          fontSize: item.subject ? 17 : isUnknown ? 18 : 16,
+          color: isUnknown
+            ? UNKNOWN_MESSAGE_UI.title
+            : isService
+              ? SERVICE_MESSAGE_UI.title
+              : colors.text,
+          fontSize: item.subject ? 17 : isUnknown || isService ? 18 : 16,
           fontWeight: "800",
           marginTop: 10,
         }}
@@ -303,9 +430,13 @@ function MessageRow({
       {item.message && item.message !== item.subject ? (
         <Text
           style={{
-            color: isUnknown ? "#7A1622" : colors.text,
-            fontSize: isUnknown ? 17 : 15,
-            fontWeight: isUnknown ? "700" : "500",
+            color: isUnknown
+              ? UNKNOWN_MESSAGE_UI.body
+              : isService
+                ? SERVICE_MESSAGE_UI.body
+                : colors.text,
+            fontSize: isUnknown || isService ? 17 : 15,
+            fontWeight: isUnknown || isService ? "700" : "500",
             marginTop: 4,
             lineHeight: 22,
           }}
@@ -314,11 +445,15 @@ function MessageRow({
         </Text>
       ) : null}
       <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}>
-        {item.zone_id}
+        {messageZoneLabel(item, { viewerOwnerId: selfOwnerId, zoneNames })}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
       </Text>
       {item.type === "WELLNESS_CHECK" ? (
-        <WellnessAckInline messageEventId={item.id} selfOwnerId={selfOwnerId} />
+        <WellnessAckInline
+          messageEventId={item.id}
+          selfOwnerId={selfOwnerId}
+          senderId={item.sender_id ?? null}
+        />
       ) : null}
       {privateCounterpartId != null ? (
         <Pressable
@@ -390,36 +525,47 @@ const MESSAGING_ACTIONS: QuickAction[] = [
 function QuickActionButton({
   action,
   onPress,
-  busy,
+  disabled,
+  sending,
 }: {
   action: QuickAction;
   onPress: () => void;
-  busy: boolean;
+  disabled: boolean;
+  sending: boolean;
 }) {
   const Icon = action.icon;
   const isAlarm = action.tone === "alarm";
   const isUnknown = isUnknownMessageType(action.type as MessageType);
+  const isService = isServiceMessageType(action.type as MessageType);
   const urgent = isEmergencyMessageType(action.type as MessageType);
   const bg = isUnknown
-    ? "#C62828"
-    : urgent
-      ? colors.danger
-      : isAlarm
-        ? "#FCE7EA"
-        : "#FBEFD8";
+    ? UNKNOWN_MESSAGE_UI.badge
+    : isService
+      ? SERVICE_MESSAGE_UI.badge
+      : urgent
+        ? colors.danger
+        : isAlarm
+          ? "#FCE7EA"
+          : "#FBEFD8";
   const border = isUnknown
-    ? "#B71C1C"
-    : urgent
-      ? colors.danger
-      : isAlarm
-        ? "#F3C2CA"
-        : "#F0DBB0";
+    ? UNKNOWN_MESSAGE_UI.border
+    : isService
+      ? SERVICE_MESSAGE_UI.border
+      : urgent
+        ? colors.danger
+        : isAlarm
+          ? "#F3C2CA"
+          : "#F0DBB0";
   const fg =
-    isUnknown || urgent ? "#fff" : isAlarm ? colors.danger : colors.warning;
+    isUnknown || isService || urgent
+      ? "#fff"
+      : isAlarm
+        ? colors.danger
+        : colors.warning;
   return (
     <Pressable
       onPress={onPress}
-      disabled={busy}
+      disabled={disabled}
       style={{
         flexBasis: "48%",
         flexGrow: 1,
@@ -432,10 +578,14 @@ function QuickActionButton({
         alignItems: "center",
         justifyContent: "center",
         gap: 8,
-        opacity: busy ? 0.6 : 1,
+        opacity: disabled ? 0.6 : 1,
       }}
     >
-      <Icon size={28} color={fg} />
+      {sending ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <Icon size={28} color={fg} />
+      )}
       <Text
         style={{
           color: fg,
@@ -445,7 +595,7 @@ function QuickActionButton({
           textAlign: "center",
         }}
       >
-        {action.label}
+        {sending ? "Sending…" : action.label}
       </Text>
     </Pressable>
   );
@@ -468,6 +618,7 @@ export default function MessagesScreen() {
     zoneId,
     wsStatus,
   } = useMessagesFeed();
+  const { zoneNames } = useZoneNameLookup();
   const { pushToken, permissionError } = useNotifications();
   const [filter, setFilter] = useState<Filter>("All");
   const [typeFilter, setTypeFilter] = useState<"all" | MessageType>("all");
@@ -784,6 +935,7 @@ export default function MessagesScreen() {
   }, []);
 
   const onSend = useCallback(async () => {
+    if (sending) return;
     const text = draft.trim();
     const servicePaValidation = validateServicePaCompose(
       composeType,
@@ -910,6 +1062,7 @@ export default function MessagesScreen() {
     ownerId,
     composeServicePaFields,
     confirmEmergencySend,
+    sending,
   ]);
 
   const renderQuickActions = () => (
@@ -926,7 +1079,8 @@ export default function MessagesScreen() {
             <QuickActionButton
               key={action.type}
               action={action}
-              busy={quickBusy === action.type}
+              disabled={!!quickBusy}
+              sending={quickBusy === action.type}
               onPress={() => void sendQuickAlert(action.type)}
             />
           ))}
@@ -944,7 +1098,8 @@ export default function MessagesScreen() {
             <QuickActionButton
               key={action.type}
               action={action}
-              busy={false}
+              disabled={false}
+              sending={false}
               onPress={() => openCompose(action.type as MessageType)}
             />
           ))}
@@ -1021,6 +1176,7 @@ export default function MessagesScreen() {
                 selfOwnerId={ownerId}
                 selfBroadcastName={selfBroadcastName}
                 ownerNames={ownerNames}
+                zoneNames={zoneNames}
                 highlighted={highlightMessageId === item.id}
               />
             )}
@@ -1309,68 +1465,72 @@ export default function MessagesScreen() {
                         fontSize: 15,
                       }}
                     />
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      Topic
-                    </Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                    >
-                      {SERVICE_PA_TOPICS.map((topic) => (
-                        <Pressable
-                          key={topic.id}
-                          onPress={() =>
-                            setComposeServicePaFields((prev) => ({
-                              ...prev,
-                              topic: topic.id,
-                              subtopic: "",
-                            }))
-                          }
-                          style={{ marginRight: 8 }}
-                        >
-                          <Chip
-                            label={topic.label}
-                            active={composeServicePaFields.topic === topic.id}
-                          />
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                    {serviceTopicRequiresSubtopic(
-                      composeType,
-                      composeServicePaFields.topic,
-                    ) ? (
+                    {composeType === "SERVICE" ? (
                       <>
                         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                          Products subtopic
+                          Topic
                         </Text>
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
                         >
-                          {(
-                            getTopicOption(composeServicePaFields.topic)
-                              ?.subtopics ?? []
-                          ).map((subtopic) => (
+                          {SERVICE_PA_TOPICS.map((topic) => (
                             <Pressable
-                              key={subtopic.id}
+                              key={topic.id}
                               onPress={() =>
                                 setComposeServicePaFields((prev) => ({
                                   ...prev,
-                                  subtopic: subtopic.id,
+                                  topic: topic.id,
+                                  subtopic: "",
                                 }))
                               }
                               style={{ marginRight: 8 }}
                             >
                               <Chip
-                                label={subtopic.label}
-                                active={
-                                  composeServicePaFields.subtopic ===
-                                  subtopic.id
-                                }
+                                label={topic.label}
+                                active={composeServicePaFields.topic === topic.id}
                               />
                             </Pressable>
                           ))}
                         </ScrollView>
+                        {serviceTopicRequiresSubtopic(
+                          composeType,
+                          composeServicePaFields.topic,
+                        ) ? (
+                          <>
+                            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                              Products subtopic
+                            </Text>
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                            >
+                              {(
+                                getTopicOption(composeServicePaFields.topic)
+                                  ?.subtopics ?? []
+                              ).map((subtopic) => (
+                                <Pressable
+                                  key={subtopic.id}
+                                  onPress={() =>
+                                    setComposeServicePaFields((prev) => ({
+                                      ...prev,
+                                      subtopic: subtopic.id,
+                                    }))
+                                  }
+                                  style={{ marginRight: 8 }}
+                                >
+                                  <Chip
+                                    label={subtopic.label}
+                                    active={
+                                      composeServicePaFields.subtopic ===
+                                      subtopic.id
+                                    }
+                                  />
+                                </Pressable>
+                              ))}
+                            </ScrollView>
+                          </>
+                        ) : null}
                       </>
                     ) : null}
                   </View>

@@ -13,6 +13,8 @@ import { messageBroadcastLabel } from "@/lib/messageBroadcast";
 import { resolveBroadcastName } from "@/lib/appSettings";
 import { toMessageTypeLabel } from "@/lib/messageTypes";
 import { isUnknownMessageType } from "@/lib/messageWorkflow";
+import { messageZoneLabel } from "@/lib/messageZoneLabel";
+import { useZoneNameLookup } from "@/hooks/useZoneNameLookup";
 import { useEffect, useMemo, useState } from "react";
 import { colors } from "@/theme/colors";
 
@@ -24,6 +26,7 @@ export default function AlertsScreen() {
   const selfBroadcastName = resolveBroadcastName(user?.name);
   const ownerId = user?.id != null ? Number(user.id) : null;
   const { alarmMessages, loading, error, refresh, markAlarmsSeen } = useAlarmInbox();
+  const { zoneNames } = useZoneNameLookup();
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
 
   useEffect(() => {
@@ -181,7 +184,10 @@ export default function AlertsScreen() {
                   <Text
                     style={{ color: colors.textMuted, fontSize: 12, marginTop: 8 }}
                   >
-                    {item.zone_id}
+                    {messageZoneLabel(item, {
+                      viewerOwnerId: ownerId,
+                      zoneNames,
+                    })}
                   </Text>
                 </Card>
               );
