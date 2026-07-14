@@ -1,4 +1,12 @@
-import { ActivityIndicator, FlatList, RefreshControl, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Linking,
+  Pressable,
+  RefreshControl,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
@@ -14,6 +22,11 @@ import { resolveBroadcastName } from "@/lib/appSettings";
 import { toMessageTypeLabel } from "@/lib/messageTypes";
 import { isUnknownMessageType } from "@/lib/messageWorkflow";
 import { messageZoneLabel } from "@/lib/messageZoneLabel";
+import {
+  formatMessageCoordinatesLabel,
+  hasMessageCoordinates,
+  messageCoordinatesMapsUrl,
+} from "@/lib/messageCoordinates";
 import { useZoneNameLookup } from "@/hooks/useZoneNameLookup";
 import { useEffect, useMemo, useState } from "react";
 import { colors } from "@/theme/colors";
@@ -135,6 +148,8 @@ export default function AlertsScreen() {
                 selfBroadcastName,
                 resolveOwnerName: (id) => ownerNames[id] ?? null,
               });
+              const mapsUrl = messageCoordinatesMapsUrl(item);
+              const hasCoords = hasMessageCoordinates(item);
               return (
                 <Card
                   style={{
@@ -149,13 +164,41 @@ export default function AlertsScreen() {
                       flexDirection: "row",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      flexWrap: "wrap",
                       gap: 6,
                     }}
                   >
-                    <Chip
-                      label={toMessageTypeLabel(item.type)}
-                      tone={isUnknown ? "critical" : "danger"}
-                    />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        flex: 1,
+                      }}
+                    >
+                      <Chip
+                        label={toMessageTypeLabel(item.type)}
+                        tone={isUnknown ? "critical" : "danger"}
+                      />
+                      {hasCoords && mapsUrl ? (
+                        <Pressable
+                          onPress={() => void Linking.openURL(mapsUrl)}
+                          accessibilityRole="link"
+                          accessibilityLabel="Open sender location in maps"
+                        >
+                          <Chip
+                            label={formatMessageCoordinatesLabel(item)}
+                            active
+                          />
+                        </Pressable>
+                      ) : (
+                        <Chip
+                          label={formatMessageCoordinatesLabel(item)}
+                          tone="muted"
+                        />
+                      )}
+                    </View>
                     <Text style={{ color: colors.textDim, fontSize: 11 }}>
                       {new Date(item.created_at).toLocaleString()}
                     </Text>

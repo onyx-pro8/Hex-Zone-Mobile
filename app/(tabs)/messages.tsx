@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
   Modal,
   Pressable,
   RefreshControl,
@@ -75,7 +76,10 @@ import {
 } from "@/lib/appSettings";
 import { messageBroadcastLabel } from "@/lib/messageBroadcast";
 import { messageZoneLabel, type ZoneNameLookup } from "@/lib/messageZoneLabel";
-import { formatMessageCoordinatesLabel } from "@/lib/messageCoordinates";
+import {
+  formatMessageCoordinatesLabel,
+  messageCoordinatesMapsUrl,
+} from "@/lib/messageCoordinates";
 import { subscribeWellnessAck } from "@/lib/messageSocket";
 import {
   getMessageWorkflow,
@@ -399,10 +403,22 @@ function MessageRow({
           {item.type !== "PA" && item.topic_label ? (
             <Chip label={item.topic_label} tone="warning" />
           ) : null}
-          <Chip
-            label={formatMessageCoordinatesLabel(item)}
-            tone="default"
-          />
+          {(() => {
+            const mapsUrl = messageCoordinatesMapsUrl(item);
+            const label = formatMessageCoordinatesLabel(item);
+            if (mapsUrl) {
+              return (
+                <Pressable
+                  onPress={() => void Linking.openURL(mapsUrl)}
+                  accessibilityRole="link"
+                  accessibilityLabel="Open sender location in maps"
+                >
+                  <Chip label={label} active />
+                </Pressable>
+              );
+            }
+            return <Chip label={label} tone="muted" />;
+          })()}
         </View>
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
           {new Date(item.created_at).toLocaleString()}
