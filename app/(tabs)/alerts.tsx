@@ -4,7 +4,9 @@ import {
   Linking,
   Pressable,
   RefreshControl,
+  ScrollView,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -19,7 +21,11 @@ import { useAuth } from "@/context/AuthContext";
 import { getMembers } from "@/api/members";
 import { messageBroadcastLabel } from "@/lib/messageBroadcast";
 import { resolveBroadcastName } from "@/lib/appSettings";
-import { toMessageTypeLabel } from "@/lib/messageTypes";
+import { toMessageTypeLabel, type MessageType } from "@/lib/messageTypes";
+import {
+  applyMessageInboxFilters,
+  messageTypesForCategories,
+} from "@/lib/messageInboxFilters";
 import { isUnknownMessageType } from "@/lib/messageWorkflow";
 import { messageZoneLabel } from "@/lib/messageZoneLabel";
 import {
@@ -41,6 +47,11 @@ export default function AlertsScreen() {
   const { alarmMessages, loading, error, refresh, markAlarmsSeen } = useAlarmInbox();
   const { zoneNames } = useZoneNameLookup();
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
+  const [zoneFilter, setZoneFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | MessageType>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     void markAlarmsSeen();
@@ -68,13 +79,44 @@ export default function AlertsScreen() {
     };
   }, []);
 
+  const alarmTypeOptions = useMemo(
+    () => messageTypesForCategories(["Alarm"]),
+    [],
+  );
+
+  const allZoneIds = useMemo(() => {
+    const fromMessages = alarmMessages
+      .map((m) => String(m.zone_id ?? "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(fromMessages)).sort();
+  }, [alarmMessages]);
+
+  useEffect(() => {
+    if (zoneFilter !== "all" && !allZoneIds.includes(zoneFilter)) {
+      setZoneFilter("all");
+    }
+  }, [allZoneIds, zoneFilter]);
+
+  const filtered = useMemo(
+    () =>
+      applyMessageInboxFilters(alarmMessages, {
+        includeCategories: ["Alarm"],
+        zoneFilter,
+        typeFilter,
+        dateFrom,
+        dateTo,
+        search,
+      }),
+    [alarmMessages, zoneFilter, typeFilter, dateFrom, dateTo, search],
+  );
+
   const sorted = useMemo(
     () =>
-      [...alarmMessages].sort(
+      [...filtered].sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       ),
-    [alarmMessages],
+    [filtered],
   );
 
   return (
@@ -133,6 +175,184 @@ export default function AlertsScreen() {
                 onRefresh={() => void refresh()}
                 tintColor={colors.accent}
               />
+            }
+            ListHeaderComponent={
+              <Card style={{ marginBottom: 14, gap: 12 }}>
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search alarms…"
+                  placeholderTextColor={colors.textDim}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.bgElevated,
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 11,
+                    color: colors.text,
+                    fontSize: 15,
+                  }}
+                />
+
+                <View>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Zone
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+                  >
+                    <Pressable onPress={() => setZoneFilter("all")}>
+                      <Chip
+                        label="All zones"
+                        active={zoneFilter === "all"}
+                        style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                      />
+                    </Pressable>
+                    {allZoneIds.map((zone) => (
+                      <Pressable key={zone} onPress={() => setZoneFilter(zone)}>
+                        <Chip
+                          label={zoneNames.get(zone) ?? zone}
+                          active={zoneFilter === zone}
+                          style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                        />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Type
+                  </Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+                  >
+                    <Pressable onPress={() => setTypeFilter("all")}>
+                      <Chip
+                        label="All types"
+                        active={typeFilter === "all"}
+                        style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                      />
+                    </Pressable>
+                    {alarmTypeOptions.map((option) => (
+                      <Pressable
+                        key={option.type}
+                        onPress={() => setTypeFilter(option.type)}
+                      >
+                        <Chip
+                          label={option.label}
+                          active={typeFilter === option.type}
+                          style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                        />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Date range
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TextInput
+                      value={dateFrom}
+                      onChangeText={setDateFrom}
+                      placeholder="From"
+                      placeholderTextColor={colors.textDim}
+                      autoCapitalize="none"
+                      style={{
+                        flex: 1,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.bgElevated,
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: colors.text,
+                        fontSize: 13,
+                      }}
+                    />
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>to</Text>
+                    <TextInput
+                      value={dateTo}
+                      onChangeText={setDateTo}
+                      placeholder="To"
+                      placeholderTextColor={colors.textDim}
+                      autoCapitalize="none"
+                      style={{
+                        flex: 1,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.bgElevated,
+                        borderRadius: 12,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: colors.text,
+                        fontSize: 13,
+                      }}
+                    />
+                  </View>
+                </View>
+
+                {(search.trim() ||
+                  zoneFilter !== "all" ||
+                  typeFilter !== "all" ||
+                  dateFrom ||
+                  dateTo) && (
+                  <Pressable
+                    onPress={() => {
+                      setSearch("");
+                      setZoneFilter("all");
+                      setTypeFilter("all");
+                      setDateFrom("");
+                      setDateTo("");
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.accent,
+                        fontSize: 13,
+                        fontWeight: "600",
+                        textAlign: "center",
+                      }}
+                    >
+                      Clear filters
+                    </Text>
+                  </Pressable>
+                )}
+              </Card>
             }
             ListEmptyComponent={
               <Card>

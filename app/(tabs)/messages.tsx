@@ -66,9 +66,12 @@ import {
   toMessageType,
   toMessageTypeLabel,
   usesGeoPropagationMessageType,
-  type MessageCategory,
   type MessageType,
 } from "@/lib/messageTypes";
+import {
+  applyMessageInboxFilters,
+  messageTypesForCategories,
+} from "@/lib/messageInboxFilters";
 import {
   resolveBroadcastName,
   useAppSettings,
@@ -99,8 +102,6 @@ import {
   type ServicePaComposeFields,
 } from "@/lib/servicePaTopics";
 import { colors } from "@/theme/colors";
-
-type Filter = "All" | Exclude<MessageCategory, "Alarm">;
 
 type OwnerNameMap = Record<number, string>;
 
@@ -636,8 +637,11 @@ export default function MessagesScreen() {
   } = useMessagesFeed();
   const { zoneNames } = useZoneNameLookup();
   const { pushToken, permissionError } = useNotifications();
-  const [filter, setFilter] = useState<Filter>("All");
   const [typeFilter, setTypeFilter] = useState<"all" | MessageType>("all");
+  const [zoneFilter, setZoneFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState("");
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeType, setComposeType] = useState<MessageType>("PA");
@@ -692,9 +696,8 @@ export default function MessagesScreen() {
       typeof searchParams.message === "string" ? searchParams.message.trim() : "";
     if (typeParam) {
       const resolved = toMessageType(typeParam);
-      if (resolved) {
+      if (resolved && getMessageTypeCategory(resolved) !== "Alarm") {
         setTypeFilter(resolved);
-        if (resolved === "SERVICE" || resolved === "PA") setFilter("Alert");
       }
     }
     if (messageParam) setHighlightMessageId(messageParam);
@@ -723,21 +726,37 @@ export default function MessagesScreen() {
     [],
   );
 
-  const nonAlarmMessages = useMemo(
-    () => messages.filter((m) => m.category !== "Alarm"),
-    [messages],
+  const inboxTypeOptions = useMemo(
+    () => messageTypesForCategories(["Alert", "Access"]),
+    [],
   );
 
-  const filtered = useMemo(() => {
-    let rows = nonAlarmMessages;
-    if (filter !== "All") {
-      rows = rows.filter((m) => m.category === filter);
+  const allZoneIds = useMemo(() => {
+    const fromMessages = messages
+      .filter((m) => m.category !== "Alarm")
+      .map((m) => String(m.zone_id ?? "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(fromMessages)).sort();
+  }, [messages]);
+
+  useEffect(() => {
+    if (zoneFilter !== "all" && !allZoneIds.includes(zoneFilter)) {
+      setZoneFilter("all");
     }
-    if (typeFilter !== "all") {
-      rows = rows.filter((m) => m.type === typeFilter);
-    }
-    return rows;
-  }, [nonAlarmMessages, filter, typeFilter]);
+  }, [allZoneIds, zoneFilter]);
+
+  const filtered = useMemo(
+    () =>
+      applyMessageInboxFilters(messages, {
+        excludeCategories: ["Alarm"],
+        zoneFilter,
+        typeFilter,
+        dateFrom,
+        dateTo,
+        search,
+      }),
+    [messages, zoneFilter, typeFilter, dateFrom, dateTo, search],
+  );
 
   // Load members once so inbox rows can resolve a friendly name for senders
   // that did not embed a broadcast name.
@@ -1200,24 +1219,190 @@ export default function MessagesScreen() {
             ListHeaderComponent={
               <View>
                 {renderQuickActions()}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 8,
-                    marginBottom: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {(["All", "Alert", "Access"] as Filter[]).map((f) => (
-                    <Pressable key={f} onPress={() => setFilter(f)}>
-                      <Chip
-                        label={f}
-                        active={filter === f}
-                        style={{ paddingHorizontal: 14, paddingVertical: 8 }}
+                <Card style={{ marginBottom: 14, gap: 12 }}>
+                  <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder="Search messages…"
+                    placeholderTextColor={colors.textDim}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgElevated,
+                      borderRadius: 12,
+                      paddingHorizontal: 14,
+                      paddingVertical: 11,
+                      color: colors.text,
+                      fontSize: 15,
+                    }}
+                  />
+
+                  <View>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: "700",
+                        letterSpacing: 0.8,
+                        textTransform: "uppercase",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Zone
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+                    >
+                      <Pressable onPress={() => setZoneFilter("all")}>
+                        <Chip
+                          label="All zones"
+                          active={zoneFilter === "all"}
+                          style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                        />
+                      </Pressable>
+                      {allZoneIds.map((zone) => (
+                        <Pressable key={zone} onPress={() => setZoneFilter(zone)}>
+                          <Chip
+                            label={zoneNames.get(zone) ?? zone}
+                            active={zoneFilter === zone}
+                            style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                          />
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <View>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: "700",
+                        letterSpacing: 0.8,
+                        textTransform: "uppercase",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Type
+                    </Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+                    >
+                      <Pressable onPress={() => setTypeFilter("all")}>
+                        <Chip
+                          label="All types"
+                          active={typeFilter === "all"}
+                          style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                        />
+                      </Pressable>
+                      {inboxTypeOptions.map((option) => (
+                        <Pressable
+                          key={option.type}
+                          onPress={() => setTypeFilter(option.type)}
+                        >
+                          <Chip
+                            label={option.label}
+                            active={typeFilter === option.type}
+                            style={{ paddingHorizontal: 12, paddingVertical: 7 }}
+                          />
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <View>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: "700",
+                        letterSpacing: 0.8,
+                        textTransform: "uppercase",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Date range
+                    </Text>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <TextInput
+                        value={dateFrom}
+                        onChangeText={setDateFrom}
+                        placeholder="From"
+                        placeholderTextColor={colors.textDim}
+                        autoCapitalize="none"
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.bgElevated,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          color: colors.text,
+                          fontSize: 13,
+                        }}
                       />
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                        to
+                      </Text>
+                      <TextInput
+                        value={dateTo}
+                        onChangeText={setDateTo}
+                        placeholder="To"
+                        placeholderTextColor={colors.textDim}
+                        autoCapitalize="none"
+                        style={{
+                          flex: 1,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.bgElevated,
+                          borderRadius: 12,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          color: colors.text,
+                          fontSize: 13,
+                        }}
+                      />
+                    </View>
+                  </View>
+
+                  {(search.trim() ||
+                    zoneFilter !== "all" ||
+                    typeFilter !== "all" ||
+                    dateFrom ||
+                    dateTo) && (
+                    <Pressable
+                      onPress={() => {
+                        setSearch("");
+                        setZoneFilter("all");
+                        setTypeFilter("all");
+                        setDateFrom("");
+                        setDateTo("");
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.accent,
+                          fontSize: 13,
+                          fontWeight: "600",
+                          textAlign: "center",
+                        }}
+                      >
+                        Clear filters
+                      </Text>
                     </Pressable>
-                  ))}
-                </View>
+                  )}
+                </Card>
                 {error ? (
                   <Text style={{ color: colors.danger, marginBottom: 8 }}>
                     {error}
