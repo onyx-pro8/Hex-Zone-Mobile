@@ -26,13 +26,17 @@ import {
   applyMessageInboxFilters,
   messageTypesForCategories,
 } from "@/lib/messageInboxFilters";
-import { isUnknownMessageType } from "@/lib/messageWorkflow";
+import {
+  isUnknownMessageType,
+  wellnessResponseTrackingEnabled,
+} from "@/lib/messageWorkflow";
 import { messageZoneLabel } from "@/lib/messageZoneLabel";
 import {
   formatMessageCoordinatesLabel,
   hasMessageCoordinates,
   messageCoordinatesMapsUrl,
 } from "@/lib/messageCoordinates";
+import { WellnessAckInline } from "@/components/messages/WellnessAckInline";
 import { useZoneNameLookup } from "@/hooks/useZoneNameLookup";
 import { useEffect, useMemo, useState } from "react";
 import { colors } from "@/theme/colors";
@@ -452,6 +456,14 @@ export default function AlertsScreen() {
                       zoneNames,
                     })}
                   </Text>
+                  {item.type === "WELLNESS_CHECK" &&
+                  wellnessResponseTrackingEnabled(item) ? (
+                    <WellnessAckInline
+                      messageEventId={item.id}
+                      selfOwnerId={ownerId}
+                      senderId={item.sender_id ?? null}
+                    />
+                  ) : null}
                 </Card>
               );
             }}

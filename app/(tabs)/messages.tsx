@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -39,13 +39,10 @@ import { useAuth } from "@/context/AuthContext";
 import { sendMessage, type Message } from "@/api/messages";
 import {
   propagateMessageFeatureMessage,
-  acknowledgeWellnessCheck,
-  askWellnessSender,
-  listWellnessAcknowledgements,
-  replyToWellnessAsks,
   searchPrivateMessageRecipients,
   type PrivateSearchMember,
 } from "@/api/messageFeature";
+import { WellnessAckInline } from "@/components/messages/WellnessAckInline";
 import { getMembers } from "@/api/members";
 import { listGuestRequests } from "@/api/guest";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
@@ -83,7 +80,6 @@ import {
   formatMessageCoordinatesLabel,
   messageCoordinatesMapsUrl,
 } from "@/lib/messageCoordinates";
-import { subscribeWellnessAck } from "@/lib/messageSocket";
 import {
   getMessageWorkflow,
   isEmergencyMessageType,
@@ -91,6 +87,8 @@ import {
   isServiceMessageType,
   SERVICE_MESSAGE_UI,
   UNKNOWN_MESSAGE_UI,
+  UNKNOWN_HOLD_MS,
+  wellnessResponseTrackingEnabled,
 } from "@/lib/messageWorkflow";
 import {
   SERVICE_PA_TOPICS,
@@ -104,217 +102,6 @@ import {
 import { colors } from "@/theme/colors";
 
 type OwnerNameMap = Record<number, string>;
-
-function WellnessAckInline({
-  messageEventId,
-  selfOwnerId,
-  senderId,
-}: {
-  messageEventId: string;
-  selfOwnerId: number | null;
-  senderId: number | null;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [canAck, setCanAck] = useState(false);
-  const [acked, setAcked] = useState(false);
-  const [canAskSender, setCanAskSender] = useState(false);
-  const [waitingForSender, setWaitingForSender] = useState(false);
-  const [canReplyAsSender, setCanReplyAsSender] = useState(false);
-  const [senderReplyText, setSenderReplyText] = useState<string | null>(null);
-  const [summaryText, setSummaryText] = useState<string | null>(null);
-  const [pendingAskCount, setPendingAskCount] = useState(0);
-
-  const load = useCallback(async () => {
-    const res = await listWellnessAcknowledgements(messageEventId);
-    if (res.error || !res.data) return;
-    const data = res.data;
-    setSummaryText(
-      `${data.acknowledgements.length}/${data.expected_recipient_ids.length} responded`,
-    );
-    const mine = data.acknowledgements.some(
-      (row) => row.owner_id === selfOwnerId,
-    );
-    setAcked(mine);
-    const isExpected =
-      selfOwnerId != null && data.expected_recipient_ids.includes(selfOwnerId);
-    setCanAck(isExpected && !mine);
-    const pendingAskFromMe =
-      selfOwnerId != null &&
-      data.pending_sender_asks.some((row) => row.asker_owner_id === selfOwnerId);
-    setCanAskSender(isExpected && !pendingAskFromMe);
-    setWaitingForSender(Boolean(pendingAskFromMe));
-    const isSender = selfOwnerId != null && senderId === selfOwnerId;
-    setCanReplyAsSender(isSender && data.pending_sender_asks.length > 0);
-    setPendingAskCount(data.pending_sender_asks.length);
-    const latestReply =
-      selfOwnerId != null && !isSender
-        ? [...data.sender_replies]
-            .reverse()
-            .find((row) => row.answered_asker_ids.includes(selfOwnerId))
-        : null;
-    setSenderReplyText(
-      latestReply
-        ? `Sender replied: ${latestReply.status === "need_help" ? "Needs help" : "OK"}`
-        : null,
-    );
-  }, [messageEventId, selfOwnerId, senderId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    const unsubscribe = subscribeWellnessAck((id) => {
-      if (id === messageEventId) void load();
-    });
-    return unsubscribe;
-  }, [load, messageEventId]);
-
-  const submit = async (status: "ok" | "need_help") => {
-    setBusy(true);
-    const res = await acknowledgeWellnessCheck(messageEventId, { status });
-    setBusy(false);
-    if (res.error || !res.data) return;
-    await load();
-  };
-
-  const askSender = async () => {
-    setBusy(true);
-    const res = await askWellnessSender(messageEventId);
-    setBusy(false);
-    if (res.error || !res.data) return;
-    await load();
-  };
-
-  const replyAsSender = async (status: "ok" | "need_help") => {
-    setBusy(true);
-    const res = await replyToWellnessAsks(messageEventId, { status });
-    setBusy(false);
-    if (res.error || !res.data) return;
-    await load();
-  };
-
-  return (
-    <View style={{ marginTop: 10, gap: 8 }}>
-      {summaryText ? (
-        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-          {summaryText}
-        </Text>
-      ) : null}
-      {canAck ? (
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <Pressable
-            disabled={busy}
-            onPress={() => void submit("ok")}
-            style={{
-              backgroundColor: colors.success,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 10,
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
-              I&apos;m OK
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={busy}
-            onPress={() => void submit("need_help")}
-            style={{
-              backgroundColor: colors.danger,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 10,
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
-              Need help
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
-      {acked ? (
-        <Text
-          style={{ color: colors.success, fontSize: 12, fontWeight: "600" }}
-        >
-          You acknowledged this wellness check.
-        </Text>
-      ) : null}
-      {canAskSender ? (
-        <Pressable
-          disabled={busy}
-          onPress={() => void askSender()}
-          style={{
-            alignSelf: "flex-start",
-            borderWidth: 1,
-            borderColor: colors.warning,
-            backgroundColor: "#fff",
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            borderRadius: 10,
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
-          <Text style={{ color: colors.warning, fontWeight: "700", fontSize: 12 }}>
-            Ask sender to respond
-          </Text>
-        </Pressable>
-      ) : null}
-      {waitingForSender ? (
-        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-          Waiting for the sender to respond to your ask.
-        </Text>
-      ) : null}
-      {senderReplyText ? (
-        <Text style={{ color: colors.text, fontSize: 12, fontWeight: "600" }}>
-          {senderReplyText}
-        </Text>
-      ) : null}
-      {canReplyAsSender ? (
-        <View style={{ gap: 8 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            {pendingAskCount} member(s) asked you to respond. One reply answers all
-            pending asks.
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable
-              disabled={busy}
-              onPress={() => void replyAsSender("ok")}
-              style={{
-                backgroundColor: colors.success,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 10,
-                opacity: busy ? 0.6 : 1,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
-                I&apos;m OK
-              </Text>
-            </Pressable>
-            <Pressable
-              disabled={busy}
-              onPress={() => void replyAsSender("need_help")}
-              style={{
-                backgroundColor: colors.danger,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 10,
-                opacity: busy ? 0.6 : 1,
-              }}
-            >
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 12 }}>
-                Need help
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-    </View>
-  );
-}
 
 function MessageRow({
   item,
@@ -465,7 +252,7 @@ function MessageRow({
         {messageZoneLabel(item, { viewerOwnerId: selfOwnerId, zoneNames })}
         {item.guest_id ? ` · guest ${String(item.guest_id).slice(0, 8)}…` : ""}
       </Text>
-      {item.type === "WELLNESS_CHECK" ? (
+      {item.type === "WELLNESS_CHECK" && wellnessResponseTrackingEnabled(item) ? (
         <WellnessAckInline
           messageEventId={item.id}
           selfOwnerId={selfOwnerId}
@@ -555,6 +342,55 @@ function QuickActionButton({
   const isUnknown = isUnknownMessageType(action.type as MessageType);
   const isService = isServiceMessageType(action.type as MessageType);
   const urgent = isEmergencyMessageType(action.type as MessageType);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const holdStartedAtRef = useRef<number | null>(null);
+  const holdTriggeredRef = useRef(false);
+
+  const clearHold = useCallback(() => {
+    if (holdTimerRef.current != null) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    if (holdTickRef.current != null) {
+      clearInterval(holdTickRef.current);
+      holdTickRef.current = null;
+    }
+    holdStartedAtRef.current = null;
+    holdTriggeredRef.current = false;
+    setHoldProgress(0);
+  }, []);
+
+  useEffect(() => () => clearHold(), [clearHold]);
+
+  const handleUnknownPressIn = useCallback(() => {
+    if (disabled || sending || !isUnknown) return;
+    clearHold();
+    holdStartedAtRef.current = Date.now();
+    holdTickRef.current = setInterval(() => {
+      const startedAt = holdStartedAtRef.current;
+      if (startedAt == null) return;
+      const elapsed = Date.now() - startedAt;
+      setHoldProgress(Math.min(1, elapsed / UNKNOWN_HOLD_MS));
+    }, 50);
+    holdTimerRef.current = setTimeout(() => {
+      holdTriggeredRef.current = true;
+      clearHold();
+      onPress();
+    }, UNKNOWN_HOLD_MS);
+  }, [clearHold, disabled, isUnknown, onPress, sending]);
+
+  const handleUnknownPressOut = useCallback(() => {
+    if (!isUnknown || holdTriggeredRef.current) return;
+    clearHold();
+  }, [clearHold, isUnknown]);
+
+  const holdSecondsLeft =
+    holdProgress > 0
+      ? Math.max(1, Math.ceil((1 - holdProgress) * (UNKNOWN_HOLD_MS / 1000)))
+      : UNKNOWN_HOLD_MS / 1000;
+
   const bg = isUnknown
     ? UNKNOWN_MESSAGE_UI.badge
     : isService
@@ -581,8 +417,16 @@ function QuickActionButton({
         : colors.warning;
   return (
     <Pressable
-      onPress={onPress}
+      onPress={isUnknown ? undefined : onPress}
+      onPressIn={isUnknown ? handleUnknownPressIn : undefined}
+      onPressOut={isUnknown ? handleUnknownPressOut : undefined}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={
+        isUnknown
+          ? `Hold for ${UNKNOWN_HOLD_MS / 1000} seconds to send unknown alert`
+          : action.label
+      }
       style={{
         flexBasis: "48%",
         flexGrow: 1,
@@ -596,8 +440,29 @@ function QuickActionButton({
         justifyContent: "center",
         gap: 8,
         opacity: disabled ? 0.6 : 1,
+        overflow: "hidden",
       }}
     >
+      {isUnknown && holdProgress > 0 && !sending ? (
+        <View
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 4,
+            backgroundColor: "rgba(255,255,255,0.25)",
+          }}
+        >
+          <View
+            style={{
+              height: "100%",
+              width: `${holdProgress * 100}%`,
+              backgroundColor: "#fff",
+            }}
+          />
+        </View>
+      ) : null}
       {sending ? (
         <ActivityIndicator color={fg} />
       ) : (
@@ -612,7 +477,13 @@ function QuickActionButton({
           textAlign: "center",
         }}
       >
-        {sending ? "Sending…" : action.label}
+        {sending
+          ? "Sending…"
+          : isUnknown
+            ? holdProgress > 0
+              ? `Hold… ${holdSecondsLeft}s`
+              : `Hold ${UNKNOWN_HOLD_MS / 1000}s`
+            : action.label}
       </Text>
     </Pressable>
   );
