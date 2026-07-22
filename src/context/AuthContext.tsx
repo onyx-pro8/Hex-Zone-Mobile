@@ -23,13 +23,16 @@ import { registerPushToken } from "@/api/devices";
 import { getRemoteAppSettings } from "@/api/settings";
 import { updateAppSettings, type AppSettings } from "@/lib/appSettings";
 import {
+  clearLastActivity,
   clearToken,
   getRememberMe,
   getStoredPushToken,
   getToken,
+  isSessionInactive,
   setRememberMe as persistRememberMe,
   setToken,
   setStoredMapCenter,
+  touchLastActivity,
 } from "@/lib/storage";
 import {
   clearSecureCredentials,
@@ -125,17 +128,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const reauthInProgress = useRef(false);
   const sessionInProgress = useRef(false);
 
-  const performLogout = useCallback(async () => {
-    try {
-      await setCurrentDeviceOffline();
-    } catch {
-      /* proceed with local logout */
-    }
-    setUser(null);
-    setTokenState(null);
-    setOwnerZoneId("");
-    await clearToken();
-  }, []);
+  const performLogout = useCallback(
+    async (options?: { clearCredentials?: boolean }) => {
+      try {
+        await setCurrentDeviceOffline();
+      } catch {
+        /* proceed with local logout */
+      }
+      setUser(null);
+      setTokenState(null);
+      setOwnerZoneId("");
+      await clearToken();
+      await clearLastActivity();
+      if (options?.clearCredentials) {
+        await clearSecureCredentials();
+        await persistRememberMe(false);
+      }
+    },
+    [],
+  );
 
   const establishSession = useCallback(
     async (
@@ -204,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setTokenState(result.data.token);
         setUser(normalized);
+        await touchLastActivity();
         return normalized;
       } finally {
         sessionInProgress.current = false;
@@ -237,22 +249,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
+        if (await isSessionInactive()) {
+          devWarn("Auth: session expired due to inactivity");
+          await performLogout({ clearCredentials: true });
+          return;
+        }
+
         const stored = await getToken();
         if (cancelled) return;
 
         if (stored && !isExpired(stored)) {
-          setTokenState(stored);
           const profile = await fetchProfile();
-          if (!cancelled && profile.data) {
-            setUser(normalizeUser(profile.data));
-            return;
+          if (cancelled) return;
+          if (profile.data) {
+            const normalized = normalizeUser(profile.data);
+            if (normalized) {
+              setTokenState(stored);
+              setUser(normalized);
+              await touchLastActivity();
+              return;
+            }
           }
-          if (!cancelled && profile.unauthorized) {
+          if (profile.unauthorized) {
             await clearToken();
-            setTokenState(null);
             const restored = await trySilentReauth();
             if (cancelled || restored) return;
+            return;
           }
+          // Transient /me failure: keep token on disk and try credential restore
+          // so a cold-start network blip does not look like a logout.
+          const restored = await trySilentReauth();
+          if (cancelled || restored) return;
           return;
         }
 
@@ -267,7 +294,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [trySilentReauth]);
+  }, [performLogout, trySilentReauth]);
 
   useEffect(() => {
     const center = user?.mapCenter ?? user?.map_center;
@@ -280,11 +307,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const result = await syncCurrentDevice(user, { platformLabel: "Mobile" });
       if (cancelled) return;
-      if (result.status === "account-in-use" || result.status === "error") {
+      // Only a real multi-device conflict should end the session. Network /
+      // sync errors must not wipe a still-valid login after app reopen.
+      if (result.status === "account-in-use") {
         const message = describeDeviceSyncFailure(result);
         devWarn("Auth: signing out — device session conflict", { message });
         setAuthError(message);
         await performLogout();
+        return;
+      }
+      if (result.status === "error") {
+        devWarn("Auth: device sync failed (keeping session)", {
+          message: describeDeviceSyncFailure(result),
+        });
       }
     })();
     void syncPushTokenToServer();
@@ -294,13 +329,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token, user, performLogout]);
 
   // Sign out this phone when another device takes over the account session.
+  // Also enforce inactivity timeout and refresh the activity stamp on resume.
   useEffect(() => {
     if (!token || !user?.id) return;
     const ownerId = String(user.id);
     let cancelled = false;
     let alerted = false;
 
+    const enforceInactivity = async (): Promise<boolean> => {
+      if (!(await isSessionInactive())) return false;
+      devWarn("Auth: signing out — inactivity timeout");
+      await performLogout({ clearCredentials: true });
+      return true;
+    };
+
     const checkRemoteSignOut = async () => {
+      if (await enforceInactivity()) return;
       const active = await isLocalDeviceSessionActive(ownerId);
       if (cancelled || active) return;
       if (!alerted) {
@@ -316,8 +360,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 30_000);
 
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void checkRemoteSignOut();
+      if (state !== "active") return;
+      void (async () => {
+        if (await enforceInactivity()) return;
+        await touchLastActivity();
+        await checkRemoteSignOut();
+      })();
     });
+
+    void touchLastActivity();
 
     return () => {
       cancelled = true;
@@ -382,6 +433,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return onUnauthorized(() => {
       void (async () => {
         if (sessionInProgress.current || reauthInProgress.current) return;
+        if (await isSessionInactive()) {
+          await performLogout({ clearCredentials: true });
+          return;
+        }
         const restored = await trySilentReauth();
         if (!restored) {
           await performLogout();
@@ -434,7 +489,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await performLogout();
+    await performLogout({ clearCredentials: true });
   }, [performLogout]);
 
   const value = useMemo<AuthContextValue>(

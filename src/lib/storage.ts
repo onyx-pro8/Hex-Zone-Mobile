@@ -5,10 +5,14 @@ import { normalizeMapCenter, type MapCenter } from "@/lib/mapCenter";
 const TOKEN_KEY = "zoneweaver:token";
 const REMEMBER_KEY = "zoneweaver:remember";
 const LAST_EMAIL_KEY = "zoneweaver:last_email";
+const LAST_ACTIVITY_KEY = "zoneweaver:last_activity";
 const DEVICE_HID_KEY = "zoneweaver:device_hid";
 const PUSH_TOKEN_KEY = "zoneweaver:push_token";
 const MAP_CENTER_KEY = "zoneweaver:map_center";
 const GUEST_SESSION_KEY = "zoneweaver:guest_session";
+
+/** Sign out after this long with no foreground activity (12 hours). */
+export const SESSION_INACTIVITY_MS = 12 * 60 * 60 * 1000;
 
 /** In-memory cache so the API client sees a new token immediately after login. */
 let memoryToken: string | null | undefined;
@@ -57,6 +61,42 @@ export async function getRememberMe(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function getLastActivityAt(): Promise<number | null> {
+  try {
+    const raw = await AsyncStorage.getItem(LAST_ACTIVITY_KEY);
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function touchLastActivity(at: number = Date.now()): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LAST_ACTIVITY_KEY, String(at));
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function clearLastActivity(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(LAST_ACTIVITY_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** True when a stored activity stamp exists and is older than the idle limit. */
+export async function isSessionInactive(
+  limitMs: number = SESSION_INACTIVITY_MS,
+): Promise<boolean> {
+  const last = await getLastActivityAt();
+  if (last == null) return false;
+  return Date.now() - last > limitMs;
 }
 
 export async function setLastEmail(email: string): Promise<void> {

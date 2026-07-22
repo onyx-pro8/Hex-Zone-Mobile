@@ -77,7 +77,11 @@ export function isAccountInUseError(message: string): boolean {
   return isDeviceSessionConflictMessage(message);
 }
 
-/** True while this hardware id still holds the active account session. */
+/**
+ * True unless another device clearly holds the live session.
+ * Missing/offline local rows alone must not force logout — cold start and
+ * transient sync gaps are recovered by `syncCurrentDevice`.
+ */
 export async function isLocalDeviceSessionActive(
   ownerId: string,
 ): Promise<boolean> {
@@ -88,11 +92,17 @@ export async function isLocalDeviceSessionActive(
   const mine = (devices.data ?? []).filter(
     (d) => !id || String(d.owner_id ?? "") === id,
   );
+  const localHidUpper = localHid.toUpperCase();
   const local = mine.find(
-    (d) => String(d.hid).toUpperCase() === localHid.toUpperCase(),
+    (d) => String(d.hid).toUpperCase() === localHidUpper,
   );
-  if (!local) return false;
-  return local.is_online === true;
+  const otherOnline = mine.some(
+    (d) =>
+      String(d.hid).toUpperCase() !== localHidUpper &&
+      isDeviceSessionBlocking(d),
+  );
+  if (!otherOnline) return true;
+  return local?.is_online === true;
 }
 
 function ownerDevicesForUser(
