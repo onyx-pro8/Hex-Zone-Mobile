@@ -8,13 +8,16 @@ import {
 } from "@/lib/expoLocation";
 import { getMembers } from "@/api/members";
 import {
+  assignCommunalId,
   createZone,
   deleteZone,
   generateZoneReference,
   getZoneCapabilities,
   getZones,
+  listPublicZones,
   previewDynamicZone,
   validateZoneReference,
+  type CommunalZoneSummary,
   type CreateZonePayload,
   type DynamicZonePreviewResult,
   type GovernmentAddressMode,
@@ -95,9 +98,16 @@ export function useZoneBuilder(
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setErrorState] = useState<string | null>(null);
+  /** Inline/status error only — never auto-toasts (avoids duplicate toasts). */
   const setError = useCallback((message: string | null) => {
     setErrorState(message);
-    if (message) toast.error(message);
+  }, []);
+  /** Set inline error and show a single error toast. */
+  const notifyError = useCallback((message: string) => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    setErrorState(trimmed);
+    toast.error(trimmed);
   }, []);
   const [capabilities, setCapabilities] = useState<ZoneCapabilities | null>(
     null,
@@ -153,6 +163,21 @@ export function useZoneBuilder(
   const [communalValidation, setCommunalValidation] =
     useState<ZoneReferenceValidateResult | null>(null);
   const [communalValidating, setCommunalValidating] = useState(false);
+  const [communalExists, setCommunalExists] = useState<boolean | null>(null);
+  const [publicZones, setPublicZones] = useState<SavedZone[]>([]);
+  const [publicZonesLoading, setPublicZonesLoading] = useState(false);
+  const [selectedPublicZoneIds, setSelectedPublicZoneIds] = useState<number[]>(
+    [],
+  );
+  const [matchedCommunalZones, setMatchedCommunalZones] = useState<
+    CommunalZoneSummary[]
+  >([]);
+  const [definingCommunalCode, setDefiningCommunalCode] = useState("");
+  const [definingCommunalValidating, setDefiningCommunalValidating] =
+    useState(false);
+  const [definingCommunalExists, setDefiningCommunalExists] = useState<
+    boolean | null
+  >(null);
 
   // government
   const [governmentMode, setGovernmentMode] =
@@ -271,6 +296,10 @@ export function useZoneBuilder(
     setObjectQuery("");
     setObjectReferenceId("");
     setCommunalValidation(null);
+    setCommunalExists(null);
+    setMatchedCommunalZones([]);
+    setSelectedPublicZoneIds([]);
+    setDefiningCommunalExists(null);
     setGovernmentValidation(null);
     setDynamicPreview(null);
     setDynamicPreviewError(null);
@@ -366,10 +395,10 @@ export function useZoneBuilder(
       clearLocationTimeout();
       setProximityLocating(false);
       if (locationIntentRef.current !== "proximity") return;
-      setError(message || LOCATION_UNAVAILABLE_MESSAGE);
+      notifyError(message || LOCATION_UNAVAILABLE_MESSAGE);
       setStatus(null);
     },
-    [clearLocationTimeout],
+    [clearLocationTimeout, notifyError],
   );
 
   const requestMapWebViewLocation = useCallback(
@@ -392,7 +421,7 @@ export function useZoneBuilder(
           if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
             if (!silent) {
               setProximityLocating(false);
-              setError(
+              notifyError(
                 "Location permission denied. Enable it in app settings or tap the map instead.",
               );
               setStatus(null);
@@ -407,13 +436,13 @@ export function useZoneBuilder(
         clearLocationTimeout();
         locationTimeoutRef.current = setTimeout(() => {
           setProximityLocating(false);
-          setError(LOCATION_UNAVAILABLE_MESSAGE);
+          notifyError(LOCATION_UNAVAILABLE_MESSAGE);
           setStatus(null);
         }, 22000);
       }
       setLocationRequestNonce((n) => n + 1);
     },
-    [clearLocationTimeout],
+    [clearLocationTimeout, notifyError],
   );
 
   const requestCurrentLocation = useCallback(async () => {
@@ -432,7 +461,7 @@ export function useZoneBuilder(
         await Location.requestForegroundPermissionsAsync();
       if (permStatus !== "granted") {
         setProximityLocating(false);
-        setError(
+        notifyError(
           "Location permission denied. Enable it in Settings or tap the map instead.",
         );
         setStatus(null);
@@ -467,7 +496,7 @@ export function useZoneBuilder(
         await requestMapWebViewLocation();
       }
     }
-  }, [applyDeviceLocation, requestMapWebViewLocation]);
+  }, [applyDeviceLocation, notifyError, requestMapWebViewLocation, setError]);
 
   /** Open the Zones map on the device GPS instead of the New York fallback. */
   useEffect(() => {
@@ -615,54 +644,57 @@ export function useZoneBuilder(
     if (zoneType === "geofence" && geofenceTool === "polygon") {
       return draftRing;
     }
-    if (zoneType === "communal_id" && communalValidation?.valid) {
-      const rings = ringsFromValidation(communalValidation);
-      return rings[0] ?? [];
-    }
     if (zoneType === "government_local_code" && governmentValidation?.valid) {
       const rings = ringsFromValidation(governmentValidation);
       return rings[0] ?? [];
     }
     return [];
-  }, [
-    communalValidation,
-    draftRing,
-    geofenceTool,
-    governmentValidation,
-    zoneType,
-  ]);
+  }, [draftRing, geofenceTool, governmentValidation, zoneType]);
 
-  /** H3 cells from validation preview (communal / government) plus grid selection. */
+  /** H3 cells from validation preview (government) plus grid selection. */
   const selectedH3CellsForMap = useMemo(() => {
     if (zoneType === "grid") return selectedH3Cells;
-    if (zoneType === "communal_id" && communalValidation?.valid) {
-      return communalValidation.h3_cells ?? [];
-    }
     if (zoneType === "government_local_code" && governmentValidation?.valid) {
       return governmentValidation.h3_cells ?? [];
     }
     return [];
-  }, [
-    communalValidation,
-    governmentValidation,
-    selectedH3Cells,
-    zoneType,
-  ]);
+  }, [governmentValidation, selectedH3Cells, zoneType]);
 
   const previewRingsForMap = useMemo<LatLng[][]>(() => {
-    if (zoneType === "communal_id" && communalValidation?.valid) {
-      return ringsFromValidation(communalValidation);
-    }
     if (zoneType === "government_local_code" && governmentValidation?.valid) {
       return ringsFromValidation(governmentValidation);
     }
     return [];
-  }, [communalValidation, governmentValidation, zoneType]);
+  }, [governmentValidation, zoneType]);
+
+  const refreshPublicZones = useCallback(async () => {
+    setPublicZonesLoading(true);
+    const result = await listPublicZones({ limit: 200 });
+    setPublicZonesLoading(false);
+    if (result.error || !result.data) {
+      setPublicZones([]);
+      return;
+    }
+    setPublicZones(result.data);
+  }, []);
+
+  useEffect(() => {
+    if (zoneType !== "communal_id") return;
+    void refreshPublicZones();
+  }, [zoneType, refreshPublicZones]);
+
+  const togglePublicZoneSelection = useCallback((zoneId: number) => {
+    setSelectedPublicZoneIds((prev) =>
+      prev.includes(zoneId)
+        ? prev.filter((id) => id !== zoneId)
+        : [...prev, zoneId],
+    );
+  }, []);
 
   const validateCommunal = useCallback(async () => {
     const code = communalCode.trim();
     if (!code) {
-      setError("Enter a communal ID first.");
+      toast.warning("Enter a communal ID first.");
       return;
     }
     setCommunalValidating(true);
@@ -675,61 +707,117 @@ export function useZoneBuilder(
     setCommunalValidating(false);
     if (result.error || !result.data) {
       setCommunalValidation(null);
-      setError(result.error ?? "Could not validate communal ID.");
+      setCommunalExists(null);
+      setMatchedCommunalZones([]);
+      notifyError(result.error ?? "Could not validate communal ID.");
       setStatus(null);
       return;
     }
-    if (!result.data.valid) {
-      setCommunalValidation(null);
-      setError(result.data.message ?? "Communal ID could not be resolved.");
-      setStatus(null);
-      return;
+    const data = result.data;
+    const exists = data.exists === true || data.valid === true;
+    setCommunalExists(exists);
+    setCommunalCode((data.reference_id || code).toUpperCase());
+    const matched = Array.isArray(data.zones) ? data.zones : [];
+    setMatchedCommunalZones(matched);
+    setCommunalValidation(data);
+    setError(null);
+    if (exists) {
+      setSelectedPublicZoneIds((prev) =>
+        Array.from(new Set([...prev, ...matched.map((z) => z.id)])),
+      );
+      const msg =
+        data.message ?? `Communal ID found on ${matched.length} zone(s).`;
+      setStatus(msg);
+      toast.success(msg);
+    } else {
+      const msg =
+        data.message ?? "Communal ID not found. You can generate a new one.";
+      setStatus(msg);
+      toast.info(msg);
     }
-    setCommunalValidation(result.data);
-    setStatus(
-      `Communal ID validated — ${result.data.display_name ?? result.data.reference_id}`,
-    );
-    const rings = ringsFromValidation(result.data);
-    if (rings[0] && rings[0][0]) {
-      allowInitialGpsRef.current = false;
-      setMapCenter(rings[0][0]);
-    }
-  }, [communalCode]);
+  }, [communalCode, notifyError, setError]);
 
   const generateCommunal = useCallback(async () => {
+    if (communalExists === true) {
+      toast.warning("Communal ID already exists — Generate is disabled.");
+      return;
+    }
     setCommunalValidating(true);
     setError(null);
     setStatus("Generating communal ID…");
     const result = await generateZoneReference("communal_id");
     setCommunalValidating(false);
     if (result.error || !result.data) {
-      setError(result.error ?? "Could not generate communal ID.");
-      setStatus(null);
-      return;
-    }
-    if (!result.data.valid) {
-      setError(result.data.message ?? "Server could not generate a communal ID.");
+      notifyError(result.error ?? "Could not generate communal ID.");
       setStatus(null);
       return;
     }
     setCommunalCode(result.data.reference_id);
     setCommunalValidation(result.data);
-    setStatus(`Generated ${result.data.reference_id}`);
-    const rings = ringsFromValidation(result.data);
-    if (rings[0] && rings[0][0]) {
-      allowInitialGpsRef.current = false;
-      setMapCenter(rings[0][0]);
+    setCommunalExists(false);
+    setMatchedCommunalZones([]);
+    const msg = result.data.message ?? `Generated ${result.data.reference_id}`;
+    setStatus(msg);
+    toast.success(msg);
+  }, [communalExists, notifyError, setError]);
+
+  const validateDefiningCommunal = useCallback(async () => {
+    const code = definingCommunalCode.trim();
+    if (!code) {
+      toast.warning("Enter a communal ID first.");
+      return;
     }
-  }, []);
+    setDefiningCommunalValidating(true);
+    const result = await validateZoneReference({
+      zone_type: "communal_id",
+      reference_id: code,
+    });
+    setDefiningCommunalValidating(false);
+    if (result.error || !result.data) {
+      setDefiningCommunalExists(null);
+      toast.error(result.error ?? "Could not validate communal ID.");
+      return;
+    }
+    const exists =
+      result.data.exists === true || result.data.valid === true;
+    setDefiningCommunalExists(exists);
+    setDefiningCommunalCode(
+      (result.data.reference_id || code).toUpperCase(),
+    );
+    if (exists) {
+      toast.info(
+        result.data.message ?? "Communal ID already exists on other zones.",
+      );
+    } else {
+      toast.success(result.data.message ?? "Communal ID is available.");
+    }
+  }, [definingCommunalCode]);
+
+  const generateDefiningCommunal = useCallback(async () => {
+    if (definingCommunalExists === true) {
+      toast.warning("Communal ID already exists — Generate is disabled.");
+      return;
+    }
+    setDefiningCommunalValidating(true);
+    const result = await generateZoneReference("communal_id");
+    setDefiningCommunalValidating(false);
+    if (result.error || !result.data) {
+      toast.error(result.error ?? "Could not generate communal ID.");
+      return;
+    }
+    setDefiningCommunalCode(result.data.reference_id);
+    setDefiningCommunalExists(false);
+    toast.success(result.data.message ?? `Generated ${result.data.reference_id}`);
+  }, [definingCommunalExists]);
 
   const validateGovernment = useCallback(async () => {
     const f = governmentFields;
     if (!f.postal && !f.city) {
-      setError("Enter at least a postal code or city.");
+      notifyError("Enter at least a postal code or city.");
       return;
     }
     if (!f.country.trim()) {
-      setError("Enter a country (e.g. Canada).");
+      notifyError("Enter a country (e.g. Canada).");
       return;
     }
     setGovernmentValidating(true);
@@ -748,28 +836,40 @@ export function useZoneBuilder(
     setGovernmentValidating(false);
     if (result.error || !result.data) {
       setGovernmentValidation(null);
-      setError(result.error ?? "Could not validate address.");
+      notifyError(result.error ?? "Could not validate address.");
       setStatus(null);
       return;
     }
     if (!result.data.valid) {
       setGovernmentValidation(null);
-      setError(result.data.message ?? "Address could not be resolved.");
+      notifyError(result.data.message ?? "Address could not be resolved.");
       setStatus(null);
       return;
     }
     setGovernmentValidation(result.data);
-    setStatus(
-      `Address validated — ${result.data.display_name ?? result.data.reference_id}`,
-    );
+    setError(null);
+    const msg = `Address validated — ${result.data.display_name ?? result.data.reference_id}`;
+    setStatus(msg);
+    toast.success(msg);
     const rings = ringsFromValidation(result.data);
     if (rings[0] && rings[0][0]) {
       allowInitialGpsRef.current = false;
       setMapCenter(rings[0][0]);
     }
-  }, [governmentFields, governmentMode]);
+  }, [governmentFields, governmentMode, notifyError, setError]);
 
   const canSave = useMemo(() => {
+    if (capabilities && capabilities.can_create_zone === false) {
+      // Assigning communal IDs to existing zones still allowed.
+      if (zoneType !== "communal_id") return false;
+    }
+    if (zoneType === "communal_id") {
+      return (
+        selectedPublicZoneIds.length > 0 &&
+        communalCode.trim().length >= 3 &&
+        communalExists !== null
+      );
+    }
     const trimmed = zoneName.trim();
     if (!trimmed || trimmed.length > MAX_ZONE_NAME_LENGTH) return false;
     if (capabilities && capabilities.can_create_zone === false) return false;
@@ -794,7 +894,6 @@ export function useZoneBuilder(
           dynamicPreview.resolved_radius_meters,
       );
     }
-    if (zoneType === "communal_id") return Boolean(communalValidation?.valid);
     if (zoneType === "government_local_code")
       return Boolean(governmentValidation?.valid);
     if (zoneType === "object") {
@@ -804,7 +903,8 @@ export function useZoneBuilder(
     }
     return false;
   }, [
-    communalValidation,
+    communalCode,
+    communalExists,
     draftCircle,
     draftRing,
     dynamicPreview,
@@ -816,6 +916,7 @@ export function useZoneBuilder(
     proximityCenter,
     proximityRadius,
     selectedH3Cells,
+    selectedPublicZoneIds,
     zoneName,
     zoneType,
     capabilities,
@@ -824,7 +925,7 @@ export function useZoneBuilder(
   const save = useCallback(async () => {
     setError(null);
     if (!canSave) {
-      setError("Complete the zone details first.");
+      notifyError("Complete the zone details first.");
       return false;
     }
 
@@ -841,6 +942,35 @@ export function useZoneBuilder(
       ? { id: ownerZoneId, zone_id: ownerZoneId }
       : {};
 
+    if (zoneType === "communal_id") {
+      setSaving(true);
+      setStatus("Assigning Communal ID…");
+      const result = await assignCommunalId({
+        communal_id: communalCode.trim().toUpperCase(),
+        zone_ids: selectedPublicZoneIds,
+        is_public: true,
+      });
+      setSaving(false);
+      if (result.error || !result.data) {
+        notifyError(result.error ?? "Could not assign Communal ID.");
+        setStatus(null);
+        return false;
+      }
+      toast.success(result.data.message);
+      setStatus(result.data.message);
+      setCommunalExists(true);
+      await refreshPublicZones();
+      await refresh();
+      return true;
+    }
+
+    const communalConfigExtra = definingCommunalCode.trim()
+      ? {
+          communal_id: definingCommunalCode.trim().toUpperCase(),
+          is_public: true,
+        }
+      : { is_public: true };
+
     if (zoneType === "geofence") {
       const polygon =
         geofenceTool === "polygon"
@@ -853,7 +983,7 @@ export function useZoneBuilder(
         ...ownerStamp,
         geometry: { geo_fence_polygon: polygon },
         geo_fence_polygon: polygon,
-        config: { h3_cells: [] },
+        config: { h3_cells: [], ...communalConfigExtra },
       };
     } else if (zoneType === "grid") {
       payload = {
@@ -862,7 +992,7 @@ export function useZoneBuilder(
         zone_type: "grid",
         ...ownerStamp,
         geometry: {},
-        config: { h3_cells: selectedH3Cells },
+        config: { h3_cells: selectedH3Cells, ...communalConfigExtra },
         h3_cells: selectedH3Cells,
       };
     } else if (zoneType === "proximity") {
@@ -882,6 +1012,7 @@ export function useZoneBuilder(
           radius_meters: proximityRadius,
           radii_meters: [proximityRadius],
           source_type: proximitySource,
+          ...communalConfigExtra,
         },
       };
     } else if (zoneType === "dynamic" && dynamicPreview?.center) {
@@ -902,25 +1033,8 @@ export function useZoneBuilder(
           ...(dynamicPreview.resolved_radius_meters
             ? { resolved_radius_meters: dynamicPreview.resolved_radius_meters }
             : {}),
+          ...communalConfigExtra,
         },
-      };
-    } else if (zoneType === "communal_id" && communalValidation?.valid) {
-      const refFence = communalValidation.geometry?.geo_fence_polygon;
-      payload = {
-        name: zoneName.trim(),
-        type: "communal_id",
-        zone_type: "communal_id",
-        ...ownerStamp,
-        geometry: communalValidation.geometry,
-        geo_fence_polygon:
-          refFence && typeof refFence === "object"
-            ? (refFence as Record<string, unknown>)
-            : undefined,
-        config: {
-          ...(communalValidation.config ?? {}),
-          communal_id: communalCode.trim().toUpperCase(),
-        },
-        h3_cells: communalValidation.h3_cells,
       };
     } else if (
       zoneType === "government_local_code" &&
@@ -937,7 +1051,10 @@ export function useZoneBuilder(
           refFence && typeof refFence === "object"
             ? (refFence as Record<string, unknown>)
             : undefined,
-        config: governmentValidation.config,
+        config: {
+          ...(governmentValidation.config ?? {}),
+          ...communalConfigExtra,
+        },
         h3_cells: governmentValidation.h3_cells,
       };
     } else if (zoneType === "object" && objectCenter) {
@@ -957,12 +1074,13 @@ export function useZoneBuilder(
           object_name: objectQuery.trim() || undefined,
           object_source: "place",
           radius_meters: objectRadius,
+          ...communalConfigExtra,
         },
       };
     }
 
     if (!payload) {
-      setError("Unknown zone type.");
+      notifyError("Unknown zone type.");
       return false;
     }
 
@@ -974,18 +1092,28 @@ export function useZoneBuilder(
     const result = await createZone(finalPayload);
     setSaving(false);
     if (result.error || !result.data) {
-      setError(result.error ?? "Zone save failed.");
+      notifyError(result.error ?? "Zone save failed.");
       setStatus(null);
       return false;
     }
-    setStatus(`Zone "${zoneName}" saved.`);
+    const evicted = result.data.evicted_zones ?? [];
+    if (evicted.length > 0) {
+      const names = evicted.map((z) => `"${z.name}"`).join(", ");
+      toast.warning(
+        `${evicted.length} member secondary zone(s) removed automatically: ${names}.`,
+        { title: "Zone quota adjusted", duration: 5200 },
+      );
+    }
+    const tier = result.data.is_primary ? "primary" : "secondary";
+    setStatus(`Zone "${zoneName}" saved (${tier}).`);
+    toast.success(`Zone "${zoneName}" saved.`);
     resetDrafts();
     await refresh();
     return true;
   }, [
     canSave,
     communalCode,
-    communalValidation,
+    definingCommunalCode,
     draftCircle,
     draftRing,
     dynamicMax,
@@ -1003,11 +1131,15 @@ export function useZoneBuilder(
     proximityRadius,
     proximitySource,
     refresh,
+    refreshPublicZones,
     resetDrafts,
     selectedH3Cells,
+    selectedPublicZoneIds,
     zoneDescription,
     zoneName,
     zoneType,
+    notifyError,
+    setError,
   ]);
 
   const remove = useCallback(
@@ -1018,7 +1150,9 @@ export function useZoneBuilder(
           isAccountAdministrator: scope?.isAccountAdministrator,
         })
       ) {
-        setError("You can delete only your own zones, or member zones as the account administrator.");
+        toast.warning(
+          "You can delete only primary zones as administrator, or secondary zones you created.",
+        );
         return;
       }
 
@@ -1037,7 +1171,7 @@ export function useZoneBuilder(
                 setStatus("Deleting zone…");
                 const result = await deleteZone(recordId);
                 if (result.error) {
-                  setError(result.error);
+                  notifyError(result.error);
                   setStatus(null);
                   return;
                 }
@@ -1049,7 +1183,7 @@ export function useZoneBuilder(
         ],
       );
     },
-    [refresh, scope?.currentUserId, scope?.isAccountAdministrator],
+    [notifyError, refresh, scope?.currentUserId, scope?.isAccountAdministrator, setError],
   );
 
   const canDeleteLayer = useCallback(
@@ -1207,8 +1341,20 @@ export function useZoneBuilder(
     setCommunalCode,
     communalValidation,
     communalValidating,
+    communalExists,
+    publicZones,
+    publicZonesLoading,
+    selectedPublicZoneIds,
+    togglePublicZoneSelection,
+    matchedCommunalZones,
     validateCommunal,
     generateCommunal,
+    definingCommunalCode,
+    setDefiningCommunalCode,
+    definingCommunalValidating,
+    definingCommunalExists,
+    validateDefiningCommunal,
+    generateDefiningCommunal,
 
     // government
     governmentMode,

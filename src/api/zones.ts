@@ -19,12 +19,21 @@ export type SavedZone = {
   creator_id?: string | number;
   /** Display name for the zone creator/owner (preferred). */
   owner_name?: string | null;
+  /** True for account-visible primary zones; false for creator-only secondary. */
+  is_primary?: boolean;
   geometry?: Record<string, unknown>;
   config?: Record<string, unknown>;
   h3_cells?: string[];
   geo_fence_polygon?: unknown;
   created_at?: string;
   updated_at?: string;
+  /** Present on create when member secondaries were auto-removed. */
+  evicted_zones?: {
+    id: number;
+    name: string;
+    creator_id: number;
+    zone_id?: string;
+  }[];
 };
 
 export type CreateZonePayload = {
@@ -65,6 +74,11 @@ export type ZoneCapabilities = {
   role?: string;
   reason?: string;
   max_total?: number;
+  max_primary?: number;
+  admin_primary_count?: number;
+  next_zone_is_primary?: boolean;
+  member_secondary_limit?: number;
+  reserved_for_standard_users?: number;
 };
 
 export async function getZoneCapabilities() {
@@ -123,6 +137,17 @@ export async function previewDynamicZone(payload: DynamicZonePreviewPayload) {
   });
 }
 
+export type CommunalZoneSummary = {
+  id: number;
+  zone_id: string;
+  name: string;
+  type: string;
+  owner_id: number;
+  owner_name?: string | null;
+  communal_id?: string | null;
+  is_public?: boolean;
+};
+
 export type ZoneReferenceValidateResult = {
   valid: boolean;
   zone_type: string;
@@ -133,6 +158,8 @@ export type ZoneReferenceValidateResult = {
   h3_cells: string[];
   source?: string | null;
   message?: string | null;
+  exists?: boolean | null;
+  zones?: CommunalZoneSummary[];
 };
 
 export type GovernmentAddressMode = "postal" | "street";
@@ -167,5 +194,35 @@ export async function generateZoneReference(
     method: "POST",
     url: "/zones/generate-reference",
     data: { zone_type: zoneType },
+  });
+}
+
+export async function listPublicZones(params?: {
+  skip?: number;
+  limit?: number;
+}) {
+  return request<SavedZone[]>({
+    method: "GET",
+    url: "/zones/public",
+    params: {
+      skip: params?.skip ?? 0,
+      limit: params?.limit ?? 200,
+    },
+  });
+}
+
+export async function assignCommunalId(payload: {
+  communal_id: string;
+  zone_ids: number[];
+  is_public?: boolean;
+}) {
+  return request<{
+    communal_id: string;
+    updated: SavedZone[];
+    message: string;
+  }>({
+    method: "POST",
+    url: "/zones/assign-communal",
+    data: payload,
   });
 }
