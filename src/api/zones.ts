@@ -53,6 +53,8 @@ export type CreateZonePayload = {
   config?: Record<string, unknown>;
   h3_cells?: string[];
   geo_fence_polygon?: Record<string, unknown> | null;
+  /** Administrators may choose primary vs secondary when both slots remain. */
+  is_primary?: boolean;
 };
 
 export type UpdateZonePayload = Partial<CreateZonePayload>;
@@ -79,6 +81,8 @@ export type ZoneCapabilities = {
   next_zone_is_primary?: boolean;
   member_secondary_limit?: number;
   reserved_for_standard_users?: number;
+  can_create_primary?: boolean;
+  can_create_secondary?: boolean;
 };
 
 export async function getZoneCapabilities() {

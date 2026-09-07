@@ -28,6 +28,7 @@ import { WellnessAckInline } from "@/components/messages/WellnessAckInline";
 import { useZoneNameLookup } from "@/hooks/useZoneNameLookup";
 import { useEnsureFilteredInboxRows } from "@/hooks/useEnsureFilteredInboxRows";
 import { useMemberPresence } from "@/hooks/useMemberPresence";
+import { useFloatingTabBarInset } from "@/components/navigation/FloatingTabBar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { colors } from "@/theme/colors";
 
@@ -36,6 +37,7 @@ type OwnerAvatarMap = Record<number, string>;
 
 export default function AlertsScreen() {
   const router = useRouter();
+  const tabBarInset = useFloatingTabBarInset();
   const { user } = useAuth();
   const { isOnline } = useMemberPresence();
   const selfRealName =
@@ -191,7 +193,10 @@ export default function AlertsScreen() {
           <FlatList
             data={sorted}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+            contentContainerStyle={{
+              paddingHorizontal: 20,
+              paddingBottom: tabBarInset,
+            }}
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             windowSize={7}

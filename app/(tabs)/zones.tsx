@@ -739,7 +739,127 @@ export default function DashboardScreen() {
                 style={{ color: colors.danger, fontSize: 12, lineHeight: 18 }}
               >
                 {builder.capabilities.reason ??
-                  "You've reached the zone limit for this user. Delete a zone to free a slot."}
+                  "You've reached the zone create limit. Deleting a zone does not free a create slot."}
+              </Text>
+            </View>
+          ) : null}
+
+          {String(user?.role ?? "").toLowerCase() === "administrator" &&
+          builder.capabilities?.can_create_zone !== false ? (
+            <View style={{ gap: 8 }}>
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontSize: 11,
+                  fontWeight: "700",
+                  letterSpacing: 0.4,
+                  textTransform: "uppercase",
+                }}
+              >
+                Zone tier
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  onPress={() => builder.setCreateAsPrimary(true)}
+                  disabled={builder.capabilities?.can_create_primary === false}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor:
+                      builder.createAsPrimary &&
+                      builder.capabilities?.can_create_primary !== false
+                        ? colors.accent
+                        : colors.border,
+                    backgroundColor:
+                      builder.createAsPrimary &&
+                      builder.capabilities?.can_create_primary !== false
+                        ? colors.accentGlow
+                        : colors.bgCard,
+                    opacity:
+                      builder.capabilities?.can_create_primary === false
+                        ? 0.4
+                        : 1,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: builder.createAsPrimary
+                        ? colors.accent
+                        : colors.textMuted,
+                      fontWeight: "700",
+                      fontSize: 13,
+                    }}
+                  >
+                    Primary
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 10,
+                      marginTop: 2,
+                    }}
+                  >
+                    Visible to all members
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => builder.setCreateAsPrimary(false)}
+                  disabled={
+                    builder.capabilities?.can_create_secondary === false
+                  }
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    borderWidth: 1.5,
+                    borderColor:
+                      !builder.createAsPrimary &&
+                      builder.capabilities?.can_create_secondary !== false
+                        ? colors.accent
+                        : colors.border,
+                    backgroundColor:
+                      !builder.createAsPrimary &&
+                      builder.capabilities?.can_create_secondary !== false
+                        ? colors.accentGlow
+                        : colors.bgCard,
+                    opacity:
+                      builder.capabilities?.can_create_secondary === false
+                        ? 0.4
+                        : 1,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: !builder.createAsPrimary
+                        ? colors.accent
+                        : colors.textMuted,
+                      fontWeight: "700",
+                      fontSize: 13,
+                    }}
+                  >
+                    Secondary
+                  </Text>
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 10,
+                      marginTop: 2,
+                    }}
+                  >
+                    Creator only
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={{ color: colors.textDim, fontSize: 11 }}>
+                Up to {builder.capabilities?.max_primary ?? 2} primary ·{" "}
+                {builder.capabilities?.admin_primary_count ?? 0} primary used ·{" "}
+                {builder.capabilities?.remaining_total ?? "—"} slot
+                {(builder.capabilities?.remaining_total ?? 0) === 1 ? "" : "s"}{" "}
+                left
               </Text>
             </View>
           ) : null}

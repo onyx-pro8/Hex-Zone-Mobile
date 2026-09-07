@@ -112,6 +112,8 @@ export function useZoneBuilder(
   const [capabilities, setCapabilities] = useState<ZoneCapabilities | null>(
     null,
   );
+  /** Admin create tier: true = primary, false = secondary. */
+  const [createAsPrimary, setCreateAsPrimary] = useState(true);
 
   const [zoneType, setZoneType] = useState<ZoneType>("geofence");
   const [zoneName, setZoneName] = useState("My zone");
@@ -227,9 +229,26 @@ export function useZoneBuilder(
     }
     if (!capsRes.error && capsRes.data) {
       setCapabilities(capsRes.data);
+      const caps = capsRes.data;
+      const isAdmin =
+        String(caps.role ?? "").toLowerCase() === "administrator" ||
+        Boolean(scope?.isAccountAdministrator);
+      if (isAdmin) {
+        setCreateAsPrimary((prev) => {
+          const canPrimary =
+            caps.can_create_primary ?? Boolean(caps.next_zone_is_primary);
+          const canSecondary = caps.can_create_secondary ?? true;
+          if (prev && canPrimary) return true;
+          if (!prev && canSecondary) return false;
+          if (canPrimary) return true;
+          return false;
+        });
+      } else {
+        setCreateAsPrimary(false);
+      }
     }
     setLoadingList(false);
-  }, [scope?.currentUserId, scope?.currentUserName]);
+  }, [scope?.currentUserId, scope?.currentUserName, scope?.isAccountAdministrator]);
 
   useEffect(() => {
     void refresh();
@@ -1087,9 +1106,13 @@ export function useZoneBuilder(
 
     setSaving(true);
     setStatus("Saving zone…");
+    const tierStamp =
+      scope?.isAccountAdministrator === true
+        ? { is_primary: createAsPrimary }
+        : { is_primary: false };
     const finalPayload: CreateZonePayload = description
-      ? { ...payload, description }
-      : payload;
+      ? { ...payload, description, ...tierStamp }
+      : { ...payload, ...tierStamp };
     const result = await createZone(finalPayload);
     setSaving(false);
     if (result.error || !result.data) {
@@ -1114,6 +1137,7 @@ export function useZoneBuilder(
   }, [
     canSave,
     communalCode,
+    createAsPrimary,
     definingCommunalCode,
     draftCircle,
     draftRing,
@@ -1123,6 +1147,7 @@ export function useZoneBuilder(
     dynamicTarget,
     geofenceTool,
     governmentValidation,
+    notifyError,
     objectCenter,
     objectQuery,
     objectRadius,
@@ -1134,6 +1159,7 @@ export function useZoneBuilder(
     refresh,
     refreshPublicZones,
     resetDrafts,
+    scope?.isAccountAdministrator,
     selectedH3Cells,
     selectedPublicZoneIds,
     zoneDescription,
@@ -1247,6 +1273,8 @@ export function useZoneBuilder(
     remove,
     canDeleteLayer,
     capabilities,
+    createAsPrimary,
+    setCreateAsPrimary,
 
     // form
     zoneType,
