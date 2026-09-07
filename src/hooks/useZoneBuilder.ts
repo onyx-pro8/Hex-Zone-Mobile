@@ -722,20 +722,21 @@ export function useZoneBuilder(
     setCommunalValidation(data);
     setError(null);
     if (exists) {
-      setSelectedPublicZoneIds((prev) =>
-        Array.from(new Set([...prev, ...matched.map((z) => z.id)])),
-      );
+      // Reset the selector to exactly the zones already on this Communal ID.
+      setSelectedPublicZoneIds(matched.map((z) => z.id));
+      void refreshPublicZones();
       const msg =
         data.message ?? `Communal ID found on ${matched.length} zone(s).`;
       setStatus(msg);
       toast.success(msg);
     } else {
+      setSelectedPublicZoneIds([]);
       const msg =
         data.message ?? "Communal ID not found. You can generate a new one.";
       setStatus(msg);
       toast.info(msg);
     }
-  }, [communalCode, notifyError, setError]);
+  }, [communalCode, notifyError, refreshPublicZones, setError]);
 
   const generateCommunal = useCallback(async () => {
     if (communalExists === true) {

@@ -2,13 +2,20 @@ import { useMemo, useState } from "react";
 import {
   FlatList,
   Modal,
+  Platform,
   Pressable,
   Text,
   TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
-import { ChevronDown, Map as MapIcon, Search, X } from "lucide-react-native";
+import {
+  Check,
+  ChevronDown,
+  Map as MapIcon,
+  Search,
+  X,
+} from "lucide-react-native";
 import type { SavedZone } from "@/api/zones";
 import { PublicZoneMapPreviewModal } from "@/components/dashboard/PublicZoneMapPreviewModal";
 import { colors } from "@/theme/colors";
@@ -31,6 +38,25 @@ function zoneSubtitle(zone: SavedZone): string {
   return [zone.type ?? zone.zone_type, zone.owner_name, existingId || null]
     .filter(Boolean)
     .join(" · ");
+}
+
+function ZoneCheckbox({ checked }: { checked: boolean }) {
+  return (
+    <View
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 7,
+        borderWidth: 2,
+        borderColor: checked ? colors.accent : colors.borderStrong,
+        backgroundColor: checked ? colors.accent : "#FFFFFF",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {checked ? <Check size={15} color="#FFFFFF" strokeWidth={3} /> : null}
+    </View>
+  );
 }
 
 export function PublicZonesMultiSelect({
@@ -83,6 +109,18 @@ export function PublicZonesMultiSelect({
   const closeDropdown = () => {
     setDropdownOpen(false);
     setQuery("");
+  };
+
+  /** iOS cannot stack a second Modal over the picker — close picker first. */
+  const openZonePreview = (zoneId: number) => {
+    if (open) {
+      setDropdownOpen(false);
+      setQuery("");
+      const delay = Platform.OS === "ios" ? 350 : 80;
+      setTimeout(() => setPreviewZoneId(zoneId), delay);
+      return;
+    }
+    setPreviewZoneId(zoneId);
   };
 
   return (
@@ -286,7 +324,7 @@ export function PublicZonesMultiSelect({
                   <View
                     style={{
                       paddingHorizontal: 16,
-                      paddingVertical: 10,
+                      paddingVertical: 12,
                       borderBottomWidth: 1,
                       borderBottomColor: colors.border,
                       backgroundColor: highlighted
@@ -295,22 +333,21 @@ export function PublicZonesMultiSelect({
                           ? "rgba(47,128,237,0.08)"
                           : "transparent",
                       flexDirection: "row",
-                      gap: 10,
+                      gap: 12,
                       alignItems: "center",
                     }}
                   >
                     <Pressable
                       onPress={() => onToggle(id)}
+                      hitSlop={6}
                       style={{
                         flex: 1,
                         flexDirection: "row",
-                        gap: 10,
-                        alignItems: "flex-start",
+                        gap: 12,
+                        alignItems: "center",
                       }}
                     >
-                      <Text style={{ color: colors.accent, fontWeight: "700" }}>
-                        {checked ? "☑" : "☐"}
-                      </Text>
+                      <ZoneCheckbox checked={checked} />
                       <View style={{ flex: 1 }}>
                         <Text
                           style={{
@@ -327,12 +364,12 @@ export function PublicZonesMultiSelect({
                       </View>
                     </Pressable>
                     <Pressable
-                      onPress={() => setPreviewZoneId(id)}
+                      onPress={() => openZonePreview(id)}
                       hitSlop={8}
                       accessibilityLabel={`Show ${zone.name ?? "zone"} on map`}
                       style={{
-                        width: 36,
-                        height: 36,
+                        width: 40,
+                        height: 40,
                         borderRadius: 10,
                         alignItems: "center",
                         justifyContent: "center",
@@ -341,7 +378,7 @@ export function PublicZonesMultiSelect({
                         borderColor: "rgba(47,128,237,0.25)",
                       }}
                     >
-                      <MapIcon size={16} color={colors.accent} />
+                      <MapIcon size={18} color={colors.accent} />
                     </Pressable>
                   </View>
                 );
