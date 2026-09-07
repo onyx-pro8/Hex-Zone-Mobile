@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Alert, AppState } from "react-native";
+import { AppState } from "react-native";
 import {
   extractZoneId,
   fetchOwnerProfile,
@@ -42,6 +42,7 @@ import {
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { isRunningExpoGo } from "@/lib/pushSupport";
 import { onUnauthorized } from "@/lib/authEvents";
+import { toast } from "@/lib/toast";
 import { devLog, devWarn } from "@/lib/devConsole";
 import {
   describeDeviceSyncFailure,
@@ -375,7 +376,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleRevoked = async () => {
       if (cancelled || alerted) return;
       alerted = true;
-      Alert.alert("Signed out", DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE);
+      toast.warning(DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE, {
+        title: "Signed out",
+      });
       setAuthError(DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE);
       await performLogout();
     };
@@ -421,7 +424,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled || alerted) return;
       alerted = true;
       devWarn("Auth: signing out — remote session conflict confirmed");
-      Alert.alert("Signed out", DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE);
+      toast.warning(DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE, {
+        title: "Signed out",
+      });
       setAuthError(DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE);
       await performLogout();
     };

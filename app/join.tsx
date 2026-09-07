@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/context/AuthContext";
 import { joinWithQrToken } from "@/api/guestPublic";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 export default function JoinScreen() {
@@ -39,7 +40,6 @@ export default function JoinScreen() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [paramsSettled, setParamsSettled] = useState(false);
 
   useEffect(() => {
@@ -52,25 +52,24 @@ export default function JoinScreen() {
   }, [inviteToken]);
 
   const onJoin = async () => {
-    setError(null);
     if (!firstName.trim() || !lastName.trim()) {
-      setError("Please enter your first and last name.");
+      toast.error("Please enter your first and last name.");
       return;
     }
     if (!email.trim()) {
-      setError("Email is required.");
+      toast.error("Email is required.");
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      toast.error("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      toast.error("Passwords do not match.");
       return;
     }
     if (!address.trim()) {
-      setError("Address is required.");
+      toast.error("Address is required.");
       return;
     }
 
@@ -100,7 +99,7 @@ export default function JoinScreen() {
       router.replace("/(tabs)");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      setError(
+      toast.error(
         msg ||
           "Could not complete registration. Check your details and try again.",
       );
@@ -301,7 +300,6 @@ export default function JoinScreen() {
                 value={confirm}
                 onChangeText={setConfirm}
                 leftIcon={<Lock size={18} color={colors.textMuted} />}
-                error={error ?? undefined}
               />
 
               <Button

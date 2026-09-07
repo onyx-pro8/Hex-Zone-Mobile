@@ -1,4 +1,5 @@
-import { Alert, Platform, Share } from "react-native";
+import { Platform, Share } from "react-native";
+import { toast } from "@/lib/toast";
 
 export type CopyToClipboardResult =
   | { ok: true; method: "clipboard" | "share" }
@@ -52,9 +53,11 @@ export function alertCopyResult(
 ): void {
   if (result.ok) {
     if (result.method === "clipboard") {
-      Alert.alert("Copied", "Link copied to clipboard.");
+      toast.success("Link copied to clipboard.", { title: "Copied" });
     } else {
-      Alert.alert("Share", 'Choose "Copy" (or similar) in the share menu to copy the link.');
+      toast.info('Choose "Copy" (or similar) in the share menu to copy the link.', {
+        title: "Share",
+      });
     }
     return;
   }
@@ -62,8 +65,10 @@ export function alertCopyResult(
     return;
   }
   if (fallbackText) {
-    Alert.alert("Copy unavailable", `${result.message}\n\n${fallbackText}`);
+    toast.error(`${result.message}\n\n${fallbackText}`, {
+      title: "Copy unavailable",
+    });
     return;
   }
-  Alert.alert("Copy unavailable", result.message);
+  toast.error(result.message, { title: "Copy unavailable" });
 }

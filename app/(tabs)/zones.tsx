@@ -607,7 +607,7 @@ export default function DashboardScreen() {
         </View>
       ) : null}
 
-      {builder.status || builder.error ? (
+      {builder.status ? (
         <View
           pointerEvents="none"
           style={{
@@ -620,7 +620,7 @@ export default function DashboardScreen() {
         >
           <Text
             style={{
-              color: builder.error ? colors.danger : colors.accent,
+              color: colors.accent,
               fontSize: 12,
               fontWeight: "600",
               textAlign: "center",
@@ -631,7 +631,7 @@ export default function DashboardScreen() {
               overflow: "hidden",
             }}
           >
-            {builder.error ?? builder.status}
+            {builder.status}
           </Text>
         </View>
       ) : null}
@@ -728,11 +728,6 @@ export default function DashboardScreen() {
             />
           ) : null}
 
-          {builder.error ? (
-            <Text style={{ color: colors.danger, fontSize: 12 }}>
-              {builder.error}
-            </Text>
-          ) : null}
           {builder.status ? (
             <Text style={{ color: colors.accent, fontSize: 12 }}>
               {builder.status}

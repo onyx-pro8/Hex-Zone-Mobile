@@ -12,6 +12,7 @@ import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { getPrivateThread, type PrivateThreadMessage } from "@/api/messageFeature";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 export default function PrivateThreadScreen() {
@@ -25,18 +26,16 @@ export default function PrivateThreadScreen() {
 
   const [messages, setMessages] = useState<PrivateThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(otherOwnerId) || otherOwnerId <= 0) {
-      setError("Missing conversation participant.");
+      toast.error("Missing conversation participant.");
       return;
     }
     setLoading(true);
-    setError(null);
     const result = await getPrivateThread(otherOwnerId);
     if (result.error) {
-      setError(result.error);
+      toast.error(result.error);
       setMessages([]);
     } else {
       setMessages(result.data ?? []);
@@ -62,13 +61,7 @@ export default function PrivateThreadScreen() {
           onBack={() => router.back()}
         />
 
-        {error ? (
-          <View style={{ paddingHorizontal: 20 }}>
-            <Card>
-              <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
-            </Card>
-          </View>
-        ) : loading && messages.length === 0 ? (
+        {loading && messages.length === 0 ? (
           <View
             style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
           >

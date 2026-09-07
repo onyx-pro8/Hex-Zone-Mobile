@@ -27,6 +27,7 @@ import {
   registerForPushNotificationsAsync,
 } from "@/lib/notifications";
 import type { PushDeliveryError } from "@/api/devices";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 const KILLED_APP_DELAY_SECONDS = 10;
@@ -133,12 +134,16 @@ export default function SettingsScreen() {
 
   const retryPush = async () => {
     const result = await registerForPushNotificationsAsync();
-    Alert.alert(
-      result.token ? "Push enabled" : "Push unavailable",
-      result.token
-        ? "This device is registered for message notifications."
-        : result.error ?? "Could not register for push notifications.",
-    );
+    if (result.token) {
+      toast.success("This device is registered for message notifications.", {
+        title: "Push enabled",
+      });
+    } else {
+      toast.warning(
+        result.error ?? "Could not register for push notifications.",
+        { title: "Push unavailable" },
+      );
+    }
   };
 
   // Diagnostic: trigger a self-test push from the server. Two variants help
@@ -159,9 +164,9 @@ export default function SettingsScreen() {
     const { granted } = await getNotificationPermissionStatus();
     setOsNotificationsGranted(granted);
     if (!granted) {
-      Alert.alert(
-        "Notifications blocked",
+      toast.warning(
         "Android is not allowed to show notifications for Safe Zone Patrol. Open system Settings → Apps → Safe Zone Patrol → Notifications and enable them, then try again.",
+        { title: "Notifications blocked" },
       );
       return;
     }
@@ -172,16 +177,16 @@ export default function SettingsScreen() {
       if (result.error) throw new Error(result.error);
       const data = result.data ?? {};
       if (data.push_no_tokens || (data.tokens ?? 0) === 0) {
-        Alert.alert(
-          "No push tokens registered",
+        toast.warning(
           "This account has no active push tokens on the server. Tap Push notifications above to re-register, then try again.",
+          { title: "No push tokens registered" },
         );
         return;
       }
       if (mode === "delayed") {
-        Alert.alert(
-          "Test push scheduled",
+        toast.info(
           `Server will send to ${data.tokens} token(s) in ${KILLED_APP_DELAY_SECONDS}s on channel "${data.channel_id ?? "default"}". Swipe the app away from recents (do not Force stop). If nothing appears, rebuild the installed APK after the latest app.json notification changes (eas build).`,
+          { title: "Test push scheduled", duration: 6000 },
         );
         return;
       }
@@ -189,20 +194,20 @@ export default function SettingsScreen() {
       const failed = data.push_failed ?? 0;
       const deliveryHint = formatDeliveryErrors(data.delivery_errors);
       if (sent > 0 && failed === 0) {
-        Alert.alert(
-          "Expo reports delivery OK",
+        toast.success(
           `Push reached Google/FCM for ${sent} device(s). If you still see nothing in the tray, open Android Settings → Apps → Safe Zone Patrol → Notifications and enable "Safe Zone Patrol" / pop on screen. After updating notification config, run a new EAS build and reinstall.${deliveryHint}`,
+          { title: "Expo reports delivery OK", duration: 6000 },
         );
         return;
       }
-      Alert.alert(
-        "Push delivery failed",
+      toast.error(
         `Tried ${data.tokens ?? 0} token(s); ${failed} failed.${deliveryHint} Check server logs for Expo push receipt errors.`,
+        { title: "Push delivery failed" },
       );
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Could not send a test push.";
-      Alert.alert("Test push failed", msg);
+      toast.error(msg, { title: "Test push failed" });
     } finally {
       setTestingPush("none");
     }

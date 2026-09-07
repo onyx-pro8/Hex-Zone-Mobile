@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, PermissionsAndroid, Platform } from "react-native";
+import { toast } from "@/lib/toast";
 import {
   loadExpoLocation,
   readDeviceLocation,
@@ -93,7 +94,11 @@ export function useZoneBuilder(
   const [listError, setListError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const setError = useCallback((message: string | null) => {
+    setErrorState(message);
+    if (message) toast.error(message);
+  }, []);
   const [capabilities, setCapabilities] = useState<ZoneCapabilities | null>(
     null,
   );
@@ -175,6 +180,7 @@ export function useZoneBuilder(
     ]);
     if (zonesRes.error) {
       setListError(zonesRes.error);
+      if (zonesRes.error) toast.error(zonesRes.error);
       setLayers([]);
     } else {
       const nameById = new Map<string, string>();

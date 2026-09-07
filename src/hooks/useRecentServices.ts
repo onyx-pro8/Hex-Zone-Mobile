@@ -4,6 +4,7 @@ import { listMessageFeatureBlocks } from "@/api/messageFeature";
 import { filterMessagesForBlocks } from "@/lib/messageBlocks";
 import { parseMessageSocketPayload } from "@/lib/messageSocket";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "@/lib/toast";
 import { useWebSocket } from "./useWebSocket";
 
 const FETCH_LIMIT = 100;
@@ -63,6 +64,7 @@ export function useRecentServices(zoneId?: string) {
       if (messagesResult.unauthorized) return;
       if (messagesResult.error) {
         setError(messagesResult.error);
+        toast.error(messagesResult.error);
         return;
       }
       const blocks = blocksResult.error ? [] : (blocksResult.data ?? []);

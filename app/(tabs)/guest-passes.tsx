@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -25,6 +24,7 @@ import {
   revokeGuestPass,
   type GuestPass,
 } from "@/api/guest";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 function PassRow({
@@ -52,7 +52,7 @@ function PassRow({
           : revokeGuestPass;
     const result = await fn(pass.id, zoneId);
     if (result.error) {
-      Alert.alert("Action failed", result.error);
+      toast.error(result.error, { title: "Action failed" });
       return;
     }
     onChanged();

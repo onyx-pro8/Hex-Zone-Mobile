@@ -38,6 +38,7 @@ import {
   updateGuestArrivalMessages,
   type GuestArrivalMessages,
 } from "@/api/guestArrivalMessages";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 const labelStyle = {
@@ -85,8 +86,6 @@ export default function GuestArrivalMessagesScreen() {
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [data, setData] = useState<GuestArrivalMessages | null>(null);
 
   const [expected, setExpected] = useState("");
@@ -95,11 +94,9 @@ export default function GuestArrivalMessagesScreen() {
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
     setLoading(true);
-    setError(null);
-    setNotice(null);
     const result = await getGuestArrivalMessages(effectiveZoneId);
     if (!result.ok) {
-      setError(result.message);
+      toast.error(result.message);
       setData(null);
     } else {
       setData(result.data);
@@ -116,8 +113,6 @@ export default function GuestArrivalMessagesScreen() {
   const onSave = useCallback(async () => {
     if (!effectiveZoneId) return;
     setSaving(true);
-    setError(null);
-    setNotice(null);
     try {
       const result = await updateGuestArrivalMessages(effectiveZoneId, {
         expected_arrival_message: normalizeGuestArrivalMessageField(expected),
@@ -125,15 +120,15 @@ export default function GuestArrivalMessagesScreen() {
           normalizeGuestArrivalMessageField(unexpected),
       });
       if (!result.ok) {
-        setError(result.message);
+        toast.error(result.message);
         return;
       }
       setData(result.data);
       setExpected(result.data.expected_arrival_message ?? "");
       setUnexpected(result.data.unexpected_arrival_message ?? "");
-      setNotice("Saved. New guest arrivals will see these messages.");
+      toast.success("Saved. New guest arrivals will see these messages.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save.");
+      toast.error(e instanceof Error ? e.message : "Could not save.");
     } finally {
       setSaving(false);
     }
@@ -142,21 +137,19 @@ export default function GuestArrivalMessagesScreen() {
   const onReset = useCallback(async () => {
     if (!effectiveZoneId) return;
     setSaving(true);
-    setError(null);
-    setNotice(null);
     try {
       const result = await updateGuestArrivalMessages(effectiveZoneId, {
         expected_arrival_message: null,
         unexpected_arrival_message: null,
       });
       if (!result.ok) {
-        setError(result.message);
+        toast.error(result.message);
         return;
       }
       setData(result.data);
       setExpected("");
       setUnexpected("");
-      setNotice("Reset to the default wording.");
+      toast.success("Reset to the default wording.");
     } finally {
       setSaving(false);
     }
@@ -310,15 +303,6 @@ export default function GuestArrivalMessagesScreen() {
                   Shown to walk-in guests while an admin reviews the request.
                 </Text>
               </Card>
-
-              {error ? (
-                <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
-              ) : null}
-              {notice ? (
-                <Text style={{ color: colors.success, fontSize: 12 }}>
-                  {notice}
-                </Text>
-              ) : null}
 
               <Button
                 label={saving ? "Saving…" : "Save messages"}

@@ -12,6 +12,7 @@ import {
 import { getRemoteAppSettings, updateRemoteAppSettings } from "@/api";
 import { useAuth } from "@/context/AuthContext";
 import { canEditNetworkId } from "@/lib/accountLimits";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 function Field({
@@ -98,7 +99,6 @@ export function ConfigForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -109,7 +109,7 @@ export function ConfigForm() {
         const merged = await updateAppSettings(res.data as Partial<AppSettings>);
         if (mounted) setDraft(merged);
       } else if (res.error) {
-        setError(res.error);
+        toast.error(res.error);
       }
       if (mounted) setLoading(false);
     })();
@@ -126,10 +126,9 @@ export function ConfigForm() {
   const onSave = async () => {
     setSaving(true);
     setSaved(false);
-    setError(null);
     const res = await updateRemoteAppSettings(draft);
     if (res.error) {
-      setError(res.error);
+      toast.error(res.error);
       setSaving(false);
       return;
     }
@@ -274,13 +273,6 @@ export function ConfigForm() {
         fullWidth
         style={{ marginTop: 20 }}
       />
-      {error ? (
-        <Text
-          style={{ color: colors.danger, fontSize: 12, marginTop: 10 }}
-        >
-          {error}
-        </Text>
-      ) : null}
     </View>
   );
 }

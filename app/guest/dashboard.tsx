@@ -44,6 +44,7 @@ import {
   clearStoredGuestSession,
   getStoredGuestSession,
 } from "@/lib/storage";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 /**
@@ -204,6 +205,7 @@ export default function GuestDashboardScreen() {
       }
       if (res.error) {
         setError(res.error);
+        toast.error(res.error);
         setMapModel(null);
         setRawDashboard(null);
         return;

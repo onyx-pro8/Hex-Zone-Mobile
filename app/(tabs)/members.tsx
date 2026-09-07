@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -39,6 +38,7 @@ import { useResolvedAvatarUri } from "@/lib/resolveAvatarUri";
 import { initialsForUser } from "@/components/ui/ProfileAvatarButton";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { parseMemberPresenceSocketEvent } from "@/lib/messageSocket";
+import { toast } from "@/lib/toast";
 import { devLog } from "@/lib/devConsole";
 import { colors } from "@/theme/colors";
 
@@ -441,7 +441,6 @@ export default function MembersScreen() {
   const { user, token, ownerZoneId } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("same-zone");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [managing, setManaging] = useState<Member | null>(null);
@@ -454,11 +453,10 @@ export default function MembersScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const result = await getMembers();
       if (result.error) {
-        setError(result.error);
+        toast.error(result.error);
         return;
       }
       const rows = result.data ?? [];
@@ -543,7 +541,7 @@ export default function MembersScreen() {
                 : row,
             ),
           );
-          Alert.alert("Could not update account type", typeRes.error);
+          toast.error(typeRes.error, { title: "Could not update account type" });
           return;
         }
       }
@@ -563,11 +561,11 @@ export default function MembersScreen() {
                 : row,
             ),
           );
-          Alert.alert(
-            "Could not update active status",
+          toast.error(
             /admin|403|forbidden/i.test(activeRes.error)
               ? "Only administrators can change active status."
               : activeRes.error,
+            { title: "Could not update active status" },
           );
           return;
         }
@@ -669,12 +667,6 @@ export default function MembersScreen() {
             ) : null}
           </View>
         </View>
-
-        {error ? (
-          <Text style={{ color: colors.danger, paddingHorizontal: 20 }}>
-            {error}
-          </Text>
-        ) : null}
 
         {loading && members.length === 0 ? (
           <View

@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { AlertTriangle, Lock, Mail, QrCode } from "lucide-react-native";
+import { Lock, Mail, QrCode } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
@@ -35,6 +35,7 @@ import {
   clearSecureCredentials,
   getSecureCredentials,
 } from "@/lib/secureCredentials";
+import { toast } from "@/lib/toast";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 import { colors } from "@/theme/colors";
 
@@ -47,7 +48,6 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(true);
   /** Bumped on each focus so Android remounts the password field after restore. */
   const [passwordFieldKey, setPasswordFieldKey] = useState(0);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deviceChangePromptVisible, setDeviceChangePromptVisible] =
     useState(false);
@@ -58,10 +58,9 @@ export default function LoginScreen() {
     if (!authError) return;
     if (isDeviceSessionConflictMessage(authError)) {
       setDeviceChangePromptVisible(true);
-      setError(null);
       return;
     }
-    setError(authError);
+    toast.error(authError);
   }, [authError]);
 
   useFocusEffect(
@@ -103,11 +102,10 @@ export default function LoginScreen() {
   const center = AUTH_MAP_DEFAULT_CENTER;
 
   const onSubmit = async (forceDeviceTakeover = false) => {
-    setError(null);
     clearAuthError();
     setDeviceChangePromptVisible(false);
     if (!email.trim() || !password) {
-      setError("Email and password are required.");
+      toast.error("Email and password are required.");
       return;
     }
     setSubmitting(true);
@@ -131,9 +129,9 @@ export default function LoginScreen() {
         !isDeviceSessionConflictMessage(message) &&
         /inactive|expired/i.test(message)
       ) {
-        setError("Account is inactive or expired");
+        toast.error("Account is inactive or expired");
       } else {
-        setError(message);
+        toast.error(message);
       }
     } finally {
       setSubmitting(false);
@@ -142,7 +140,7 @@ export default function LoginScreen() {
 
   const onDeclineDeviceChange = () => {
     setDeviceChangePromptVisible(false);
-    setError(DEVICE_CHANGE_DECLINED_MESSAGE);
+    toast.error(DEVICE_CHANGE_DECLINED_MESSAGE);
   };
 
   const onAcceptDeviceChange = () => {
@@ -315,36 +313,6 @@ export default function LoginScreen() {
             </Text>
           </View>
 
-          {error ? (
-            <View
-              style={{
-                marginHorizontal: 24,
-                marginBottom: 4,
-                flexDirection: "row",
-                alignItems: "flex-start",
-                gap: 10,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: "rgba(255, 179, 71, 0.5)",
-                backgroundColor: "rgba(255, 179, 71, 0.1)",
-              }}
-            >
-              <AlertTriangle size={16} color={colors.warning} />
-              <Text
-                style={{
-                  color: colors.textMuted,
-                  fontSize: 12,
-                  lineHeight: 18,
-                  flex: 1,
-                }}
-              >
-                {error}
-              </Text>
-            </View>
-          ) : null}
-
           <View style={{ paddingHorizontal: 24, gap: 16, marginTop: 24 }}>
             <Input
               label="Email"
@@ -376,11 +344,6 @@ export default function LoginScreen() {
               value={password}
               onChangeText={setPassword}
               leftIcon={<Lock size={18} color={colors.textMuted} />}
-              error={
-                error && /inactive|expired|credentials/i.test(error)
-                  ? error
-                  : undefined
-              }
             />
 
             <View

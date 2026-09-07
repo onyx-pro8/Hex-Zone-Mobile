@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -25,6 +24,7 @@ import {
   rejectGuestRequest,
   type GuestRequest,
 } from "@/api/guest";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 export default function GuestListScreen() {
@@ -39,16 +39,14 @@ export default function GuestListScreen() {
   } = useEffectiveZoneId();
   const [requests, setRequests] = useState<GuestRequest[]>([]);
   const [loading, setLoading] = useState(false);
-  const [listError, setListError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
     setLoading(true);
-    setListError(null);
     try {
       const result = await listGuestRequests(effectiveZoneId);
       if (result.error) {
-        setListError(result.error);
+        toast.error(result.error);
         setRequests([]);
         return;
       }
@@ -65,7 +63,7 @@ export default function GuestListScreen() {
   const onApprove = async (requestId: string) => {
     const res = await approveGuestRequest(requestId, effectiveZoneId);
     if (res.error) {
-      Alert.alert("Approve failed", res.error);
+      toast.error(res.error, { title: "Approve failed" });
       return;
     }
     void load();
@@ -74,7 +72,7 @@ export default function GuestListScreen() {
   const onReject = async (requestId: string) => {
     const res = await rejectGuestRequest(requestId, effectiveZoneId);
     if (res.error) {
-      Alert.alert("Reject failed", res.error);
+      toast.error(res.error, { title: "Reject failed" });
       return;
     }
     void load();
@@ -153,15 +151,6 @@ export default function GuestListScreen() {
                     </Pressable>
                   ))}
                 </View>
-              </View>
-            ) : null}
-            {listError ? (
-              <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
-                <Card>
-                  <Text style={{ color: colors.danger, fontSize: 12 }}>
-                    {listError}
-                  </Text>
-                </Card>
               </View>
             ) : null}
             {loading && requests.length === 0 ? (

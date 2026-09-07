@@ -9,6 +9,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { ToastHost } from "@/components/ui/ToastHost";
 import { devLog } from "@/lib/devConsole";
 import { ensureAndroidChannels } from "@/lib/notifications";
 import { colors } from "@/theme/colors";
@@ -74,6 +75,7 @@ export default function RootLayout() {
           <NotificationProvider>
             <StatusBar style="dark" backgroundColor={colors.bg} />
             <ProtectedShell />
+            <ToastHost />
           </NotificationProvider>
         </AuthProvider>
       </SafeAreaProvider>
