@@ -27,6 +27,7 @@ import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL } from "@/api/client";
 import { getToken } from "@/lib/storage";
 import { copyToClipboard } from "@/lib/copyToClipboard";
+import { toast } from "@/lib/toast";
 import {
   API_ENDPOINTS,
   DEFAULT_JSON_BODY,
@@ -140,7 +141,6 @@ export default function ApiDocsScreen() {
   const [loading, setLoading] = useState(false);
   const [responseText, setResponseText] = useState("");
   const [responseStatus, setResponseStatus] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const selected = useMemo(
     () => API_ENDPOINTS.find((e) => e.id === selectedId) ?? API_ENDPOINTS[0],
@@ -177,7 +177,6 @@ export default function ApiDocsScreen() {
     });
     setResponseText("");
     setResponseStatus(null);
-    setError(null);
   }, [selected?.id]);
 
   const generatedCurl = useMemo(() => {
@@ -220,7 +219,6 @@ export default function ApiDocsScreen() {
   const sendLive = async () => {
     if (!selected) return;
     setLoading(true);
-    setError(null);
     setResponseText("");
     setResponseStatus(null);
     try {
@@ -263,11 +261,11 @@ export default function ApiDocsScreen() {
       }
       setResponseText(formatted);
       if (!res.ok) {
-        setError(`HTTP ${res.status} ${res.statusText || ""}`.trim());
+        toast.error(`HTTP ${res.status} ${res.statusText || ""}`.trim());
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
+      toast.error(msg);
       setResponseText(msg);
     } finally {
       setLoading(false);
@@ -942,17 +940,6 @@ export default function ApiDocsScreen() {
                   </Text>
                 </View>
               </Pressable>
-              {error ? (
-                <Text
-                  style={{
-                    color: colors.danger,
-                    fontSize: 12,
-                    marginTop: 10,
-                  }}
-                >
-                  {error}
-                </Text>
-              ) : null}
               <View
                 style={{
                   marginTop: 14,

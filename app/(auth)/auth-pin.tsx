@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 const PIN_LENGTH = 4;
@@ -18,7 +19,6 @@ const PIN_LENGTH = 4;
 export default function AuthPinScreen() {
   const router = useRouter();
   const [digits, setDigits] = useState<string[]>(Array(PIN_LENGTH).fill(""));
-  const [error, setError] = useState<string | null>(null);
   const inputs = useRef<(TextInput | null)[]>([]);
 
   const onChangeDigit = (index: number, value: string) => {
@@ -26,7 +26,6 @@ export default function AuthPinScreen() {
     const next = [...digits];
     next[index] = char;
     setDigits(next);
-    setError(null);
     if (char && index < PIN_LENGTH - 1) {
       inputs.current[index + 1]?.focus();
     }
@@ -41,7 +40,7 @@ export default function AuthPinScreen() {
   const onContinue = () => {
     const code = digits.join("");
     if (code.length < PIN_LENGTH) {
-      setError("Enter the 4-digit verification code.");
+      toast.error("Enter the 4-digit verification code.");
       return;
     }
     router.replace("/(auth)/login");
@@ -120,19 +119,6 @@ export default function AuthPinScreen() {
             />
           ))}
         </View>
-
-        {error ? (
-          <Text
-            style={{
-              color: colors.danger,
-              textAlign: "center",
-              marginTop: 16,
-              fontSize: 13,
-            }}
-          >
-            {error}
-          </Text>
-        ) : null}
 
         <View style={{ paddingHorizontal: 24, marginTop: 40 }}>
           <Button label="Continue" onPress={onContinue} fullWidth size="lg" />

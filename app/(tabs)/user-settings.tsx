@@ -27,6 +27,7 @@ import {
   useAppSettings,
   type AppSettings,
 } from "@/lib/appSettings";
+import { toast } from "@/lib/toast";
 import {
   ADMIN_ASSIGNABLE_ACCOUNT_TYPES,
   OWNER_SELF_ASSIGNABLE_ACCOUNT_TYPES,
@@ -194,7 +195,6 @@ export default function UserSettingsScreen() {
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [identitySaved, setIdentitySaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   /** When true, ignore profile avatar_url sync so a fresh upload stays visible. */
@@ -232,7 +232,7 @@ export default function UserSettingsScreen() {
         const merged = await updateAppSettings(res.data as Partial<AppSettings>);
         if (mounted) setDraft(merged);
       } else if (res.error) {
-        setError(res.error);
+        toast.error(res.error);
       }
       if (mounted) setLoading(false);
     })();
@@ -272,12 +272,11 @@ export default function UserSettingsScreen() {
     setProfileSaved(false);
     setPickerOpen(false);
     setUploadingAvatar(true);
-    setError(null);
 
     const res = await uploadProfileAvatar(dataUrl);
     setUploadingAvatar(false);
     if (res.error || !res.data?.avatar_url) {
-      setError(res.error ?? "Could not upload avatar.");
+      toast.error(res.error ?? "Could not upload avatar.");
       return;
     }
 
@@ -297,18 +296,17 @@ export default function UserSettingsScreen() {
 
   const onSaveProfile = async () => {
     if (!user?.id) {
-      setError("Not signed in.");
+      toast.error("Not signed in.");
       return;
     }
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !trimmedEmail.includes("@")) {
-      setError("Enter a valid email address.");
+      toast.error("Enter a valid email address.");
       return;
     }
     const { first_name, last_name } = splitName(name);
     setSavingProfile(true);
     setProfileSaved(false);
-    setError(null);
 
     const payload: Parameters<typeof updateOwnerProfile>[1] = {
       first_name,
@@ -330,7 +328,7 @@ export default function UserSettingsScreen() {
 
     const res = await updateOwnerProfile(user.id, payload);
     if (res.error) {
-      setError(res.error);
+      toast.error(res.error);
       setSavingProfile(false);
       return;
     }
@@ -351,10 +349,9 @@ export default function UserSettingsScreen() {
   const onSaveIdentity = async () => {
     setSavingIdentity(true);
     setIdentitySaved(false);
-    setError(null);
     const res = await updateRemoteAppSettings(draft);
     if (res.error) {
-      setError(res.error);
+      toast.error(res.error);
       setSavingIdentity(false);
       return;
     }
@@ -559,13 +556,6 @@ export default function UserSettingsScreen() {
               />
             </Card>
 
-            {error ? (
-              <Text
-                style={{ color: colors.danger, fontSize: 12, marginTop: 12 }}
-              >
-                {error}
-              </Text>
-            ) : null}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -579,7 +569,7 @@ export default function UserSettingsScreen() {
         onImageSelected={(dataUrl) => {
           void onImageSelected(dataUrl);
         }}
-        onError={(message) => setError(message)}
+        onError={(message) => toast.error(message)}
       />
     </GradientBackground>
   );

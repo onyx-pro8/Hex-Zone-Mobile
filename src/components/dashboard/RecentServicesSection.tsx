@@ -39,7 +39,7 @@ type Props = {
 
 export function RecentServicesSection({ zoneId, variant = "card" }: Props) {
   const router = useRouter();
-  const { services, loading, error, refresh, zoneId: resolvedZoneId } =
+  const { services, loading, refresh, zoneId: resolvedZoneId } =
     useRecentServices(zoneId);
   const [expanded, setExpanded] = useState(false);
   const [sectionOpen, setSectionOpen] = useState(true);
@@ -115,10 +115,6 @@ export function RecentServicesSection({ zoneId, variant = "card" }: Props) {
               </Text>
             </Pressable>
           </View>
-
-          {error ? (
-            <Text style={{ color: colors.danger, fontSize: 11 }}>{error}</Text>
-          ) : null}
 
           {loading && services.length === 0 ? (
             <ActivityIndicator color={colors.accent} />

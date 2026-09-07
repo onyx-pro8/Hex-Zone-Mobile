@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { listEmergencyEvents, type EmergencyEvent } from "@/api/messageFeature";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 type TypeFilter = "all" | "PANIC" | "NS_PANIC";
@@ -30,18 +31,16 @@ export default function EmergencyLogScreen() {
   const router = useRouter();
   const [events, setEvents] = useState<EmergencyEvent[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     const result = await listEmergencyEvents({
       limit: 200,
       type: typeFilter === "all" ? undefined : typeFilter,
     });
     if (result.error) {
-      setError(result.error);
+      toast.error(result.error);
       setEvents([]);
     } else {
       setEvents(result.data ?? []);
@@ -94,16 +93,6 @@ export default function EmergencyLogScreen() {
                 </Pressable>
               ))}
             </View>
-
-            {error ? (
-              <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
-                <Card>
-                  <Text style={{ color: colors.danger, fontSize: 12 }}>
-                    {error}
-                  </Text>
-                </Card>
-              </View>
-            ) : null}
 
             {loading && events.length === 0 ? (
               <View

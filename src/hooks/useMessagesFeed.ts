@@ -20,6 +20,7 @@ import {
   notifyIncomingInboxMessage,
 } from "@/lib/incomingMessageNotify";
 import { isRunningExpoGo } from "@/lib/pushSupport";
+import { toast } from "@/lib/toast";
 import { useWebSocket } from "./useWebSocket";
 
 const POLL_INTERVAL_MS = 30_000;
@@ -177,6 +178,7 @@ export function useMessagesFeed(options?: {
         }
         if (messagesResult.error) {
           setError(messagesResult.error);
+          toast.error(messagesResult.error);
           return;
         }
         const batch = messagesResult.data ?? [];
@@ -207,6 +209,7 @@ export function useMessagesFeed(options?: {
       if (messagesResult.unauthorized) return;
       if (messagesResult.error) {
         setError(messagesResult.error);
+        toast.error(messagesResult.error);
         return;
       }
       const batch = messagesResult.data ?? [];

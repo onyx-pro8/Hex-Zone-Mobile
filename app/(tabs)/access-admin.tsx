@@ -12,6 +12,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
+import { toast } from "@/lib/toast";
 import {
   CalendarRange,
   Check,
@@ -207,11 +208,9 @@ function MemberInviteSection({
     expires_at: string | null;
   } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const onGenerate = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const result = await generateMemberInviteQr({ expires_in_hours: hours });
       if (result.error || !result.data) {
@@ -223,7 +222,9 @@ function MemberInviteSection({
         expires_at: result.data.expires_at ?? null,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate QR.");
+      toast.error(
+        err instanceof Error ? err.message : "Could not generate QR.",
+      );
     } finally {
       setLoading(false);
     }
@@ -273,9 +274,6 @@ function MemberInviteSection({
             : "Multi-use · does not expire"}
         </Text>
       ) : null}
-      {error ? (
-        <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
-      ) : null}
 
       <Button
         label={generated ? "Generate new link" : "Generate link"}
@@ -319,7 +317,6 @@ function GuestAccessSection({
   const [tokens, setTokens] = useState<GuestAccessQrToken[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const refreshTokens = useCallback(async () => {
     if (!zoneId) return;
@@ -341,11 +338,10 @@ function GuestAccessSection({
 
   const onGenerate = useCallback(async () => {
     if (!zoneId) {
-      setError("Set up a primary zone before generating guest QR.");
+      toast.error("Set up a primary zone before generating guest QR.");
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const create = await createGuestAccessQrToken({
         zone_id: zoneId,
@@ -373,7 +369,9 @@ function GuestAccessSection({
       setGenerated({ url, token: create.data.token, id: create.data.id });
       void refreshTokens();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not generate QR.");
+      toast.error(
+        err instanceof Error ? err.message : "Could not generate QR.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -383,12 +381,16 @@ function GuestAccessSection({
     async (id: number) => {
       const link = await getGuestAccessQrTokenLink(id, zoneId);
       if (link.error || !link.data) {
-        Alert.alert("QR error", link.error ?? "Could not resolve token URL.");
+        toast.error(link.error ?? "Could not resolve token URL.", {
+          title: "QR error",
+        });
         return;
       }
       const url = toAccessDeepLink(link.data.path_with_query);
       if (!url) {
-        Alert.alert("QR error", "Could not build the guest access link.");
+        toast.error("Could not build the guest access link.", {
+          title: "QR error",
+        });
         return;
       }
       setGenerated({ url, token: "", id });
@@ -406,7 +408,7 @@ function GuestAccessSection({
           onPress: async () => {
             const res = await revokeGuestAccessQrToken(id, zoneId);
             if (res.error) {
-              Alert.alert("Failed", res.error);
+              toast.error(res.error, { title: "Failed" });
               return;
             }
             void refreshTokens();
@@ -515,10 +517,6 @@ function GuestAccessSection({
 
       <QrPreview value={generated?.url ?? null} label="Generate to mint a guest URL" />
 
-      {error ? (
-        <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
-      ) : null}
-
       <Button
         label={generated ? "Generate new link" : "Generate link"}
         variant="primary"
@@ -607,12 +605,10 @@ function GuestAccessSection({
 function NetworkAccessSection({ zoneId }: { zoneId: string }) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!zoneId) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await fetchNetworkAccessQrToken(zoneId);
       if (res.error || !res.data) {
@@ -622,7 +618,9 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
       if (!next) throw new Error("Could not build network access link.");
       setUrl(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load network QR.");
+      toast.error(
+        err instanceof Error ? err.message : "Could not load network QR.",
+      );
       setUrl("");
     } finally {
       setLoading(false);
@@ -653,9 +651,6 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
         they can sign in. After approval they can use access messages (CHAT); map zones are optional.
       </Text>
       {loading ? <ActivityIndicator color={colors.accent} /> : null}
-      {error ? (
-        <Text style={{ color: colors.danger, fontSize: 12 }}>{error}</Text>
-      ) : null}
       {url ? (
         <View style={{ alignItems: "center", gap: 10 }}>
           <QRCode value={url} size={160} />
@@ -844,7 +839,7 @@ export default function AccessScreen() {
   const onApprove = async (requestId: string) => {
     const result = await approveGuestRequest(requestId, effectiveZoneId);
     if (result.error) {
-      Alert.alert("Approve failed", result.error);
+      toast.error(result.error, { title: "Approve failed" });
       return;
     }
     void loadRequests();
@@ -853,7 +848,7 @@ export default function AccessScreen() {
   const onReject = async (requestId: string) => {
     const result = await rejectGuestRequest(requestId, effectiveZoneId);
     if (result.error) {
-      Alert.alert("Reject failed", result.error);
+      toast.error(result.error, { title: "Reject failed" });
       return;
     }
     void loadRequests();

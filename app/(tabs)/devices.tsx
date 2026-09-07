@@ -43,6 +43,7 @@ import {
   removeDevice,
   signOutDevice,
 } from "@/lib/deviceSync";
+import { toast } from "@/lib/toast";
 import { getOrCreateDeviceHid } from "@/lib/storage";
 import { colors } from "@/theme/colors";
 
@@ -254,7 +255,6 @@ function DeviceRow({
 function AddSmartHomeModal({
   visible,
   submitting,
-  error,
   name,
   hid,
   address,
@@ -267,7 +267,6 @@ function AddSmartHomeModal({
 }: {
   visible: boolean;
   submitting: boolean;
-  error: string | null;
   name: string;
   hid: string;
   address: string;
@@ -363,9 +362,6 @@ function AddSmartHomeModal({
               onChangeText={onChangeAddress}
               placeholder="Home address"
             />
-            {error ? (
-              <Text style={{ color: colors.danger, fontSize: 13 }}>{error}</Text>
-            ) : null}
             <Button
               label={submitting ? "Saving…" : "Save smart-home device"}
               onPress={onSubmit}
@@ -392,19 +388,16 @@ export default function DevicesScreen() {
   const { user } = useAuth();
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [localHid, setLocalHid] = useState("");
   const [actionId, setActionId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addSubmitting, setAddSubmitting] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
   const [addName, setAddName] = useState("");
   const [addHid, setAddHid] = useState(generateSmartHomeHid());
   const [addAddress, setAddAddress] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const [hid, result] = await Promise.all([
         getOrCreateDeviceHid(),
@@ -412,7 +405,7 @@ export default function DevicesScreen() {
       ]);
       setLocalHid(hid);
       if (result.error) {
-        setError(result.error);
+        toast.error(result.error);
         return;
       }
       setDevices(result.data ?? []);
@@ -454,7 +447,6 @@ export default function DevicesScreen() {
   }, [devices]);
 
   const openAddModal = () => {
-    setAddError(null);
     setAddName("");
     setAddHid(generateSmartHomeHid());
     setAddAddress("");
@@ -464,15 +456,15 @@ export default function DevicesScreen() {
   const handleAddSmartHome = async () => {
     const normalizedHid = normalizeSmartHomeHid(addHid);
     if (!normalizedHid) {
-      setAddError("Enter a valid HID (DEV- plus at least 3 letters or numbers).");
+      toast.error("Enter a valid HID (DEV- plus at least 3 letters or numbers).");
       return;
     }
     if (devices.some((d) => String(d.hid).toUpperCase() === normalizedHid)) {
-      setAddError("This Device ID is already in use.");
+      toast.error("This Device ID is already in use.");
       return;
     }
     if (atSmartHomeLimit) {
-      setAddError(deviceLimitDescription(accountType));
+      toast.error(deviceLimitDescription(accountType));
       return;
     }
     const label =
@@ -480,7 +472,6 @@ export default function DevicesScreen() {
       `${(user?.name?.split(/\s+/)[0] || "Home").replace(/[^a-zA-Z]/g, "") || "Home"} hub`;
 
     setAddSubmitting(true);
-    setAddError(null);
     try {
       const result = await createDevice({
         hid: normalizedHid,
@@ -492,14 +483,14 @@ export default function DevicesScreen() {
         active: true,
       });
       if (result.error) {
-        setAddError(result.error);
+        toast.error(result.error);
         return;
       }
       setAddOpen(false);
       await load();
-      Alert.alert(
-        "Smart-home device added",
+      toast.success(
         `HID ${normalizedHid} is registered. Open Account settings → Smart-home integration to copy the API key and Network ID to your hub.`,
+        { title: "Smart-home device added" },
       );
     } finally {
       setAddSubmitting(false);
@@ -526,7 +517,7 @@ export default function DevicesScreen() {
                 await removeDevice(device.id);
                 await load();
               } catch (err) {
-                setError(
+                toast.error(
                   err instanceof Error ? err.message : "Could not remove device.",
                 );
               } finally {
@@ -547,7 +538,7 @@ export default function DevicesScreen() {
         await signOutDevice(device.id);
         await load();
       } catch (err) {
-        setError(
+        toast.error(
           err instanceof Error ? err.message : "Could not sign out device.",
         );
       } finally {
@@ -604,12 +595,6 @@ export default function DevicesScreen() {
           ) : null}
         </View>
 
-        {error ? (
-          <Text style={{ color: colors.danger, paddingHorizontal: 20 }}>
-            {error}
-          </Text>
-        ) : null}
-
         {loading && devices.length === 0 ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <ActivityIndicator color={colors.accent} />
@@ -654,7 +639,6 @@ export default function DevicesScreen() {
         <AddSmartHomeModal
           visible={addOpen}
           submitting={addSubmitting}
-          error={addError}
           name={addName}
           hid={addHid}
           address={addAddress}

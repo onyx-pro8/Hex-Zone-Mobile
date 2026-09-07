@@ -25,6 +25,7 @@ import {
   listAccessSchedules,
   type AccessSchedule,
 } from "@/api/guest";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 const QUICK_WINDOWS: { label: string; hours: number }[] = [
@@ -78,7 +79,6 @@ export default function GuestSchedulesScreen() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [notifyAssist, setNotifyAssist] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
@@ -102,15 +102,14 @@ export default function GuestSchedulesScreen() {
 
   const onSave = useCallback(async () => {
     if (!effectiveZoneId) {
-      setError("Set up a primary zone before adding a schedule.");
+      toast.error("Set up a primary zone before adding a schedule.");
       return;
     }
     if (!isValidIso(startsAt) || !isValidIso(endsAt)) {
-      setError("Use ISO timestamps (e.g. 2026-06-01T15:00:00Z).");
+      toast.error("Use ISO timestamps (e.g. 2026-06-01T15:00:00Z).");
       return;
     }
     setSubmitting(true);
-    setError(null);
     try {
       const result = await createAccessSchedule({
         zone_id: effectiveZoneId,
@@ -132,7 +131,7 @@ export default function GuestSchedulesScreen() {
       setNotifyAssist(false);
       void load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save schedule.");
+      toast.error(err instanceof Error ? err.message : "Could not save schedule.");
     } finally {
       setSubmitting(false);
     }
@@ -323,11 +322,6 @@ export default function GuestSchedulesScreen() {
                     trackColor={{ false: colors.border, true: colors.accent }}
                   />
                 </View>
-                {error ? (
-                  <Text style={{ color: colors.danger, fontSize: 12 }}>
-                    {error}
-                  </Text>
-                ) : null}
                 <Button
                   label="Save schedule"
                   onPress={() => void onSave()}

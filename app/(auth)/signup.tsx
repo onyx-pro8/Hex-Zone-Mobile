@@ -37,6 +37,7 @@ import {
   generateZoneId,
   type LatLng,
 } from "@/lib/h3";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 
@@ -103,19 +104,16 @@ export default function SignupScreen() {
   const [zoneId, setZoneId] = useState(() => generateZoneId());
   const [useExistingZone, setUseExistingZone] = useState(false);
   const [existingZoneId, setExistingZoneId] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [registrationCode, setRegistrationCode] = useState("");
   const [regCodeLoading, setRegCodeLoading] = useState(true);
-  const [regCodeError, setRegCodeError] = useState<string | null>(null);
 
   const loadRegistrationCode = useCallback(async () => {
     setRegCodeLoading(true);
-    setRegCodeError(null);
     const result = await fetchRegistrationCode();
     if (result.error || !result.data) {
       setRegistrationCode("");
-      setRegCodeError(result.error ?? "Could not load registration code.");
+      toast.error(result.error ?? "Could not load registration code.");
     } else {
       setRegistrationCode(result.data);
     }
@@ -126,7 +124,6 @@ export default function SignupScreen() {
     if (inviteToken) {
       setRegistrationCode(inviteToken);
       setRegCodeLoading(false);
-      setRegCodeError(null);
       return;
     }
     void loadRegistrationCode();
@@ -143,30 +140,29 @@ export default function SignupScreen() {
     registrationType === "USER" && accountType === "EXCLUSIVE";
 
   const onSubmit = async () => {
-    setError(null);
     const code = registrationCode.trim();
     if (!code) {
-      setError(
+      toast.error(
         "Registration code is missing. Wait for the server to issue one, or tap Retry.",
       );
       return;
     }
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password) {
-      setError("Name, email and password are required.");
+      toast.error("Name, email and password are required.");
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      toast.error("Passwords do not match.");
       return;
     }
     if (userOnExclusive) {
-      setError(
+      toast.error(
         "Exclusive accounts are solo and cannot register additional users. Use Guest access to invite visitors.",
       );
       return;
     }
     if (registrationType === "USER" && !accountOwnerId.trim()) {
-      setError("User registration requires a valid account owner ID.");
+      toast.error("User registration requires a valid account owner ID.");
       return;
     }
 
@@ -190,7 +186,7 @@ export default function SignupScreen() {
       router.replace("/(auth)/login");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      setError(
+      toast.error(
         /422|exclusive|account owner|zone/i.test(msg)
           ? msg
           : "Could not create account. Please review your details and try again.",
@@ -336,21 +332,16 @@ export default function SignupScreen() {
                 >
                   Requesting registration code from server…
                 </Text>
-              ) : regCodeError ? (
-                <View
+              ) : !registrationCode ? (
+                <Text
                   style={{
+                    color: colors.textMuted,
+                    fontSize: 13,
                     marginTop: 8,
-                    padding: 10,
-                    borderRadius: 10,
-                    borderWidth: 1,
-                    borderColor: "rgba(255,179,71,0.4)",
-                    backgroundColor: "rgba(255,179,71,0.1)",
                   }}
                 >
-                  <Text style={{ color: colors.warning, fontSize: 12 }}>
-                    {regCodeError}
-                  </Text>
-                </View>
+                  No registration code yet. Tap Retry.
+                </Text>
               ) : (
                 <View
                   style={{
@@ -442,13 +433,12 @@ export default function SignupScreen() {
                     key={option.value}
                     onPress={() => {
                       if (disabled) {
-                        setError(
+                        toast.error(
                           "Exclusive account type is not valid for user registration.",
                         );
                         return;
                       }
                       setAccountType(option.value);
-                      setError(null);
                     }}
                     disabled={disabled}
                     style={{
@@ -678,7 +668,6 @@ export default function SignupScreen() {
               value={confirm}
               onChangeText={setConfirm}
               leftIcon={<Lock size={18} color={colors.textMuted} />}
-              error={error ?? undefined}
             />
 
             <Button

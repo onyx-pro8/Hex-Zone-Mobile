@@ -182,7 +182,6 @@ export default function MessagesScreen() {
     loading,
     loadingMore,
     hasMore,
-    error,
     refresh,
     loadMore,
     ownerId,
@@ -375,11 +374,6 @@ export default function MessagesScreen() {
                   dateTo={dateTo}
                   onDateToChange={setDateTo}
                 />
-                {error ? (
-                  <Text style={{ color: colors.danger, marginBottom: 8 }}>
-                    {error}
-                  </Text>
-                ) : null}
               </View>
             }
             refreshControl={

@@ -48,7 +48,6 @@ export default function AlertsScreen() {
     loading,
     loadingMore,
     hasMore,
-    error,
     refresh,
     loadMore,
     markAlarmsSeen,
@@ -183,12 +182,6 @@ export default function AlertsScreen() {
             </Text>
           </Card>
         </View>
-
-        {error ? (
-          <Text style={{ color: colors.danger, paddingHorizontal: 20 }}>
-            {error}
-          </Text>
-        ) : null}
 
         {loading && sorted.length === 0 ? (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

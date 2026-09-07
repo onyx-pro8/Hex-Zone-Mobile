@@ -111,17 +111,16 @@ export function ZonesPageHeader({
             <Text style={styles.dropdownTitle}>
               Saved zones ({layers.length})
             </Text>
-            {listError ? (
-              <Text style={styles.errorText}>{listError}</Text>
-            ) : null}
             {loadingList && layers.length === 0 ? (
               <ActivityIndicator
                 color={colors.accent}
                 style={{ marginVertical: 16 }}
               />
             ) : null}
-            {!loadingList && layers.length === 0 && !listError ? (
-              <Text style={styles.emptyText}>No saved zones yet.</Text>
+            {!loadingList && layers.length === 0 ? (
+              <Text style={styles.emptyText}>
+                {listError ? "Could not load zones." : "No saved zones yet."}
+              </Text>
             ) : null}
             <ScrollView
               style={{ maxHeight: 280 }}
@@ -276,11 +275,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingVertical: 12,
     paddingHorizontal: 4,
-  },
-  errorText: {
-    color: colors.danger,
-    fontSize: 12,
-    marginBottom: 8,
   },
   layerRow: {
     flexDirection: "row",
