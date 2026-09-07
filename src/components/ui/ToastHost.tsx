@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -167,7 +168,11 @@ function ToastCard({
   );
 }
 
-/** Global toast stack — mount once near the app root. */
+/**
+ * Global toast stack — mount once near the app root.
+ * Uses a transparent Modal so toasts render above BottomSheet / other Modals
+ * (absolute zIndex alone cannot cover native Modal layers).
+ */
 export function ToastHost() {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ToastItem[]>([]);
@@ -187,31 +192,39 @@ export function ToastHost() {
     });
   }, []);
 
-  if (items.length === 0) return null;
+  const visible = items.length > 0;
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[
-        styles.host,
-        { paddingTop: Math.max(insets.top, 12) + 8 },
-      ]}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+      onRequestClose={() => setItems([])}
     >
-      {items.map((item) => (
-        <ToastCard key={item.id} item={item} onDismiss={dismiss} />
-      ))}
-    </View>
+      <View pointerEvents="box-none" style={styles.modalRoot}>
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.host,
+            { paddingTop: Math.max(insets.top, 12) + 8 },
+          ]}
+        >
+          {items.map((item) => (
+            <ToastCard key={item.id} item={item} onDismiss={dismiss} />
+          ))}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+  },
   host: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 9999,
-    elevation: 9999,
     paddingHorizontal: 16,
     gap: 8,
     alignItems: "stretch",

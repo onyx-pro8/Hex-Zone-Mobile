@@ -386,6 +386,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onSocketFrame = async () => {
       if (!lastMessage || wsStatus !== "open") return;
       if (sessionInProgress.current) return;
+      try {
+        const parsed = JSON.parse(lastMessage) as {
+          type?: unknown;
+          data?: { message?: unknown };
+        };
+        if (parsed.type === "ZONE_EVICTED") {
+          const msg =
+            typeof parsed.data?.message === "string"
+              ? parsed.data.message
+              : "A secondary zone was removed because of a primary-zone quota change.";
+          toast.warning(msg, { title: "Zone removed", duration: 5200 });
+        }
+      } catch {
+        // ignore non-JSON frames
+      }
       const evt = parseSessionRevokedSocketEvent(lastMessage);
       if (!evt) return;
       const localHid = (await getOrCreateDeviceHid()).toUpperCase();

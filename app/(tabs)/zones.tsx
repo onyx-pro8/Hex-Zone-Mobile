@@ -31,7 +31,7 @@ import {
 } from "@/components/navigation/FloatingTabBar";
 import { useAuth } from "@/context/AuthContext";
 import { MAX_ZONE_NAME_LENGTH, useZoneBuilder } from "@/hooks/useZoneBuilder";
-import { isClosedPolygon, layerFocusPoint, type MapZoneLayer } from "@/lib/zoneGeometry";
+import { isClosedPolygon, layerFocusPoint, zoneRecordToLayer, type MapZoneLayer } from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
 const H3_RES_MIN = 5;
@@ -66,8 +66,30 @@ export default function DashboardScreen() {
   /** Null until the user picks a draw tool — then map drawing is enabled. */
   const [activeTool, setActiveTool] = useState<ZoneDrawToolId | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detailScrollEnabled, setDetailScrollEnabled] = useState(true);
   const [focusLayerId, setFocusLayerId] = useState<string | null>(null);
   const [focusLayerToken, setFocusLayerToken] = useState(0);
+
+  const handlePublicZonesMenuOpenChange = useCallback((open: boolean) => {
+    setDetailScrollEnabled(!open);
+  }, []);
+
+  /** Include public zones on the map during communal flow so focus works for others' zones. */
+  const mapLayers = useMemo(() => {
+    if (builder.zoneType !== "communal_id") return builder.layers;
+    const byId = new Map(builder.layers.map((layer) => [layer.id, layer]));
+    builder.publicZones.forEach((zone, index) => {
+      const layer = zoneRecordToLayer(zone, index);
+      if (layer && !byId.has(layer.id)) byId.set(layer.id, layer);
+    });
+    return Array.from(byId.values());
+  }, [builder.layers, builder.publicZones, builder.zoneType]);
+
+  const focusZoneOnMap = useCallback((zoneId: string) => {
+    setDetailOpen(false);
+    setFocusLayerId(zoneId);
+    setFocusLayerToken((token) => token + 1);
+  }, []);
 
   const { zoneType, changeZoneType, setGeofenceTool } = builder;
 
@@ -234,7 +256,7 @@ export default function DashboardScreen() {
         draftMarker={builder.draftMarker}
         selectedH3Cells={builder.selectedH3Cells}
         h3Resolution={builder.h3Resolution}
-        savedLayers={builder.layers}
+        savedLayers={mapLayers}
         draftColor={builder.draftColor}
         draftCircleSolid={builder.draftCircleSolid}
         fitDraftToken={builder.fitDraftToken}
@@ -638,7 +660,10 @@ export default function DashboardScreen() {
 
       <BottomSheet
         visible={detailOpen}
-        onClose={() => setDetailOpen(false)}
+        onClose={() => {
+          setDetailScrollEnabled(true);
+          setDetailOpen(false);
+        }}
         maxHeight="72%"
       >
         <View
@@ -655,6 +680,8 @@ export default function DashboardScreen() {
         </View>
         <ScrollView
           keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+          scrollEnabled={detailScrollEnabled}
           contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 28 }}
         >
           <Text
@@ -725,6 +752,8 @@ export default function DashboardScreen() {
             <ZoneTypePanel
               builder={builder}
               onShowOnMap={() => setDetailOpen(false)}
+              onPublicZonesMenuOpenChange={handlePublicZonesMenuOpenChange}
+              onFocusZone={focusZoneOnMap}
             />
           ) : null}
 

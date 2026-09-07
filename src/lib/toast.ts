@@ -20,6 +20,11 @@ type Listener = (toast: ToastItem) => void;
 const listeners = new Set<Listener>();
 let seq = 0;
 
+/** Suppress identical toasts fired back-to-back (e.g. setError + toast.warning). */
+const DEDUPE_MS = 1200;
+let lastFingerprint = "";
+let lastShownAt = 0;
+
 export function subscribeToast(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
@@ -27,15 +32,34 @@ export function subscribeToast(listener: Listener): () => void {
   };
 }
 
+function fingerprint(message: string, type: ToastType, title?: string): string {
+  return `${type}|${title ?? ""}|${message}`;
+}
+
 /** Show a floating toast notification (preferred over Alert for user messages). */
 export function showToast(message: string, options: ToastOptions = {}): void {
   const trimmed = message.trim();
   if (!trimmed) return;
+  const type = options.type ?? "info";
+  const title = options.title?.trim() || undefined;
+  const key = fingerprint(trimmed, type, title);
+  const now = Date.now();
+  // Also suppress same message with a different type within the window
+  // (e.g. warning + error both saying "Enter a communal ID first.").
+  const sameMessageRecently =
+    now - lastShownAt < DEDUPE_MS &&
+    (lastFingerprint === key ||
+      lastFingerprint.endsWith(`|${trimmed}`) ||
+      key.endsWith(`|${trimmed}`));
+  if (sameMessageRecently) return;
+  lastFingerprint = key;
+  lastShownAt = now;
+
   const toast: ToastItem = {
-    id: `toast-${Date.now()}-${++seq}`,
+    id: `toast-${now}-${++seq}`,
     message: trimmed,
-    title: options.title?.trim() || undefined,
-    type: options.type ?? "info",
+    title,
+    type,
     duration: options.duration ?? 3200,
   };
   listeners.forEach((listener) => listener(toast));

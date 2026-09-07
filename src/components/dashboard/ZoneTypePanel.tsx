@@ -14,6 +14,7 @@ import { setStoredMapCenter } from "@/lib/storage";
 import { Input } from "@/components/ui/Input";
 import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
 import { CompactSlider } from "@/components/dashboard/Slider";
+import { PublicZonesMultiSelect } from "@/components/dashboard/PublicZonesMultiSelect";
 import type { ZoneBuilderState } from "@/hooks/useZoneBuilder";
 import { colors } from "@/theme/colors";
 
@@ -21,10 +22,74 @@ type Props = {
   builder: ZoneBuilderState;
   /** Called after actions that should leave the details sheet (e.g. show on map). */
   onShowOnMap?: () => void;
+  /** Disable parent sheet scrolling while the public-zones dropdown is open. */
+  onPublicZonesMenuOpenChange?: (open: boolean) => void;
+  /** Close the sheet and focus a saved/public zone on the main map. */
+  onFocusZone?: (zoneId: string) => void;
 };
 
-export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
+export function ZoneTypePanel({
+  builder,
+  onShowOnMap,
+  onPublicZonesMenuOpenChange,
+  onFocusZone,
+}: Props) {
   const t = builder.zoneType;
+
+  const definingCommunalField = (
+    <View
+      style={{
+        gap: 10,
+        marginTop: 4,
+        padding: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.bgCard,
+      }}
+    >
+      <Input
+        label="Communal ID (optional)"
+        autoCapitalize="characters"
+        placeholder="Type or generate an ID"
+        value={builder.definingCommunalCode}
+        onChangeText={builder.setDefiningCommunalCode}
+      />
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <SecondaryButton
+          label={builder.definingCommunalValidating ? "Validating…" : "Validate"}
+          icon={<Sparkles size={14} color={colors.textMuted} />}
+          onPress={() => void builder.validateDefiningCommunal()}
+          disabled={
+            builder.definingCommunalValidating ||
+            !builder.definingCommunalCode.trim()
+          }
+        />
+        <SecondaryButton
+          label="Generate"
+          icon={<Wand2 size={14} color={colors.textMuted} />}
+          onPress={() => void builder.generateDefiningCommunal()}
+          disabled={
+            builder.definingCommunalValidating ||
+            builder.definingCommunalExists === true
+          }
+        />
+      </View>
+      {builder.definingCommunalExists === true ? (
+        <Text style={{ color: "#C4B5FD", fontSize: 11 }}>
+          This Communal ID already exists and will group this zone with those zones.
+        </Text>
+      ) : builder.definingCommunalExists === false ? (
+        <Text style={{ color: colors.success, fontSize: 11 }}>
+          Communal ID is available.
+        </Text>
+      ) : (
+        <Text style={hintStyle}>
+          Attach a unique Communal ID so others can find this zone.
+        </Text>
+      )}
+    </View>
+  );
 
   if (t === "geofence") {
     const polygonPoints = builder.draftRing.length;
@@ -88,6 +153,7 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
             onPress={builder.clearGeofence}
           />
         </View>
+        {definingCommunalField}
       </View>
     );
   }
@@ -110,6 +176,7 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
           icon={<Trash2 size={14} color={colors.textMuted} />}
           onPress={builder.clearH3}
         />
+        {definingCommunalField}
       </View>
     );
   }
@@ -156,6 +223,7 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
         ) : (
           <Text style={hintStyle}>Tap the map or use location to place the source.</Text>
         )}
+        {definingCommunalField}
       </View>
     );
   }
@@ -250,6 +318,7 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
             }}
           />
         ) : null}
+        {definingCommunalField}
       </View>
     );
   }
@@ -257,10 +326,23 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
   if (t === "communal_id") {
     return (
       <View style={{ gap: 12 }}>
+        <Text style={hintStyle}>
+          Communal does not draw a zone. Select public zones, validate or generate
+          a Communal ID, then save to assign it.
+        </Text>
+        <PublicZonesMultiSelect
+          zones={builder.publicZones}
+          selectedIds={builder.selectedPublicZoneIds}
+          loading={builder.publicZonesLoading}
+          highlightedIds={builder.matchedCommunalZones.map((z) => z.id)}
+          onToggle={builder.togglePublicZoneSelection}
+          onRemove={builder.togglePublicZoneSelection}
+          onOpenChange={onPublicZonesMenuOpenChange}
+        />
         <Input
           label="Communal ID"
           autoCapitalize="characters"
-          placeholder="COMM-12345"
+          placeholder="Type or generate an ID"
           value={builder.communalCode}
           onChangeText={builder.setCommunalCode}
         />
@@ -274,15 +356,59 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
             label="Generate"
             icon={<Wand2 size={14} color={colors.textMuted} />}
             onPress={() => void builder.generateCommunal()}
+            disabled={builder.communalExists === true || builder.communalValidating}
           />
         </View>
-        {builder.communalValidation?.valid ? (
-          <Text style={{ color: "#C4B5FD", fontSize: 12 }}>
-            {builder.communalValidation.display_name ??
-              builder.communalValidation.reference_id}{" "}
-            — preview on map
+        {builder.communalExists === true ? (
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: "#6D28D9", fontSize: 12, fontWeight: "600" }}>
+              Communal ID found
+              {builder.matchedCommunalZones.length
+                ? ` on ${builder.matchedCommunalZones.length} zone(s)`
+                : ""}
+              .
+            </Text>
+            {builder.matchedCommunalZones.map((z) => (
+              <Pressable
+                key={z.id}
+                onPress={() => onFocusZone?.(String(z.id))}
+                hitSlop={4}
+                style={{ paddingVertical: 2 }}
+              >
+                <Text
+                  style={{
+                    color: colors.accent,
+                    fontSize: 13,
+                    fontWeight: "600",
+                    textDecorationLine: "underline",
+                  }}
+                >
+                  {z.name}
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontWeight: "500",
+                      textDecorationLine: "none",
+                    }}
+                  >
+                    {" "}
+                    ({z.type}
+                    {z.owner_name ? ` · ${z.owner_name}` : ""})
+                  </Text>
+                </Text>
+              </Pressable>
+            ))}
+            <Text style={{ color: colors.textDim, fontSize: 11 }}>
+              Tap a zone to close details and zoom to it on the map.
+            </Text>
+          </View>
+        ) : builder.communalExists === false ? (
+          <Text style={{ color: colors.success, fontSize: 12 }}>
+            Communal ID not found — Generate is available.
           </Text>
-        ) : null}
+        ) : (
+          <Text style={hintStyle}>Validate to check whether this ID exists.</Text>
+        )}
       </View>
     );
   }
@@ -369,6 +495,7 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
             — area polygon on map
           </Text>
         ) : null}
+        {definingCommunalField}
       </View>
     );
   }
@@ -415,6 +542,7 @@ export function ZoneTypePanel({ builder, onShowOnMap }: Props) {
         <Text style={hintStyle}>
           Pick a place from suggestions, or tap the map to fine-tune the anchor.
         </Text>
+        {definingCommunalField}
       </View>
     );
   }

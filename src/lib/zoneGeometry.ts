@@ -13,6 +13,12 @@ export const ZONE_TYPE_LABELS: Record<ZoneType, string> = {
 
 /** Short, type-aware summary for the saved-zones list (radius, cells, etc). */
 export function summarizeZone(zone: SavedZone): string {
+  const tierLabel =
+    zone.is_primary === true
+      ? "Primary · "
+      : zone.is_primary === false
+        ? "Secondary · "
+        : "";
   const t = normalizeZoneType(zone.type ?? zone.zone_type);
   const cfg = (zone.config ?? {}) as Record<string, unknown>;
   if (t === "grid") {
@@ -21,31 +27,36 @@ export function summarizeZone(zone: SavedZone): string {
       : Array.isArray(cfg.h3_cells)
         ? (cfg.h3_cells as unknown[]).length
         : 0;
-    return `Grid · ${cells} cells`;
+    return `${tierLabel}Grid · ${cells} cells`;
   }
   if (t === "proximity") {
     const r = Number(cfg.radius_meters);
-    return Number.isFinite(r) && r > 0 ? `Proximity · ${Math.round(r)} m` : "Proximity";
+    return Number.isFinite(r) && r > 0
+      ? `${tierLabel}Proximity · ${Math.round(r)} m`
+      : `${tierLabel}Proximity`;
   }
   if (t === "dynamic") {
     const target = Number(cfg.target_user_count);
     const r = Number(cfg.resolved_radius_meters);
     if (Number.isFinite(target) && Number.isFinite(r)) {
-      return `Dynamic · ${target} users / ${Math.round(r)} m`;
+      return `${tierLabel}Dynamic · ${target} users / ${Math.round(r)} m`;
     }
-    if (Number.isFinite(target)) return `Dynamic · target ${target}`;
-    return "Dynamic";
+    if (Number.isFinite(target)) return `${tierLabel}Dynamic · target ${target}`;
+    return `${tierLabel}Dynamic`;
   }
   if (t === "object") {
     const r = Number(cfg.radius_meters);
     const name = typeof cfg.object_name === "string" ? cfg.object_name : "";
-    if (name && Number.isFinite(r)) return `Object · ${name} · ${Math.round(r)} m`;
-    if (name) return `Object · ${name}`;
-    return Number.isFinite(r) ? `Object · ${Math.round(r)} m` : "Object";
+    if (name && Number.isFinite(r))
+      return `${tierLabel}Object · ${name} · ${Math.round(r)} m`;
+    if (name) return `${tierLabel}Object · ${name}`;
+    return Number.isFinite(r)
+      ? `${tierLabel}Object · ${Math.round(r)} m`
+      : `${tierLabel}Object`;
   }
   if (t === "communal_id") {
     const id = typeof cfg.communal_id === "string" ? cfg.communal_id : "";
-    return id ? `Communal · ${id}` : "Communal ID";
+    return id ? `${tierLabel}Communal · ${id}` : `${tierLabel}Communal ID`;
   }
   if (t === "government_local_code") {
     const ref =
@@ -54,9 +65,9 @@ export function summarizeZone(zone: SavedZone): string {
         : typeof cfg.postal_code === "string"
           ? (cfg.postal_code as string)
           : "";
-    return ref ? `Gov · ${ref}` : "Government code";
+    return ref ? `${tierLabel}Gov · ${ref}` : `${tierLabel}Government code`;
   }
-  return "Geofence";
+  return `${tierLabel}Geofence`;
 }
 
 /** Prefer API `owner_name`; hide synthetic `Owner #id` placeholders. */
@@ -308,18 +319,27 @@ export function canDeleteSavedZone(
   scope?: {
     currentUserId?: string;
     isAccountAdministrator?: boolean;
+    isSystemAdministrator?: boolean;
   },
 ): boolean {
-  if (!scope?.currentUserId) return true;
-  const ownerId =
-    zone.owner_id != null
-      ? String(zone.owner_id)
-      : (zone as { ownerId?: string | number }).ownerId != null
-        ? String((zone as { ownerId?: string | number }).ownerId)
-        : null;
-  if (!ownerId) return false;
-  if (ownerId === scope.currentUserId) return true;
-  return Boolean(scope.isAccountAdministrator);
+  if (scope?.isSystemAdministrator) return true;
+  const isPrimary = Boolean(
+    (zone as { is_primary?: boolean }).is_primary ??
+      (zone as { isPrimary?: boolean }).isPrimary,
+  );
+  if (isPrimary) {
+    return Boolean(scope?.isAccountAdministrator);
+  }
+  const creatorId =
+    zone.creator_id != null
+      ? String(zone.creator_id)
+      : zone.owner_id != null
+        ? String(zone.owner_id)
+        : (zone as { ownerId?: string | number }).ownerId != null
+          ? String((zone as { ownerId?: string | number }).ownerId)
+          : null;
+  if (!creatorId || !scope?.currentUserId) return false;
+  return creatorId === scope.currentUserId;
 }
 
 export function zoneRecordToLayer(
