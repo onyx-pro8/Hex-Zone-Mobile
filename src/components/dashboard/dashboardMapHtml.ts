@@ -1,5 +1,10 @@
 import type { LatLng } from "@/lib/h3";
-import type { MapZoneLayer, ZoneCircle } from "@/lib/zoneGeometry";
+import type { MapZoneLayer, ZoneCircle, ZoneShapeKind } from "@/lib/zoneGeometry";
+
+export type MapFocusShape = {
+  kind: ZoneShapeKind;
+  index: number;
+};
 
 export type DashboardMapState = {
   center: LatLng;
@@ -23,6 +28,8 @@ export type DashboardMapState = {
   /** When bumped with focusLayerId, fit the map to that saved layer (incl. H3). */
   focusLayerToken?: number;
   focusLayerId?: string | null;
+  /** When set with focusLayerId, fit only this piece of the layer. */
+  focusShape?: MapFocusShape | null;
 };
 
 const ACCENT = "#2F80ED";
@@ -340,6 +347,47 @@ export function buildDashboardMapHtml(zoomControlTop = 96): string {
         }
       }
 
+      function boundsForFocusShape(layer, shape) {
+        if (!layer || !shape) return null;
+        var kind = String(shape.kind || '');
+        var index = Number(shape.index);
+        if (!Number.isFinite(index) || index < 0) return null;
+        var pts = [];
+        var lib = H3 || getH3();
+        if (kind === 'h3') {
+          var cell = (layer.h3Cells || [])[index];
+          if (!cell || !lib || typeof lib.cellToBoundary !== 'function') return null;
+          try {
+            lib.cellToBoundary(cell).forEach(function (p) { pts.push([p[0], p[1]]); });
+          } catch (e) {
+            return null;
+          }
+        } else if (kind === 'ring') {
+          var ring = (layer.rings || [])[index];
+          (ring || []).forEach(function (p) { pts.push([p[0], p[1]]); });
+        } else if (kind === 'circle') {
+          var c = (layer.circles || [])[index];
+          if (!c || !c.center || !(Number(c.radiusMeters) > 0)) return null;
+          try {
+            var circleBounds = L.latLng(c.center[0], c.center[1]).toBounds(
+              Math.max(Number(c.radiusMeters) * 2.2, 120)
+            );
+            pts.push([circleBounds.getSouthWest().lat, circleBounds.getSouthWest().lng]);
+            pts.push([circleBounds.getNorthEast().lat, circleBounds.getNorthEast().lng]);
+          } catch (e) {
+            pts.push([c.center[0], c.center[1]]);
+          }
+        } else if (kind === 'marker' && layer.marker) {
+          pts.push([layer.marker[0], layer.marker[1]]);
+        }
+        if (!pts.length) return null;
+        try {
+          return L.latLngBounds(pts);
+        } catch (e) {
+          return null;
+        }
+      }
+
       var lastFitToken = 0;
       var lastFocusToken = 0;
       function applyState(next) {
@@ -379,7 +427,12 @@ export function buildDashboardMapHtml(zoomControlTop = 96): string {
             var focusLayer = (next.savedLayers || []).find(function (layer) {
               return String(layer.id) === focusId;
             });
-            var focusBounds = boundsForSavedLayer(focusLayer);
+            var focusBounds = next.focusShape
+              ? boundsForFocusShape(focusLayer, next.focusShape)
+              : boundsForSavedLayer(focusLayer);
+            if (!focusBounds || !focusBounds.isValid()) {
+              focusBounds = boundsForSavedLayer(focusLayer);
+            }
             if (focusBounds && focusBounds.isValid()) {
               map.fitBounds(focusBounds, { padding: [48, 48], maxZoom: 17, animate: true });
             }

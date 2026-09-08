@@ -102,6 +102,14 @@ export type QrJoinPayload = {
   last_name: string;
   address: string;
   phone?: string;
+  /** Required for system-admin invites (new Exclusive network admin). */
+  zone_id?: string;
+};
+
+export type QrInvitePreview = {
+  invite_kind: "member" | "new_network_admin";
+  account_type: string;
+  zone_id?: string | null;
 };
 
 export type QrJoinResult = {
@@ -113,10 +121,33 @@ export type QrJoinResult = {
     last_name: string;
     account_type?: string;
     account_owner_id?: number | null;
+    role?: string;
   } | null;
   error: string | null;
   status?: number;
 };
+
+export async function previewQrInviteToken(
+  token: string,
+): Promise<{ data: QrInvitePreview | null; error: string | null; status?: number }> {
+  try {
+    const res = await guestAxios.get<unknown>("/utils/qr/preview", {
+      params: { token },
+      validateStatus: () => true,
+    });
+    if (res.status >= 400) {
+      const { message } = readErrorBody(res.data);
+      return { data: null, error: message, status: res.status };
+    }
+    const data = unwrapEnvelope(res.data) as QrInvitePreview;
+    return { data, error: null, status: res.status };
+  } catch (e) {
+    const status = e instanceof AxiosError ? e.response?.status : undefined;
+    const msg =
+      e instanceof Error ? e.message : "Could not load invite details.";
+    return { data: null, error: msg, ...(status ? { status } : {}) };
+  }
+}
 
 export async function joinWithQrToken(
   payload: QrJoinPayload,
