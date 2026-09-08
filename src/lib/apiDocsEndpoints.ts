@@ -490,10 +490,23 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     method: "POST",
     path: "/utils/qr/generate",
     group: "core",
-    description: "Generate member-invite QR token (Private, Private+, Enhanced+ administrators).",
+    description:
+      "Generate QR invite token. System admin (Private): new Exclusive network admin. Private+/Enhanced+: member join on inviter zone.",
     bodyJson: true,
     params: [
       { name: "body", in: "body", required: true, placeholder: "JSON body" },
+    ],
+  },
+  {
+    id: "qr-preview",
+    method: "GET",
+    path: "/utils/qr/preview",
+    group: "core",
+    description:
+      "Preview invite kind (member vs new_network_admin) for the join form.",
+    public: true,
+    params: [
+      { name: "token", in: "query", required: true, placeholder: "invite-token" },
     ],
   },
   {
@@ -501,7 +514,8 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     method: "POST",
     path: "/utils/qr/join",
     group: "core",
-    description: "Register via QR invite token.",
+    description:
+      "Register via QR invite. System-admin invites require zone_id (new Exclusive admin).",
     public: true,
     bodyJson: true,
     params: [

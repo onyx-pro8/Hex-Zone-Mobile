@@ -22,6 +22,8 @@ type AppHeaderProps = {
   style?: ViewStyle;
   /** Tighter padding/icons for overlay layouts (e.g. Zones map). */
   compact?: boolean;
+  /** Rendered to the left of the emergency/siren icon. */
+  leadingActions?: ReactNode;
 };
 
 export function AppHeader({
@@ -29,6 +31,7 @@ export function AppHeader({
   subtitle,
   style,
   compact = false,
+  leadingActions,
 }: AppHeaderProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -38,9 +41,10 @@ export function AppHeader({
 
   const displayName = (user?.name ?? "").trim() || "Account";
   const displayEmail = (user?.email ?? "").trim() || "—";
-  const sirenSize = compact ? 18 : 22;
-  const bellSize = compact ? 34 : 42;
-  const avatarSize = compact ? 32 : 40;
+  /** Shared slot so leading / siren / bell / avatar share one vertical center. */
+  const actionSlot = compact ? 36 : 40;
+  const glyphSize = compact ? 18 : 20;
+  const bellGlyph = compact ? 18 : 20;
 
   return (
     <View style={[styles.header, compact && styles.headerCompact, style]}>
@@ -63,20 +67,31 @@ export function AppHeader({
       </View>
 
       <View style={[styles.actions, compact && styles.actionsCompact]}>
-        <Pressable
-          onPress={openQuickAlerts}
-          accessibilityLabel="Quick alerts"
-          style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
-        >
-          <Siren size={sirenSize} color={colors.accent} strokeWidth={2.2} />
-        </Pressable>
-        <AlertBellButton size={bellSize} />
-        <ProfileAvatarButton
-          size={avatarSize}
-          inset={!compact}
-          selected={menuOpen}
-          onPress={() => setMenuOpen(true)}
-        />
+        {leadingActions ? (
+          <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
+            {leadingActions}
+          </View>
+        ) : null}
+        <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
+          <Pressable
+            onPress={openQuickAlerts}
+            accessibilityLabel="Quick alerts"
+            style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
+          >
+            <Siren size={glyphSize} color={colors.accent} strokeWidth={2.2} />
+          </Pressable>
+        </View>
+        <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
+          <AlertBellButton size={actionSlot} iconSize={bellGlyph} />
+        </View>
+        <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
+          <ProfileAvatarButton
+            size={actionSlot}
+            inset={false}
+            selected={menuOpen}
+            onPress={() => setMenuOpen(true)}
+          />
+        </View>
       </View>
 
       <Modal
@@ -208,7 +223,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   titleCompact: {
-    fontSize: 15,
+    fontSize: 17,
   },
   subtitle: {
     color: colors.textMuted,
@@ -216,17 +231,23 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   subtitleCompact: {
-    fontSize: 10,
-    marginTop: 1,
+    fontSize: 11,
+    marginTop: 2,
   },
   actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "center",
+    gap: 10,
   },
   actionsCompact: {
     gap: 6,
     flexShrink: 0,
+    alignItems: "center",
+  },
+  actionSlot: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   iconButton: {
     width: 42,

@@ -78,6 +78,96 @@ export function zoneOwnerLabel(zone: SavedZone): string | null {
   return null;
 }
 
+/** True when the saved zone was created by the signed-in user. */
+export function isOwnZone(
+  zone: SavedZone,
+  currentUserId?: string | null,
+): boolean {
+  const self = currentUserId?.trim();
+  if (!self) return false;
+  const creatorId =
+    zone.creator_id != null
+      ? String(zone.creator_id)
+      : zone.owner_id != null
+        ? String(zone.owner_id)
+        : null;
+  return creatorId === self;
+}
+
+export type ZoneShapeKind = "h3" | "ring" | "circle" | "marker";
+
+/** Discrete map piece inside a saved zone (cell, polygon, circle, or pin). */
+export type ZoneShapeItem = {
+  id: string;
+  kind: ZoneShapeKind;
+  index: number;
+  label: string;
+};
+
+/** List zoomable pieces. Single-piece zones should zoom directly; multi open a picker. */
+export function listZoneShapes(layer: MapZoneLayer): ZoneShapeItem[] {
+  const shapes: ZoneShapeItem[] = [];
+  layer.h3Cells.forEach((cell, index) => {
+    shapes.push({
+      id: `h3:${cell}`,
+      kind: "h3",
+      index,
+      label: `Cell ${index + 1}`,
+    });
+  });
+  layer.rings.forEach((_ring, index) => {
+    shapes.push({
+      id: `ring:${index}`,
+      kind: "ring",
+      index,
+      label: layer.rings.length === 1 ? "Polygon" : `Polygon ${index + 1}`,
+    });
+  });
+  layer.circles.forEach((circle, index) => {
+    shapes.push({
+      id: `circle:${index}`,
+      kind: "circle",
+      index,
+      label:
+        layer.circles.length === 1
+          ? `Circle · ${Math.round(circle.radiusMeters)} m`
+          : `Circle ${index + 1} · ${Math.round(circle.radiusMeters)} m`,
+    });
+  });
+  if (shapes.length === 0 && layer.marker) {
+    shapes.push({
+      id: "marker:0",
+      kind: "marker",
+      index: 0,
+      label: "Location pin",
+    });
+  }
+  return shapes;
+}
+
+/** Map-center hint for a listed shape (null for H3 — WebView fits the cell). */
+export function shapeFocusPoint(
+  layer: MapZoneLayer,
+  shape: ZoneShapeItem,
+): LatLng | null {
+  if (shape.kind === "marker" && layer.marker) return layer.marker;
+  if (shape.kind === "circle") {
+    return layer.circles[shape.index]?.center ?? null;
+  }
+  if (shape.kind === "ring") {
+    const ring = layer.rings[shape.index];
+    if (!ring?.length) return null;
+    let latSum = 0;
+    let lngSum = 0;
+    for (const [lat, lng] of ring) {
+      latSum += lat;
+      lngSum += lng;
+    }
+    return [latSum / ring.length, lngSum / ring.length];
+  }
+  return null;
+}
+
 export type ZoneLayerKind = "polygon" | "circle" | "marker";
 
 export type ZoneCircle = {

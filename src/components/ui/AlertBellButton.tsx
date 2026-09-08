@@ -6,11 +6,14 @@ import { colors } from "@/theme/colors";
 
 type AlertBellButtonProps = {
   size?: number;
+  /** Override the bell glyph size (defaults to ~half of `size`). */
+  iconSize?: number;
 };
 
-export function AlertBellButton({ size = 42 }: AlertBellButtonProps) {
+export function AlertBellButton({ size = 42, iconSize }: AlertBellButtonProps) {
   const router = useRouter();
   const { unreadAlarmCount, markAlarmsSeen } = useAlarmInbox();
+  const glyph = iconSize ?? Math.round(size * 0.5);
 
   return (
     <Pressable
@@ -34,7 +37,7 @@ export function AlertBellButton({ size = 42 }: AlertBellButtonProps) {
         ]}
       >
         <Bell
-          size={Math.round(size * 0.5)}
+          size={glyph}
           color={colors.text}
           strokeWidth={2.2}
         />

@@ -56,6 +56,7 @@ import { devLog } from "@/lib/devConsole";
 import { presentLocalMessageNotification } from "@/lib/notifications";
 import {
   canAdministratorInviteUserMember,
+  isSystemAdministrator,
   memberInviteUnavailableHint,
   normalizeAccountType,
 } from "@/lib/accountLimits";
@@ -197,9 +198,11 @@ function QrPreview({ value, label }: { value: string | null; label?: string }) {
 function MemberInviteSection({
   disabled,
   unavailableHint,
+  isSystemAdmin = false,
 }: {
   disabled: boolean;
   unavailableHint: string;
+  isSystemAdmin?: boolean;
 }) {
   const [hours, setHours] = useState<ExpiryHours>(24);
   const [generated, setGenerated] = useState<{
@@ -241,12 +244,12 @@ function MemberInviteSection({
           fontWeight: "700",
         }}
       >
-        Member invite link
+        {isSystemAdmin ? "New network admin invite" : "Member invite link"}
       </Text>
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
-        Timed links (1 h, 24 h, 7 d, 30 d) are single-use. ∞ never expires and
-        can be scanned by multiple members — use that for a printed outdoor sign.
-        Joins still stop when this account reaches its member limit.
+        {isSystemAdmin
+          ? "Invitees create an Exclusive administrator account for a new network and choose their own network ID on the join form. Timed links are single-use; ∞ never expires."
+          : "Timed links (1 h, 24 h, 7 d, 30 d) are single-use. ∞ never expires and can be scanned by multiple members — use that for a printed outdoor sign. Joins still stop when this account reaches its member limit."}
       </Text>
 
       <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
@@ -734,6 +737,16 @@ export default function AccessScreen() {
     [accountType],
   );
 
+  const isSystemAdmin = useMemo(
+    () =>
+      isSystemAdministrator({
+        role: user?.role,
+        accountType: user?.accountType,
+        legacyAccountType: user?.account_type,
+      }),
+    [user],
+  );
+
   useEffect(() => {
     if (memberInviteDisabled) {
       setTab("guest");
@@ -870,6 +883,7 @@ export default function AccessScreen() {
               <MemberInviteSection
                 disabled={memberInviteDisabled}
                 unavailableHint={memberInviteHint}
+                isSystemAdmin={isSystemAdmin}
               />
             ) : (
               <>

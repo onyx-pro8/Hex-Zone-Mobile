@@ -6,8 +6,11 @@ import type { MapZoneLayer, ZoneCircle } from "@/lib/zoneGeometry";
 import {
   buildDashboardMapHtml,
   type DashboardMapState,
+  type MapFocusShape,
 } from "@/components/dashboard/dashboardMapHtml";
 import { colors } from "@/theme/colors";
+
+export type { MapFocusShape };
 
 export type DashboardDrawMode =
   | "polygon"
@@ -48,6 +51,8 @@ type DashboardMapProps = {
   /** Bump with focusLayerId to fly the map to a saved zone (works for H3 grids). */
   focusLayerToken?: number;
   focusLayerId?: string | null;
+  /** When set, zoom to one cell/polygon/circle inside the focused layer. */
+  focusShape?: MapFocusShape | null;
   /** Increment to request device GPS via the map WebView (no expo-location native module). */
   locationRequestNonce?: number;
   onMapClick?: (lat: number, lng: number) => void;
@@ -78,6 +83,7 @@ export function DashboardMap({
   fitDraftToken = 0,
   focusLayerToken = 0,
   focusLayerId = null,
+  focusShape = null,
   locationRequestNonce = 0,
   onMapClick,
   onH3Toggle,
@@ -120,6 +126,7 @@ export function DashboardMap({
       fitDraftToken,
       focusLayerToken,
       focusLayerId,
+      focusShape,
     }),
     [
       center,
@@ -137,6 +144,7 @@ export function DashboardMap({
       fitDraftToken,
       focusLayerToken,
       focusLayerId,
+      focusShape,
     ],
   );
 

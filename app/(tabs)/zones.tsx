@@ -31,15 +31,17 @@ import {
 } from "@/components/navigation/FloatingTabBar";
 import { useAuth } from "@/context/AuthContext";
 import { MAX_ZONE_NAME_LENGTH, useZoneBuilder } from "@/hooks/useZoneBuilder";
-import { isClosedPolygon, layerFocusPoint, zoneRecordToLayer, type MapZoneLayer } from "@/lib/zoneGeometry";
+import { isClosedPolygon, layerFocusPoint, shapeFocusPoint, zoneRecordToLayer, type MapZoneLayer, type ZoneShapeItem } from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
 const H3_RES_MIN = 5;
 const H3_RES_MAX = 13;
 const PROXIMITY_RADIUS_MIN = 10;
 const PROXIMITY_RADIUS_MAX = 5000;
-/** Compact Zones header row (card + side buttons), excluding safe-area inset. */
-const ZONES_HEADER_BODY_HEIGHT = 58;
+/** Compact Zones header row (card + save), excluding safe-area inset. */
+const ZONES_HEADER_BODY_HEIGHT = 70;
+/** Space reserved on the chrome row for Leaflet +/- and the Zones list button. */
+const CHROME_SIDE_WIDTH = 78;
 
 export default function DashboardScreen() {
   const { ownerZoneId, user } = useAuth();
@@ -55,11 +57,10 @@ export default function DashboardScreen() {
 
   /** Keep map chrome below the floating Zones header (iOS needs more offset). */
   const zonesHeaderBottom =
-    insets.top + 6 + ZONES_HEADER_BODY_HEIGHT;
+    insets.top + 10 + ZONES_HEADER_BODY_HEIGHT;
   const mapChromeTop =
-    Platform.OS === "ios" ? zonesHeaderBottom + 14 : 96;
-  const hintTop =
-    Platform.OS === "ios" ? zonesHeaderBottom + 10 : 100;
+    Platform.OS === "ios" ? zonesHeaderBottom + 12 : zonesHeaderBottom + 8;
+  const chromeRowTop = mapChromeTop;
 
   /** Zone-type dock collapsed by default (arrow-down only). */
   const [toolsExpanded, setToolsExpanded] = useState(false);
@@ -67,8 +68,13 @@ export default function DashboardScreen() {
   const [activeTool, setActiveTool] = useState<ZoneDrawToolId | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailScrollEnabled, setDetailScrollEnabled] = useState(true);
+  const [listOpen, setListOpen] = useState(false);
   const [focusLayerId, setFocusLayerId] = useState<string | null>(null);
   const [focusLayerToken, setFocusLayerToken] = useState(0);
+  const [focusShape, setFocusShape] = useState<{
+    kind: ZoneShapeItem["kind"];
+    index: number;
+  } | null>(null);
 
   const handlePublicZonesMenuOpenChange = useCallback((open: boolean) => {
     setDetailScrollEnabled(!open);
@@ -87,9 +93,38 @@ export default function DashboardScreen() {
 
   const focusZoneOnMap = useCallback((zoneId: string) => {
     setDetailOpen(false);
+    setFocusShape(null);
     setFocusLayerId(zoneId);
     setFocusLayerToken((token) => token + 1);
   }, []);
+
+  const handleSelectLayer = useCallback(
+    (layer: MapZoneLayer) => {
+      const target = layerFocusPoint(layer);
+      builder.markMapUserAdjusted();
+      if (target) {
+        builder.setMapCenter(target);
+      }
+      setFocusShape(null);
+      setFocusLayerId(layer.id);
+      setFocusLayerToken((n) => n + 1);
+    },
+    [builder],
+  );
+
+  const handleSelectShape = useCallback(
+    (layer: MapZoneLayer, shape: ZoneShapeItem) => {
+      const target = shapeFocusPoint(layer, shape);
+      builder.markMapUserAdjusted();
+      if (target) {
+        builder.setMapCenter(target);
+      }
+      setFocusShape({ kind: shape.kind, index: shape.index });
+      setFocusLayerId(layer.id);
+      setFocusLayerToken((n) => n + 1);
+    },
+    [builder],
+  );
 
   const { zoneType, changeZoneType, setGeofenceTool } = builder;
 
@@ -206,20 +241,6 @@ export default function DashboardScreen() {
     [builder],
   );
 
-  const handleSelectLayer = useCallback(
-    (layer: MapZoneLayer) => {
-      const target = layerFocusPoint(layer);
-      builder.markMapUserAdjusted();
-      if (target) {
-        builder.setMapCenter(target);
-      }
-      // Always fit via the map WebView so H3-only grids (and circles) still jump.
-      setFocusLayerId(layer.id);
-      setFocusLayerToken((n) => n + 1);
-    },
-    [builder],
-  );
-
   const drawHint = useMemo(() => {
     if (!drawingActive) return null;
     if (builder.zoneType === "geofence") {
@@ -262,6 +283,7 @@ export default function DashboardScreen() {
         fitDraftToken={builder.fitDraftToken}
         focusLayerToken={focusLayerToken}
         focusLayerId={focusLayerId}
+        focusShape={focusShape}
         locationRequestNonce={builder.locationRequestNonce}
         zoomControlTop={mapChromeTop}
         onMapClick={builder.handleMapClick}
@@ -272,20 +294,26 @@ export default function DashboardScreen() {
         style={{ flex: 1 }}
       />
 
-      {/* Compact top row: Zones List | Header | Save */}
+      {/* Top row: Header + Save */}
       <SafeAreaView
         edges={["top"]}
         style={{ position: "absolute", top: 0, left: 0, right: 0 }}
         pointerEvents="box-none"
       >
-        <View style={{ marginTop: 6 }} pointerEvents="box-none">
+        <View style={{ marginTop: 10 }} pointerEvents="box-none">
           <ZonesPageHeader
             subtitle={sectionTitle}
             layers={builder.layers}
             loadingList={builder.loadingList}
             listError={builder.listError}
+            currentUserId={
+              user?.id != null ? String(user.id) : undefined
+            }
+            listOpen={listOpen}
+            onListOpenChange={setListOpen}
             canDeleteLayer={builder.canDeleteLayer}
             onSelectLayer={handleSelectLayer}
+            onSelectShape={handleSelectShape}
             onDeleteLayer={builder.remove}
             onSave={() => void builder.save()}
             saving={builder.saving}
@@ -294,17 +322,18 @@ export default function DashboardScreen() {
         </View>
       </SafeAreaView>
 
-      {/* Hint chip */}
+      {/* Chrome row: +/- (Leaflet) · centered draw hint */}
       {drawHint ? (
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
-            top: hintTop,
-            alignSelf: "center",
-            left: 72,
-            right: 72,
+            top: chromeRowTop,
+            left: CHROME_SIDE_WIDTH + 12,
+            right: CHROME_SIDE_WIDTH + 12,
             alignItems: "center",
+            justifyContent: "center",
+            minHeight: 44,
           }}
         >
           <View
@@ -315,6 +344,7 @@ export default function DashboardScreen() {
               backgroundColor: "rgba(255,255,255,0.94)",
               borderWidth: 1,
               borderColor: colors.border,
+              maxWidth: "100%",
             }}
           >
             <Text
@@ -739,7 +769,7 @@ export default function DashboardScreen() {
                 style={{ color: colors.danger, fontSize: 12, lineHeight: 18 }}
               >
                 {builder.capabilities.reason ??
-                  "You've reached the zone create limit. Deleting a zone does not free a create slot."}
+                  "You've reached the zone create limit."}
               </Text>
             </View>
           ) : null}

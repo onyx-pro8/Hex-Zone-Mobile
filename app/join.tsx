@@ -10,7 +10,15 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Lock, Mail, MapPin, Phone, QrCode, User } from "lucide-react-native";
+import {
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
+  QrCode,
+  RefreshCw,
+  User,
+} from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
@@ -18,7 +26,12 @@ import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInp
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useAuth } from "@/context/AuthContext";
-import { joinWithQrToken } from "@/api/guestPublic";
+import {
+  joinWithQrToken,
+  previewQrInviteToken,
+  type QrInvitePreview,
+} from "@/api/guestPublic";
+import { generateZoneId } from "@/lib/h3";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -39,8 +52,14 @@ export default function JoinScreen() {
   const [address, setAddress] = useState("350 Fifth Avenue, New York");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [zoneId, setZoneId] = useState(() => generateZoneId());
+  const [preview, setPreview] = useState<QrInvitePreview | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [paramsSettled, setParamsSettled] = useState(false);
+
+  const isNewNetworkAdmin = preview?.invite_kind === "new_network_admin";
 
   useEffect(() => {
     if (inviteToken) {
@@ -49,6 +68,32 @@ export default function JoinScreen() {
     }
     const timer = setTimeout(() => setParamsSettled(true), 400);
     return () => clearTimeout(timer);
+  }, [inviteToken]);
+
+  useEffect(() => {
+    if (!inviteToken) {
+      setPreview(null);
+      setPreviewError("");
+      return;
+    }
+    let cancelled = false;
+    setPreviewLoading(true);
+    setPreviewError("");
+    void previewQrInviteToken(inviteToken).then((result) => {
+      if (cancelled) return;
+      if (result.error || !result.data) {
+        setPreview(null);
+        setPreviewError(
+          result.error ?? "This invite link is invalid or expired.",
+        );
+      } else {
+        setPreview(result.data);
+      }
+      setPreviewLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [inviteToken]);
 
   const onJoin = async () => {
@@ -72,6 +117,10 @@ export default function JoinScreen() {
       toast.error("Address is required.");
       return;
     }
+    if (isNewNetworkAdmin && !zoneId.trim()) {
+      toast.error("Enter or generate a network ID for your new network.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -86,15 +135,13 @@ export default function JoinScreen() {
         password,
         address: address.trim(),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(isNewNetworkAdmin ? { zone_id: zoneId.trim() } : {}),
       });
       if (join.error || !join.data) {
         throw new Error(
           join.error ?? "Could not complete invite join.",
         );
       }
-      // Sign the new user in straight away with the credentials they entered.
-      // Server inherited zone_id + account_type from the inviter, so the
-      // session lands on the correct account.
       await login(email.trim(), password, { rememberMe: true });
       router.replace("/(tabs)");
     } catch (err) {
@@ -180,8 +227,14 @@ export default function JoinScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <ScreenHeader
-              title="Member invite"
-              subtitle="Join the inviter's zone"
+              title={
+                isNewNetworkAdmin ? "Create network admin" : "Member invite"
+              }
+              subtitle={
+                isNewNetworkAdmin
+                  ? "Exclusive admin of a new network"
+                  : "Join the inviter's zone"
+              }
             />
 
             <View style={{ paddingHorizontal: 20, gap: 14 }}>
@@ -201,7 +254,13 @@ export default function JoinScreen() {
                       fontSize: 15,
                     }}
                   >
-                    Invite token detected
+                    {previewLoading
+                      ? "Checking invite…"
+                      : previewError
+                        ? "Invite unavailable"
+                        : isNewNetworkAdmin
+                          ? "System admin invite"
+                          : "Invite token detected"}
                   </Text>
                 </View>
                 <Text
@@ -211,9 +270,13 @@ export default function JoinScreen() {
                     lineHeight: 18,
                   }}
                 >
-                  Your account will inherit the inviter's zone. Your account
-                  type matches theirs, except Private (system administrator)
-                  invites become Exclusive.
+                  {previewError
+                    ? previewError
+                    : isNewNetworkAdmin
+                      ? "You will become the Exclusive administrator of a new network. Choose a network ID below."
+                      : preview?.zone_id
+                        ? `Your account joins zone ${preview.zone_id}. Account type matches the inviter.`
+                        : "Your account will inherit the inviter's zone and account type."}
                 </Text>
                 <View
                   style={{
@@ -238,6 +301,41 @@ export default function JoinScreen() {
                   </Text>
                 </View>
               </Card>
+
+              {isNewNetworkAdmin ? (
+                <View style={{ gap: 8 }}>
+                  <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-end" }}>
+                    <Input
+                      label="Network ID"
+                      placeholder="Network-ABC123"
+                      value={zoneId}
+                      onChangeText={setZoneId}
+                      autoCapitalize="characters"
+                      containerStyle={{ flex: 1 }}
+                    />
+                    <Pressable
+                      onPress={() => setZoneId(generateZoneId())}
+                      style={{
+                        height: 48,
+                        width: 48,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.bgSurface,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        marginBottom: 2,
+                      }}
+                      accessibilityLabel="Generate network ID"
+                    >
+                      <RefreshCw size={18} color={colors.accent} />
+                    </Pressable>
+                  </View>
+                  <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                    Account type: Exclusive
+                  </Text>
+                </View>
+              ) : null}
 
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <Input
@@ -303,9 +401,16 @@ export default function JoinScreen() {
               />
 
               <Button
-                label={authToken ? "Sign out & create account" : "Create account"}
+                label={
+                  authToken
+                    ? "Sign out & create account"
+                    : isNewNetworkAdmin
+                      ? "Create Exclusive network"
+                      : "Create account"
+                }
                 onPress={() => void onJoin()}
                 loading={submitting}
+                disabled={!!previewError || previewLoading}
                 fullWidth
                 size="lg"
                 style={{ marginTop: 4 }}

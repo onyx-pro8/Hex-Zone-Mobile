@@ -9,9 +9,16 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronDown, Save, Trash2 } from "lucide-react-native";
+import { Layers, Save, Trash2 } from "lucide-react-native";
 import { AppHeader } from "@/components/ui/AppHeader";
-import { summarizeZone, zoneOwnerLabel, type MapZoneLayer } from "@/lib/zoneGeometry";
+import {
+  isOwnZone,
+  listZoneShapes,
+  summarizeZone,
+  zoneOwnerLabel,
+  type MapZoneLayer,
+  type ZoneShapeItem,
+} from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
 type Props = {
@@ -19,8 +26,12 @@ type Props = {
   layers: MapZoneLayer[];
   loadingList: boolean;
   listError: string | null;
+  currentUserId?: string;
+  listOpen: boolean;
+  onListOpenChange: (open: boolean) => void;
   canDeleteLayer: (layer: MapZoneLayer) => boolean;
   onSelectLayer: (layer: MapZoneLayer) => void;
+  onSelectShape: (layer: MapZoneLayer, shape: ZoneShapeItem) => void;
   onDeleteLayer: (layer: MapZoneLayer) => void;
   onSave: () => void;
   saving: boolean;
@@ -32,30 +43,71 @@ export function ZonesPageHeader({
   layers,
   loadingList,
   listError,
+  currentUserId,
+  listOpen,
+  onListOpenChange,
   canDeleteLayer,
   onSelectLayer,
+  onSelectShape,
   onDeleteLayer,
   onSave,
   saving,
   canSave,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const [listOpen, setListOpen] = useState(false);
+  const [shapesLayer, setShapesLayer] = useState<MapZoneLayer | null>(null);
+
+  const shapes = shapesLayer ? listZoneShapes(shapesLayer) : [];
+
+  const handleLayerPress = (layer: MapZoneLayer) => {
+    const pieces = listZoneShapes(layer);
+    if (pieces.length > 1) {
+      onListOpenChange(false);
+      setShapesLayer(layer);
+      return;
+    }
+    onListOpenChange(false);
+    onSelectLayer(layer);
+  };
+
+  const handleShapePress = (shape: ZoneShapeItem) => {
+    if (!shapesLayer) return;
+    const layer = shapesLayer;
+    setShapesLayer(null);
+    onSelectShape(layer, shape);
+  };
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <View style={styles.row} pointerEvents="box-none">
-        {/* Compact centered header: title, zone type, alerts, avatar */}
         <View style={styles.headerCard}>
           <AppHeader
             title="Zones"
             subtitle={subtitle}
             compact
             style={styles.headerInner}
+            leadingActions={
+              <Pressable
+                onPress={() => onListOpenChange(!listOpen)}
+                accessibilityRole="button"
+                accessibilityLabel="Zones list"
+                hitSlop={6}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.75 : 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                })}
+              >
+                <Layers
+                  size={18}
+                  color={listOpen ? colors.accentDeep : colors.accent}
+                  strokeWidth={2.2}
+                />
+              </Pressable>
+            }
           />
         </View>
 
-        {/* Outside / right of header */}
         <Pressable
           onPress={onSave}
           disabled={!canSave || saving}
@@ -74,25 +126,7 @@ export function ZonesPageHeader({
           ) : (
             <Save size={15} color="#fff" strokeWidth={2.4} />
           )}
-          <Text style={styles.saveBtnText}>{saving ? "…" : "Save"}</Text>
-        </Pressable>
-        {/* Outside / left of header */}
-        <Pressable
-          onPress={() => setListOpen((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel="Zones list"
-          style={[styles.sideBtn, { borderWidth: 0, paddingHorizontal: 0 }]}
-        >
-          <Text style={styles.listBtnText} numberOfLines={1}>
-            Zones
-          </Text>
-          <ChevronDown
-            size={14}
-            color={colors.accent}
-            style={{
-              transform: [{ rotate: listOpen ? "180deg" : "0deg" }],
-            }}
-          />
+          {!saving && <Text style={styles.saveBtnText}>Save</Text>}
         </Pressable>
       </View>
 
@@ -100,14 +134,14 @@ export function ZonesPageHeader({
         visible={listOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setListOpen(false)}
+        onRequestClose={() => onListOpenChange(false)}
       >
         <View style={styles.modalRoot}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={() => setListOpen(false)}
+            onPress={() => onListOpenChange(false)}
           />
-          <View style={[styles.dropdown, { marginTop: insets.top + 58 }]}>
+          <View style={[styles.dropdown, { marginTop: insets.top + 72 }]}>
             <Text style={styles.dropdownTitle}>
               Saved zones ({layers.length})
             </Text>
@@ -129,20 +163,24 @@ export function ZonesPageHeader({
               {layers.map((layer) => {
                 const summary = summarizeZone(layer.raw);
                 const owner = zoneOwnerLabel(layer.raw);
+                const mine = isOwnZone(layer.raw, currentUserId);
                 return (
-                  <View key={layer.id} style={styles.layerRow}>
+                  <View
+                    key={layer.id}
+                    style={[styles.layerRow, mine ? styles.layerRowMine : null]}
+                  >
                     <View
                       style={[styles.swatch, { backgroundColor: layer.color }]}
                     />
                     <Pressable
                       style={{ flex: 1, minWidth: 0 }}
-                      onPress={() => {
-                        setListOpen(false);
-                        onSelectLayer(layer);
-                      }}
+                      onPress={() => handleLayerPress(layer)}
                     >
                       <Text style={styles.rowName} numberOfLines={1}>
                         {layer.name}
+                        {mine ? (
+                          <Text style={styles.mineTag}> · Mine</Text>
+                        ) : null}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
                         {summary || layer.zoneType.replace("_", " ")}
@@ -182,6 +220,70 @@ export function ZonesPageHeader({
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={shapesLayer != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShapesLayer(null)}
+      >
+        <View style={styles.shapesRoot}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShapesLayer(null)}
+          />
+          <View style={styles.shapesCard}>
+            <Text style={styles.dropdownTitle}>Shapes in zone</Text>
+            <Text style={styles.shapesZoneName} numberOfLines={1}>
+              {shapesLayer?.name ?? "Zone"}
+            </Text>
+            <Text style={styles.shapesHint}>
+              Tap a cell or polygon to zoom the map to it.
+            </Text>
+            <ScrollView
+              style={{ maxHeight: 320 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {shapes.map((shape) => (
+                <Pressable
+                  key={shape.id}
+                  onPress={() => handleShapePress(shape)}
+                  style={styles.shapeRow}
+                >
+                  <View
+                    style={[
+                      styles.swatch,
+                      {
+                        backgroundColor: shapesLayer?.color ?? colors.accent,
+                      },
+                    ]}
+                  />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.rowName} numberOfLines={1}>
+                      {shape.label}
+                    </Text>
+                    <Text style={styles.rowMeta} numberOfLines={1}>
+                      {shape.kind === "h3"
+                        ? "Grid cell"
+                        : shape.kind === "ring"
+                          ? "Polygon"
+                          : shape.kind === "circle"
+                            ? "Circle"
+                            : "Pin"}
+                    </Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Pressable
+              onPress={() => setShapesLayer(null)}
+              style={styles.shapesCancel}
+            >
+              <Text style={styles.shapesCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -194,24 +296,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    paddingHorizontal: 6,
+    gap: 10,
+    paddingHorizontal: 12,
   },
   sideBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    alignSelf: "center",
     paddingHorizontal: 10,
     paddingVertical: 12,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
-  },
-  listBtnText: {
-    color: colors.accent,
-    fontSize: 14,
-    fontWeight: "800",
+    gap: 6,
   },
   headerCard: {
     flex: 1,
@@ -228,16 +326,17 @@ const styles = StyleSheet.create({
   },
   headerInner: {
     backgroundColor: "transparent",
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 8,
+    paddingRight: 12,
+    paddingLeft: 14,
+    paddingTop: 5,
+    paddingBottom: 6,
   },
   saveBtn: {
     borderColor: "transparent",
   },
   saveBtnText: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "800",
   },
   modalRoot: {
@@ -287,6 +386,15 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: 8,
   },
+  layerRowMine: {
+    backgroundColor: "rgba(47, 128, 237, 0.08)",
+    borderColor: colors.accentSoft,
+  },
+  mineTag: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   swatch: {
     width: 10,
     height: 10,
@@ -307,5 +415,60 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     fontWeight: "600",
+  },
+  shapesRoot: {
+    flex: 1,
+    backgroundColor: "rgba(15, 44, 92, 0.28)",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+  },
+  shapesCard: {
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    maxWidth: 400,
+    width: "100%",
+    alignSelf: "center",
+    shadowColor: "#0F2C5C",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    elevation: 14,
+  },
+  shapesZoneName: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  shapesHint: {
+    color: colors.textDim,
+    fontSize: 12,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  shapeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 8,
+  },
+  shapesCancel: {
+    marginTop: 4,
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  shapesCancelText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: "700",
   },
 });
