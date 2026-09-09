@@ -59,7 +59,7 @@ export const MESSAGE_WORKFLOW: Record<
   PANIC: {
     priority: "MAX",
     description:
-      "Emergency distress alarm using your current device location. Inside the admin primary zone, all invited members and the administrator are notified; outside the primary zone, no one receives it. On Private+ (family) accounts, PANIC is always shared with every network member and the administrator.",
+      "Emergency distress alarm using your current device location. Inside the admin primary zone, all invited members and the administrator are notified; outside the primary zone, no one receives it. On Family accounts, PANIC is always shared with every network member and the administrator.",
     delivery: "Instant push + WebSocket to matched network members.",
     locationSource: "live_gps",
     requiresAdmin: false,
@@ -71,7 +71,7 @@ export const MESSAGE_WORKFLOW: Record<
   NS_PANIC: {
     priority: "MAX",
     description:
-      "Non-silent emergency alarm with distinct urgency. Same primary-zone routing as PANIC using your current device location. On Private+ accounts, NS PANIC is network-shared like PANIC.",
+      "Non-silent emergency alarm with distinct urgency. Same primary-zone routing as PANIC using your current device location. On Family accounts, NS PANIC is network-shared like PANIC.",
     delivery: "Instant push + WebSocket to matched network members.",
     locationSource: "live_gps",
     requiresAdmin: false,
@@ -107,7 +107,7 @@ export const MESSAGE_WORKFLOW: Record<
   PA: {
     priority: "MEDIUM",
     description:
-      "Public announcement using your current device location. Inside the admin primary zone, all invited members and the administrator receive it. On Private+ accounts, PA is always shared with every network member and the administrator.",
+      "Public announcement using your current device location. Inside the admin primary zone, all invited members and the administrator receive it. On Family accounts, PA is always shared with every network member and the administrator.",
     delivery: "WebSocket + optional push.",
     locationSource: "live_gps",
     requiresAdmin: false,
@@ -119,7 +119,7 @@ export const MESSAGE_WORKFLOW: Record<
   SERVICE: {
     priority: "LOW",
     description:
-      "Service listing or maintenance alert using your current device location. Routing follows primary vs secondary zone rules for your network. On Private+ accounts, SERVICE is always shared with every network member and the administrator.",
+      "Service listing or maintenance alert using your current device location. Routing follows primary vs secondary zone rules for your network. On Family accounts, SERVICE is always shared with every network member and the administrator.",
     delivery: "WebSocket; push optional.",
     locationSource: "live_gps",
     requiresAdmin: false,

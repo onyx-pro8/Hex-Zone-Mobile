@@ -11,7 +11,7 @@ import {
 } from "@/lib/appSettings";
 import { getRemoteAppSettings, updateRemoteAppSettings } from "@/api";
 import { useAuth } from "@/context/AuthContext";
-import { canEditNetworkId } from "@/lib/accountLimits";
+import { canEditNetworkId, normalizeAccountType } from "@/lib/accountLimits";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -94,6 +94,8 @@ export function ConfigForm() {
     accountType: user?.accountType,
     legacyAccountType: user?.account_type,
   });
+  const isIndividual =
+    normalizeAccountType(user?.accountType, user?.account_type) === "EXCLUSIVE";
   const settings = useAppSettings();
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [loading, setLoading] = useState(true);
@@ -158,8 +160,26 @@ export function ConfigForm() {
         </View>
       ) : null}
 
-      <SectionTitle>Smart-home integration</SectionTitle>
+      <SectionTitle>
+        {isIndividual ? "Network" : "Smart-home integration"}
+      </SectionTitle>
       <Card style={{ gap: 14 }}>
+        {isIndividual ? (
+          <>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+              Smart-home hubs are not available on Individual accounts. Your
+              network ID is shown below for reference.
+            </Text>
+            <Field
+              label="Network ID"
+              value={draft.sharedNotification.networkId}
+              onChangeText={() => {}}
+              placeholder="ZONE-ABC123"
+              editable={false}
+            />
+          </>
+        ) : (
+          <>
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
           First add a smart-home hub on the Devices page (DEV- ID). Copy the API
           key and Network ID onto that hub. To receive Hex Zone alarms on the hub,
@@ -243,6 +263,8 @@ export function ConfigForm() {
           disabled={loading || saving}
           fullWidth
         />
+          </>
+        )}
       </Card>
 
       <SectionTitle>Quick alert messages</SectionTitle>

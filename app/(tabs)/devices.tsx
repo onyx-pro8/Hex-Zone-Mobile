@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/context/AuthContext";
 import { createDevice, getDevices, type DeviceRecord } from "@/api/devices";
 import {
+  accountSupportsSmartHome,
   accountTypeLabel,
   deviceLimitDescription,
   formatLimit,
@@ -423,6 +424,10 @@ export default function DevicesScreen() {
     [user?.accountType, user?.account_type],
   );
   const limit = useMemo(() => getDeviceLimit(accountType), [accountType]);
+  const smartHomeEnabled = useMemo(
+    () => accountSupportsSmartHome(accountType),
+    [accountType],
+  );
 
   const ownerId = String(user?.id ?? user?.accountOwnerId ?? "").trim();
   const myDevices = useMemo(() => {
@@ -552,7 +557,11 @@ export default function DevicesScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScreenHeader
           title="Devices"
-          subtitle={`${accountTypeLabel(accountType)} · ${formatLimit(smartHomeCount, limit)} smart-home`}
+          subtitle={
+            smartHomeEnabled
+              ? `${accountTypeLabel(accountType)} · ${formatLimit(smartHomeCount, limit)} smart-home`
+              : `${accountTypeLabel(accountType)} · smart-home unavailable`
+          }
           showBack
           onBack={() => router.replace("/(tabs)/settings")}
         />
@@ -580,18 +589,23 @@ export default function DevicesScreen() {
             </Text>
           </Card>
 
-          <Button
-            label="Add smart-home device"
-            leftIcon={<Plus size={18} color="#fff" />}
-            onPress={openAddModal}
-            disabled={atSmartHomeLimit}
-            fullWidth
-            size="md"
-          />
-          {atSmartHomeLimit ? (
-            <Text style={{ color: colors.textDim, fontSize: 12 }}>
-              Smart-home limit reached for this account. Remove a hub to add another.
-            </Text>
+          {smartHomeEnabled ? (
+            <>
+              <Button
+                label="Add smart-home device"
+                leftIcon={<Plus size={18} color="#fff" />}
+                onPress={openAddModal}
+                disabled={atSmartHomeLimit}
+                fullWidth
+                size="md"
+              />
+              {atSmartHomeLimit ? (
+                <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                  Smart-home limit reached for this account. Remove a hub to add
+                  another.
+                </Text>
+              ) : null}
+            </>
           ) : null}
         </View>
 
@@ -628,8 +642,9 @@ export default function DevicesScreen() {
             ListEmptyComponent={
               <Card>
                 <Text style={{ color: colors.textMuted, textAlign: "center" }}>
-                  No devices yet. This phone registers automatically on login. Tap
-                  Add smart-home device to register a hub.
+                  {smartHomeEnabled
+                    ? "No devices yet. This phone registers automatically on login. Tap Add smart-home device to register a hub."
+                    : "No devices yet. This phone registers automatically on login. Smart-home hubs are not available on Individual accounts."}
                 </Text>
               </Card>
             }

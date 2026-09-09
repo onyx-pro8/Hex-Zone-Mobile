@@ -75,7 +75,7 @@ export default function RootLayout() {
           <NotificationProvider>
             <StatusBar style="dark" backgroundColor={colors.bg} />
             <ProtectedShell />
-            <ToastHost />
+            <ToastHost primary />
           </NotificationProvider>
         </AuthProvider>
       </SafeAreaProvider>

@@ -49,33 +49,53 @@ export function ZoneTypePanel({
       }}
     >
       <Input
-        label="Communal ID (optional)"
+        label={
+          builder.communalIdLocked
+            ? "Communal ID (assigned)"
+            : "Communal ID (optional)"
+        }
         autoCapitalize="characters"
-        placeholder="Type or generate an ID"
-        value={builder.definingCommunalCode}
+        placeholder={
+          builder.communalIdLocked
+            ? "Assigned by the system"
+            : "Type or generate an ID"
+        }
+        value={
+          builder.communalIdLocked
+            ? builder.assignedCommunalId || builder.definingCommunalCode
+            : builder.definingCommunalCode
+        }
         onChangeText={builder.setDefiningCommunalCode}
+        editable={!builder.communalIdLocked}
       />
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <SecondaryButton
-          label={builder.definingCommunalValidating ? "Validating…" : "Validate"}
-          icon={<Sparkles size={14} color={colors.textMuted} />}
-          onPress={() => void builder.validateDefiningCommunal()}
-          disabled={
-            builder.definingCommunalValidating ||
-            !builder.definingCommunalCode.trim()
-          }
-        />
-        <SecondaryButton
-          label="Generate"
-          icon={<Wand2 size={14} color={colors.textMuted} />}
-          onPress={() => void builder.generateDefiningCommunal()}
-          disabled={
-            builder.definingCommunalValidating ||
-            builder.definingCommunalExists === true
-          }
-        />
-      </View>
-      {builder.definingCommunalExists === true ? (
+      {!builder.communalIdLocked ? (
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <SecondaryButton
+            label={builder.definingCommunalValidating ? "Validating…" : "Validate"}
+            icon={<Sparkles size={14} color={colors.textMuted} />}
+            onPress={() => void builder.validateDefiningCommunal()}
+            disabled={
+              builder.definingCommunalValidating ||
+              !builder.definingCommunalCode.trim()
+            }
+          />
+          <SecondaryButton
+            label="Generate"
+            icon={<Wand2 size={14} color={colors.textMuted} />}
+            onPress={() => void builder.generateDefiningCommunal()}
+            disabled={
+              builder.definingCommunalValidating ||
+              builder.definingCommunalExists === true
+            }
+          />
+        </View>
+      ) : null}
+      {builder.communalIdLocked ? (
+        <Text style={hintStyle}>
+          Individual accounts use the unique Communal ID assigned at sign-up or
+          invite. Generate and edit are unavailable.
+        </Text>
+      ) : builder.definingCommunalExists === true ? (
         <Text style={{ color: "#C4B5FD", fontSize: 11 }}>
           This Communal ID already exists and will group this zone with those zones.
         </Text>
@@ -327,8 +347,9 @@ export function ZoneTypePanel({
     return (
       <View style={{ gap: 12 }}>
         <Text style={hintStyle}>
-          Communal does not draw a zone. Select public zones, validate or generate
-          a Communal ID, then save to assign it.
+          {builder.communalIdLocked
+            ? "Communal does not draw a zone. Select public zones, then save to assign your system-issued Communal ID."
+            : "Communal does not draw a zone. Select public zones, validate or generate a Communal ID, then save to assign it."}
         </Text>
         <PublicZonesMultiSelect
           zones={builder.publicZones}
@@ -340,31 +361,51 @@ export function ZoneTypePanel({
           onOpenChange={onPublicZonesMenuOpenChange}
         />
         <Input
-          label="Communal ID"
+          label={
+            builder.communalIdLocked ? "Communal ID (assigned)" : "Communal ID"
+          }
           autoCapitalize="characters"
-          placeholder="Type or generate an ID"
-          value={builder.communalCode}
+          placeholder={
+            builder.communalIdLocked
+              ? "Assigned by the system"
+              : "Type or generate an ID"
+          }
+          value={
+            builder.communalIdLocked
+              ? builder.assignedCommunalId || builder.communalCode
+              : builder.communalCode
+          }
           onChangeText={builder.setCommunalCode}
+          editable={!builder.communalIdLocked}
         />
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <SecondaryButton
-            label={builder.communalValidating ? "Validating…" : "Validate"}
-            icon={<Sparkles size={14} color={colors.textMuted} />}
-            onPress={() => void builder.validateCommunal()}
-          />
-          <SecondaryButton
-            label="Generate"
-            icon={<Wand2 size={14} color={colors.textMuted} />}
-            onPress={() => void builder.generateCommunal()}
-            disabled={builder.communalExists === true || builder.communalValidating}
-          />
-        </View>
+        {!builder.communalIdLocked ? (
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <SecondaryButton
+              label={builder.communalValidating ? "Validating…" : "Validate"}
+              icon={<Sparkles size={14} color={colors.textMuted} />}
+              onPress={() => void builder.validateCommunal()}
+            />
+            <SecondaryButton
+              label="Generate"
+              icon={<Wand2 size={14} color={colors.textMuted} />}
+              onPress={() => void builder.generateCommunal()}
+              disabled={
+                builder.communalExists === true || builder.communalValidating
+              }
+            />
+          </View>
+        ) : (
+          <Text style={hintStyle}>
+            Individual accounts use only the unique Communal ID assigned at
+            sign-up or invite.
+          </Text>
+        )}
         {builder.communalExists === true ? (
           <View style={{ gap: 6 }}>
             <Text style={{ color: "#6D28D9", fontSize: 12, fontWeight: "600" }}>
-              Communal ID found
+              Communal ID ready
               {builder.matchedCommunalZones.length
-                ? ` on ${builder.matchedCommunalZones.length} zone(s)`
+                ? ` · ${builder.matchedCommunalZones.length} matching zone(s)`
                 : ""}
               .
             </Text>
@@ -402,13 +443,13 @@ export function ZoneTypePanel({
               Tap a zone to close details and zoom to it on the map.
             </Text>
           </View>
-        ) : builder.communalExists === false ? (
+        ) : builder.communalExists === false && !builder.communalIdLocked ? (
           <Text style={{ color: colors.success, fontSize: 12 }}>
             Communal ID not found — Generate is available.
           </Text>
-        ) : (
+        ) : !builder.communalIdLocked ? (
           <Text style={hintStyle}>Validate to check whether this ID exists.</Text>
-        )}
+        ) : null}
       </View>
     );
   }

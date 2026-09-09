@@ -48,22 +48,22 @@ const accountOptions: {
 }[] = [
   {
     value: "EXCLUSIVE",
-    title: "Exclusive",
-    lines: ["1 user, 1 device", "Any zone type"],
+    title: "Individual",
+    lines: ["User role only · FREE", "Up to 3 secondary zones"],
   },
   {
     value: "PRIVATE_PLUS",
-    title: "Private+",
+    title: "Family",
     lines: ["Up to 10 devices", "Expanded account controls"],
   },
   {
     value: "ENHANCED",
-    title: "Enhanced",
+    title: "Individual Pro",
     lines: ["1 device only", "Extended zone capabilities"],
   },
   {
     value: "ENHANCED_PLUS",
-    title: "Enhanced+",
+    title: "Organization",
     lines: ["Unlimited devices", "Maximum controls"],
   },
 ];
@@ -97,7 +97,7 @@ export default function SignupScreen() {
   const [confirm, setConfirm] = useState("");
   const [accountType, setAccountType] = useState<AccountType>("EXCLUSIVE");
   const [registrationType, setRegistrationType] =
-    useState<RegistrationType>("ADMINISTRATOR");
+    useState<RegistrationType>("USER");
   const [accountOwnerId, setAccountOwnerId] = useState("");
   const [address, setAddress] = useState("350 Fifth Avenue, New York");
   const [addressCoords, setAddressCoords] = useState<LatLng | null>(null);
@@ -105,10 +105,17 @@ export default function SignupScreen() {
   const [useExistingZone, setUseExistingZone] = useState(false);
   const [existingZoneId, setExistingZoneId] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [registrationCode, setRegistrationCode] = useState("");
-  const [regCodeLoading, setRegCodeLoading] = useState(true);
+  const [registrationCode, setRegistrationCode] = useState("FREE");
+  const [regCodeLoading, setRegCodeLoading] = useState(false);
+
+  const isIndividual = accountType === "EXCLUSIVE";
 
   const loadRegistrationCode = useCallback(async () => {
+    if (accountType === "EXCLUSIVE") {
+      setRegistrationCode("FREE");
+      setRegCodeLoading(false);
+      return;
+    }
     setRegCodeLoading(true);
     const result = await fetchRegistrationCode();
     if (result.error || !result.data) {
@@ -118,7 +125,7 @@ export default function SignupScreen() {
       setRegistrationCode(result.data);
     }
     setRegCodeLoading(false);
-  }, []);
+  }, [accountType]);
 
   useEffect(() => {
     if (inviteToken) {
@@ -126,8 +133,15 @@ export default function SignupScreen() {
       setRegCodeLoading(false);
       return;
     }
+    if (accountType === "EXCLUSIVE") {
+      setRegistrationCode("FREE");
+      setRegistrationType("USER");
+      setAccountOwnerId("");
+      setRegCodeLoading(false);
+      return;
+    }
     void loadRegistrationCode();
-  }, [loadRegistrationCode, inviteToken]);
+  }, [loadRegistrationCode, inviteToken, accountType]);
 
   const center = useMemo<LatLng>(
     () =>
@@ -136,12 +150,13 @@ export default function SignupScreen() {
   );
   const selectedZoneId =
     useExistingZone && existingZoneId ? existingZoneId : zoneId;
-  const userOnExclusive =
-    registrationType === "USER" && accountType === "EXCLUSIVE";
 
   const onSubmit = async () => {
-    const code = registrationCode.trim();
-    if (!code) {
+    const effectiveRegistrationType: RegistrationType = isIndividual
+      ? "USER"
+      : registrationType;
+    const code = isIndividual ? "FREE" : registrationCode.trim();
+    if (!isIndividual && !code) {
       toast.error(
         "Registration code is missing. Wait for the server to issue one, or tap Retry.",
       );
@@ -155,13 +170,11 @@ export default function SignupScreen() {
       toast.error("Passwords do not match.");
       return;
     }
-    if (userOnExclusive) {
-      toast.error(
-        "Exclusive accounts are solo and cannot register additional users. Use Guest access to invite visitors.",
-      );
-      return;
-    }
-    if (registrationType === "USER" && !accountOwnerId.trim()) {
+    if (
+      !isIndividual &&
+      effectiveRegistrationType === "USER" &&
+      !accountOwnerId.trim()
+    ) {
       toast.error("User registration requires a valid account owner ID.");
       return;
     }
@@ -173,9 +186,9 @@ export default function SignupScreen() {
         email: email.trim(),
         password,
         accountType,
-        registrationType,
+        registrationType: effectiveRegistrationType,
         accountOwnerId:
-          registrationType === "USER"
+          !isIndividual && effectiveRegistrationType === "USER"
             ? Number(accountOwnerId.trim()) || undefined
             : undefined,
         address,
@@ -187,7 +200,7 @@ export default function SignupScreen() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       toast.error(
-        /422|exclusive|account owner|zone/i.test(msg)
+        /422|exclusive|individual|account owner|zone/i.test(msg)
           ? msg
           : "Could not create account. Please review your details and try again.",
       );
@@ -288,41 +301,65 @@ export default function SignupScreen() {
                 }}
               >
                 <Text style={labelStyle}>Registration code</Text>
-                <Pressable
-                  onPress={() => void loadRegistrationCode()}
-                  disabled={regCodeLoading}
-                  hitSlop={6}
+                {!isIndividual ? (
+                  <Pressable
+                    onPress={() => void loadRegistrationCode()}
+                    disabled={regCodeLoading}
+                    hitSlop={6}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 8,
+                      backgroundColor: colors.bgSurface,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity: regCodeLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {regCodeLoading ? (
+                      <Loader2 size={12} color={colors.textMuted} />
+                    ) : (
+                      <RefreshCw size={12} color={colors.textMuted} />
+                    )}
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        fontWeight: "700",
+                        letterSpacing: 1.4,
+                      }}
+                    >
+                      RETRY
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {isIndividual ? (
+                <View
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 8,
+                    marginTop: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    borderRadius: 10,
                     backgroundColor: colors.bgSurface,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    opacity: regCodeLoading ? 0.6 : 1,
                   }}
                 >
-                  {regCodeLoading ? (
-                    <Loader2 size={12} color={colors.textMuted} />
-                  ) : (
-                    <RefreshCw size={12} color={colors.textMuted} />
-                  )}
                   <Text
                     style={{
-                      color: colors.textMuted,
-                      fontSize: 10,
-                      fontWeight: "700",
-                      letterSpacing: 1.4,
+                      color: colors.accent,
+                      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+                      fontSize: 14,
                     }}
                   >
-                    RETRY
+                    FREE
                   </Text>
-                </Pressable>
-              </View>
-              {regCodeLoading ? (
+                </View>
+              ) : regCodeLoading ? (
                 <Text
                   style={{
                     color: colors.textMuted,
@@ -368,8 +405,9 @@ export default function SignupScreen() {
               <Text
                 style={{ color: colors.textDim, fontSize: 11, marginTop: 8 }}
               >
-                Issued by the server when you open this page. Required for
-                administrator self-registration.
+                {isIndividual
+                  ? "Individual accounts use a FREE registration code and always register as a user."
+                  : "Issued by the server when you open this page. Required for administrator self-registration."}
               </Text>
             </View>
 
@@ -426,21 +464,21 @@ export default function SignupScreen() {
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
               {accountOptions.map((option) => {
                 const active = accountType === option.value;
-                const disabled =
-                  registrationType === "USER" && option.value === "EXCLUSIVE";
                 return (
                   <Pressable
                     key={option.value}
                     onPress={() => {
-                      if (disabled) {
-                        toast.error(
-                          "Exclusive account type is not valid for user registration.",
-                        );
-                        return;
-                      }
                       setAccountType(option.value);
+                      if (option.value === "EXCLUSIVE") {
+                        setRegistrationType("USER");
+                        setAccountOwnerId("");
+                        setRegistrationCode("FREE");
+                      } else if (registrationType === "USER") {
+                        // keep USER selection for other tiers
+                      } else {
+                        setRegistrationType("ADMINISTRATOR");
+                      }
                     }}
-                    disabled={disabled}
                     style={{
                       flexBasis: "48%",
                       flexGrow: 1,
@@ -451,7 +489,6 @@ export default function SignupScreen() {
                       backgroundColor: active
                         ? "rgba(47,128,237,0.1)"
                         : colors.bgCard,
-                      opacity: disabled ? 0.4 : 1,
                     }}
                   >
                     <Text
@@ -486,7 +523,8 @@ export default function SignupScreen() {
               })}
             </View>
 
-            {/* Registration type */}
+            {/* Registration type — hidden for Individual (always user) */}
+            {!isIndividual ? (
             <View
               style={{
                 padding: 14,
@@ -552,6 +590,35 @@ export default function SignupScreen() {
                 </View>
               ) : null}
             </View>
+            ) : (
+            <View
+              style={{
+                padding: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor: colors.bgCard,
+                marginTop: 4,
+              }}
+            >
+              <Text style={labelStyle}>Role</Text>
+              <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                User
+              </Text>
+              <Text
+                style={{
+                  color: colors.textDim,
+                  fontSize: 11,
+                  marginTop: 6,
+                  lineHeight: 16,
+                }}
+              >
+                Individual accounts are always user role. They can create up to
+                3 secondary zones, cannot invite members, and do not support
+                smart-home hubs.
+              </Text>
+            </View>
+            )}
 
             {/* Network ID */}
             <View

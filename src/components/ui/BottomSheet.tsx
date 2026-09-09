@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
   type ViewStyle,
 } from "react-native";
+import { ToastHost } from "@/components/ui/ToastHost";
 import { colors } from "@/theme/colors";
 
 const SLIDE_MS = 280;
@@ -121,6 +122,8 @@ export function BottomSheet({
         >
           {children}
         </Animated.View>
+        {/* Same Modal layer as the sheet — visible above it, does not block taps. */}
+        <ToastHost />
       </View>
     </Modal>
   );

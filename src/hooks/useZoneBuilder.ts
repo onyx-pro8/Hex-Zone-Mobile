@@ -67,6 +67,10 @@ export type ZoneBuilderScope = {
   currentUserId?: string;
   currentUserName?: string;
   isAccountAdministrator?: boolean;
+  /** Server-assigned Communal ID for Individual accounts. */
+  assignedCommunalId?: string | null;
+  /** When true, Communal ID input / validate / generate are locked. */
+  communalIdLocked?: boolean;
 };
 
 function resolveZoneOwnerName(
@@ -92,6 +96,13 @@ export function useZoneBuilder(
   ownerZoneId: string | undefined,
   scope?: ZoneBuilderScope,
 ) {
+  const communalIdLocked = Boolean(scope?.communalIdLocked);
+  const assignedCommunalId = (
+    scope?.assignedCommunalId ?? ""
+  )
+    .trim()
+    .toUpperCase();
+
   const [layers, setLayers] = useState<MapZoneLayer[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -112,8 +123,8 @@ export function useZoneBuilder(
   const [capabilities, setCapabilities] = useState<ZoneCapabilities | null>(
     null,
   );
-  /** Admin create tier: true = primary, false = secondary. */
-  const [createAsPrimary, setCreateAsPrimary] = useState(true);
+  /** Admin create tier: true = primary, false = secondary. Always secondary for non-admins. */
+  const [createAsPrimary, setCreateAsPrimary] = useState(false);
 
   const [zoneType, setZoneType] = useState<ZoneType>("geofence");
   const [zoneName, setZoneName] = useState("My zone");
@@ -161,7 +172,7 @@ export function useZoneBuilder(
   const [dynamicPreviewLoading, setDynamicPreviewLoading] = useState(false);
 
   // communal
-  const [communalCode, setCommunalCode] = useState("");
+  const [communalCode, setCommunalCodeState] = useState("");
   const [communalValidation, setCommunalValidation] =
     useState<ZoneReferenceValidateResult | null>(null);
   const [communalValidating, setCommunalValidating] = useState(false);
@@ -174,12 +185,47 @@ export function useZoneBuilder(
   const [matchedCommunalZones, setMatchedCommunalZones] = useState<
     CommunalZoneSummary[]
   >([]);
-  const [definingCommunalCode, setDefiningCommunalCode] = useState("");
+  const [definingCommunalCode, setDefiningCommunalCodeState] = useState("");
   const [definingCommunalValidating, setDefiningCommunalValidating] =
     useState(false);
   const [definingCommunalExists, setDefiningCommunalExists] = useState<
     boolean | null
   >(null);
+
+  const setCommunalCode = useCallback(
+    (value: string) => {
+      if (communalIdLocked) return;
+      setCommunalCodeState(value);
+    },
+    [communalIdLocked],
+  );
+
+  const setDefiningCommunalCode = useCallback(
+    (value: string) => {
+      if (communalIdLocked) return;
+      setDefiningCommunalCodeState(value);
+    },
+    [communalIdLocked],
+  );
+
+  // Individuals always use their server-assigned Communal ID.
+  useEffect(() => {
+    if (!communalIdLocked || !assignedCommunalId) return;
+    setCommunalCodeState(assignedCommunalId);
+    setDefiningCommunalCodeState(assignedCommunalId);
+    setCommunalExists(true);
+    setDefiningCommunalExists(true);
+    setCommunalValidation({
+      valid: true,
+      zone_type: "communal_id",
+      reference_id: assignedCommunalId,
+      geometry: {},
+      config: { communal_id: assignedCommunalId },
+      h3_cells: [],
+      exists: true,
+      message: `Assigned Communal ID ${assignedCommunalId}.`,
+    });
+  }, [communalIdLocked, assignedCommunalId]);
 
   // government
   const [governmentMode, setGovernmentMode] =
@@ -200,16 +246,20 @@ export function useZoneBuilder(
   const refresh = useCallback(async () => {
     setLoadingList(true);
     setListError(null);
-    const [zonesRes, capsRes, membersRes] = await Promise.all([
+    const [zonesRes, publicRes, capsRes, membersRes] = await Promise.all([
       getZones(),
+      listPublicZones({ limit: 200 }),
       getZoneCapabilities(),
       getMembers(),
     ]);
     if (zonesRes.error) {
       setListError(zonesRes.error);
       if (zonesRes.error) toast.error(zonesRes.error);
-      setLayers([]);
     } else {
+      setListError(null);
+    }
+
+    {
       const nameById = new Map<string, string>();
       for (const member of membersRes.data ?? []) {
         const label = member.name?.trim();
@@ -219,9 +269,26 @@ export function useZoneBuilder(
       const selfName = scope?.currentUserName?.trim();
       if (selfId && selfName) nameById.set(selfId, selfName);
 
-      const rows = (zonesRes.data ?? []).map((row) =>
-        resolveZoneOwnerName(row as SavedZone, nameById),
-      );
+      const byRecordId = new Map<string, SavedZone>();
+      if (!zonesRes.error) {
+        for (const row of zonesRes.data ?? []) {
+          const resolved = resolveZoneOwnerName(row as SavedZone, nameById);
+          byRecordId.set(String(resolved.id), resolved);
+        }
+      }
+      // Public defining zones are visible to every account — merge into the list/map.
+      if (!publicRes.error && publicRes.data) {
+        setPublicZones(publicRes.data);
+        for (const row of publicRes.data) {
+          const id = String(row.id);
+          if (byRecordId.has(id)) continue;
+          byRecordId.set(id, resolveZoneOwnerName(row as SavedZone, nameById));
+        }
+      } else {
+        setPublicZones([]);
+      }
+
+      const rows = Array.from(byRecordId.values());
       const mapped = rows
         .map((row, i) => zoneRecordToLayer(row, i))
         .filter((z): z is MapZoneLayer => z !== null);
@@ -230,18 +297,17 @@ export function useZoneBuilder(
     if (!capsRes.error && capsRes.data) {
       setCapabilities(capsRes.data);
       const caps = capsRes.data;
-      const isAdmin =
-        String(caps.role ?? "").toLowerCase() === "administrator" ||
-        Boolean(scope?.isAccountAdministrator);
-      if (isAdmin) {
+      const canPrimary =
+        Boolean(scope?.isAccountAdministrator) &&
+        String(caps.role ?? "").toLowerCase() === "administrator" &&
+        (caps.can_create_primary ?? Boolean(caps.next_zone_is_primary)) === true &&
+        (caps.max_primary ?? 0) > 0;
+      if (canPrimary) {
         setCreateAsPrimary((prev) => {
-          const canPrimary =
-            caps.can_create_primary ?? Boolean(caps.next_zone_is_primary);
           const canSecondary = caps.can_create_secondary ?? true;
           if (prev && canPrimary) return true;
           if (!prev && canSecondary) return false;
-          if (canPrimary) return true;
-          return false;
+          return true;
         });
       } else {
         setCreateAsPrimary(false);
@@ -711,6 +777,10 @@ export function useZoneBuilder(
   }, []);
 
   const validateCommunal = useCallback(async () => {
+    if (communalIdLocked) {
+      toast.info("Your assigned Communal ID is already set.");
+      return;
+    }
     const code = communalCode.trim();
     if (!code) {
       toast.warning("Enter a communal ID first.");
@@ -735,7 +805,7 @@ export function useZoneBuilder(
     const data = result.data;
     const exists = data.exists === true || data.valid === true;
     setCommunalExists(exists);
-    setCommunalCode((data.reference_id || code).toUpperCase());
+    setCommunalCodeState((data.reference_id || code).toUpperCase());
     const matched = Array.isArray(data.zones) ? data.zones : [];
     setMatchedCommunalZones(matched);
     setCommunalValidation(data);
@@ -755,9 +825,15 @@ export function useZoneBuilder(
       setStatus(msg);
       toast.info(msg);
     }
-  }, [communalCode, notifyError, refreshPublicZones, setError]);
+  }, [communalCode, communalIdLocked, notifyError, refreshPublicZones, setError]);
 
   const generateCommunal = useCallback(async () => {
+    if (communalIdLocked) {
+      toast.warning(
+        "Individual accounts cannot generate Communal IDs. Use your assigned ID.",
+      );
+      return;
+    }
     if (communalExists === true) {
       toast.warning("Communal ID already exists — Generate is disabled.");
       return;
@@ -772,16 +848,20 @@ export function useZoneBuilder(
       setStatus(null);
       return;
     }
-    setCommunalCode(result.data.reference_id);
+    setCommunalCodeState(result.data.reference_id);
     setCommunalValidation(result.data);
     setCommunalExists(false);
     setMatchedCommunalZones([]);
     const msg = result.data.message ?? `Generated ${result.data.reference_id}`;
     setStatus(msg);
     toast.success(msg);
-  }, [communalExists, notifyError, setError]);
+  }, [communalExists, communalIdLocked, notifyError, setError]);
 
   const validateDefiningCommunal = useCallback(async () => {
+    if (communalIdLocked) {
+      toast.info("Your assigned Communal ID is already set.");
+      return;
+    }
     const code = definingCommunalCode.trim();
     if (!code) {
       toast.warning("Enter a communal ID first.");
@@ -801,7 +881,7 @@ export function useZoneBuilder(
     const exists =
       result.data.exists === true || result.data.valid === true;
     setDefiningCommunalExists(exists);
-    setDefiningCommunalCode(
+    setDefiningCommunalCodeState(
       (result.data.reference_id || code).toUpperCase(),
     );
     if (exists) {
@@ -811,9 +891,15 @@ export function useZoneBuilder(
     } else {
       toast.success(result.data.message ?? "Communal ID is available.");
     }
-  }, [definingCommunalCode]);
+  }, [communalIdLocked, definingCommunalCode]);
 
   const generateDefiningCommunal = useCallback(async () => {
+    if (communalIdLocked) {
+      toast.warning(
+        "Individual accounts cannot generate Communal IDs. Use your assigned ID.",
+      );
+      return;
+    }
     if (definingCommunalExists === true) {
       toast.warning("Communal ID already exists — Generate is disabled.");
       return;
@@ -825,10 +911,10 @@ export function useZoneBuilder(
       toast.error(result.error ?? "Could not generate communal ID.");
       return;
     }
-    setDefiningCommunalCode(result.data.reference_id);
+    setDefiningCommunalCodeState(result.data.reference_id);
     setDefiningCommunalExists(false);
     toast.success(result.data.message ?? `Generated ${result.data.reference_id}`);
-  }, [definingCommunalExists]);
+  }, [communalIdLocked, definingCommunalExists]);
 
   const validateGovernment = useCallback(async () => {
     const f = governmentFields;
@@ -887,7 +973,7 @@ export function useZoneBuilder(
       return (
         selectedPublicZoneIds.length > 0 &&
         communalCode.trim().length >= 3 &&
-        communalExists !== null
+        (communalIdLocked || communalExists !== null)
       );
     }
     const trimmed = zoneName.trim();
@@ -925,6 +1011,7 @@ export function useZoneBuilder(
   }, [
     communalCode,
     communalExists,
+    communalIdLocked,
     draftCircle,
     draftRing,
     dynamicPreview,
@@ -1107,8 +1194,8 @@ export function useZoneBuilder(
     setSaving(true);
     setStatus("Saving zone…");
     const tierStamp =
-      scope?.isAccountAdministrator === true
-        ? { is_primary: createAsPrimary }
+      scope?.isAccountAdministrator === true && createAsPrimary
+        ? { is_primary: true }
         : { is_primary: false };
     const finalPayload: CreateZonePayload = description
       ? { ...payload, description, ...tierStamp }
@@ -1371,6 +1458,8 @@ export function useZoneBuilder(
     communalValidation,
     communalValidating,
     communalExists,
+    communalIdLocked,
+    assignedCommunalId,
     publicZones,
     publicZonesLoading,
     selectedPublicZoneIds,
