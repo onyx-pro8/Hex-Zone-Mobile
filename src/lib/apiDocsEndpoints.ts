@@ -491,7 +491,7 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     path: "/utils/qr/generate",
     group: "core",
     description:
-      "Generate QR invite token. System admin (Private): new Exclusive network admin. Private+/Enhanced+: member join on inviter zone.",
+      "Generate QR invite token. System admin (Private): new Individual user account. Family/Organization: Individual user member on inviter zone.",
     bodyJson: true,
     params: [
       { name: "body", in: "body", required: true, placeholder: "JSON body" },
@@ -515,7 +515,7 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     path: "/utils/qr/join",
     group: "core",
     description:
-      "Register via QR invite. System-admin invites require zone_id (new Exclusive admin).",
+      "Register via QR invite. All invitees become Individual (Exclusive) user accounts. System-admin invites require zone_id (new network).",
     public: true,
     bodyJson: true,
     params: [

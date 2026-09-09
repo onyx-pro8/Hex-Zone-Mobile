@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -17,6 +18,7 @@ import {
   CalendarRange,
   Check,
   Copy,
+  Download,
   Link as LinkIcon,
   MessageSquareText,
   QrCode,
@@ -30,6 +32,8 @@ import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
+import { FormSelect } from "@/components/ui/FormSelect";
+import { ToastHost } from "@/components/ui/ToastHost";
 import { useAuth } from "@/context/AuthContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import {
@@ -60,19 +64,69 @@ import {
   memberInviteUnavailableHint,
   normalizeAccountType,
 } from "@/lib/accountLimits";
+import { downloadInviteQrCsv } from "@/lib/inviteQrExport";
 import { colors } from "@/theme/colors";
 
 type Tab = "member" | "guest";
 
 type ExpiryHours = number | null;
 
-const EXPIRY_OPTIONS: { label: string; hours: ExpiryHours }[] = [
-  { label: "1 h", hours: 1 },
-  { label: "24 h", hours: 24 },
-  { label: "7 d", hours: 24 * 7 },
-  { label: "30 d", hours: 24 * 30 },
-  { label: "∞", hours: null },
+const EXPIRY_OPTIONS: {
+  value: string;
+  hours: ExpiryHours;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "1",
+    hours: 1,
+    label: "1H",
+    description: "Single-use · expires in 1 hour",
+  },
+  {
+    value: "24",
+    hours: 24,
+    label: "24H",
+    description: "Single-use · expires in 24 hours",
+  },
+  {
+    value: "168",
+    hours: 24 * 7,
+    label: "7D",
+    description: "Single-use · expires in 7 days",
+  },
+  {
+    value: "720",
+    hours: 24 * 30,
+    label: "30D",
+    description: "Single-use · expires in 30 days",
+  },
+  {
+    value: "never",
+    hours: null,
+    label: "∞",
+    description: "Single-use · never expires",
+  },
 ];
+
+const QR_COUNT_OPTIONS: {
+  value: string;
+  count: number;
+  label: string;
+  description: string;
+}[] = [
+  { value: "1", count: 1, label: "1", description: "1 QR code" },
+  { value: "5", count: 5, label: "5", description: "5 QR codes" },
+  { value: "25", count: 25, label: "25", description: "25 QR codes" },
+  { value: "100", count: 100, label: "100", description: "100 QR codes" },
+  { value: "200", count: 200, label: "200", description: "200 QR codes" },
+];
+
+type GeneratedInvite = {
+  token: string;
+  url: string;
+  expires_at: string | null;
+};
 
 function SegmentedTabs({
   tab,
@@ -195,6 +249,11 @@ function QrPreview({ value, label }: { value: string | null; label?: string }) {
   );
 }
 
+function inviteExpiryLabel(expiresAt: string | null): string {
+  if (!expiresAt) return "Single-use · does not expire";
+  return `Single-use · expires ${new Date(expiresAt).toLocaleString()}`;
+}
+
 function MemberInviteSection({
   disabled,
   unavailableHint,
@@ -204,26 +263,53 @@ function MemberInviteSection({
   unavailableHint: string;
   isSystemAdmin?: boolean;
 }) {
-  const [hours, setHours] = useState<ExpiryHours>(24);
-  const [generated, setGenerated] = useState<{
-    token: string;
-    url: string;
-    expires_at: string | null;
-  } | null>(null);
+  const [expiryKey, setExpiryKey] = useState("24");
+  const [countKey, setCountKey] = useState("1");
+  const [items, setItems] = useState<GeneratedInvite[]>([]);
+  const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadLink, setDownloadLink] = useState<string | null>(null);
+
+  const hours = useMemo(
+    () => EXPIRY_OPTIONS.find((o) => o.value === expiryKey)?.hours ?? 24,
+    [expiryKey],
+  );
+  const count = useMemo(
+    () => QR_COUNT_OPTIONS.find((o) => o.value === countKey)?.count ?? 1,
+    [countKey],
+  );
+  const detail =
+    detailIndex != null && items[detailIndex] ? items[detailIndex] : null;
 
   const onGenerate = useCallback(async () => {
     setLoading(true);
+    setDetailIndex(null);
+    setDownloadLink(null);
     try {
-      const result = await generateMemberInviteQr({ expires_in_hours: hours });
-      if (result.error || !result.data) {
-        throw new Error(result.error ?? "Could not generate invite QR.");
+      const next: GeneratedInvite[] = [];
+      for (let i = 0; i < count; i += 1) {
+        const result = await generateMemberInviteQr({
+          expires_in_hours: hours,
+        });
+        if (result.error || !result.data) {
+          throw new Error(
+            result.error ??
+              `Could not generate invite QR ${i + 1} of ${count}.`,
+          );
+        }
+        next.push({
+          token: result.data.token,
+          url: result.data.url,
+          expires_at: result.data.expires_at ?? null,
+        });
       }
-      setGenerated({
-        token: result.data.token,
-        url: result.data.url,
-        expires_at: result.data.expires_at ?? null,
-      });
+      setItems(next);
+      toast.success(
+        next.length === 1
+          ? "Invite QR ready."
+          : `Generated ${next.length} single-use invite QR codes.`,
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Could not generate QR.",
@@ -231,7 +317,30 @@ function MemberInviteSection({
     } finally {
       setLoading(false);
     }
-  }, [hours]);
+  }, [count, hours]);
+
+  const downloadRows = useCallback(
+    async (rows: GeneratedInvite[], fileName: string) => {
+      setDownloading(true);
+      try {
+        const result = await downloadInviteQrCsv({
+          fileName,
+          rows: rows.map((row, index) => ({
+            index: index + 1,
+            token: row.token,
+            url: row.url,
+            expires_at: row.expires_at,
+          })),
+        });
+        if (result.ok && result.uri) {
+          setDownloadLink(result.uri);
+        }
+      } finally {
+        setDownloading(false);
+      }
+    },
+    [],
+  );
 
   return (
     <Card glow style={{ gap: 14 }}>
@@ -248,38 +357,77 @@ function MemberInviteSection({
       </Text>
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
         {isSystemAdmin
-          ? "Invitees create an Exclusive administrator account for a new network and choose their own network ID on the join form. Timed links are single-use; ∞ never expires."
-          : "Timed links (1 h, 24 h, 7 d, 30 d) are single-use. ∞ never expires and can be scanned by multiple members — use that for a printed outdoor sign. Joins still stop when this account reaches its member limit."}
+          ? "Invitees create an Individual user account for a new network and choose their own network ID on the join form. Every link is single-use, including ones that never expire."
+          : "Invitees join this network as Individual (user-role) members. Every link is single-use (including never-expiring). Generate multiple codes when you need a batch for handout or printing."}
       </Text>
 
-      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
-        Token expiry
-      </Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        {EXPIRY_OPTIONS.map((opt) => (
-          <Pressable key={opt.label} onPress={() => setHours(opt.hours)}>
-            <Chip
-              label={opt.label}
-              active={hours === opt.hours}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <FormSelect
+          label="Expire time"
+          value={expiryKey}
+          options={EXPIRY_OPTIONS.map((o) => ({
+            value: o.value,
+            label: o.label,
+            description: o.description,
+          }))}
+          onChange={setExpiryKey}
+          disabled={disabled || loading}
+          compact
+          style={{ flex: 1.2 }}
+        />
+        <FormSelect
+          label="Number of QR codes"
+          value={countKey}
+          options={QR_COUNT_OPTIONS.map((o) => ({
+            value: o.value,
+            label: o.label,
+            description: o.description,
+          }))}
+          onChange={setCountKey}
+          disabled={disabled || loading}
+          compact
+          style={{ flex: 0.85 }}
+        />
+        <Pressable
+          onPress={() =>
+            void downloadRows(
+              items,
+              `member-invites-${items.length || count}.csv`,
+            )
+          }
+          disabled={disabled || items.length === 0 || downloading}
+          accessibilityRole="button"
+          accessibilityLabel="Download all"
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 12,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor:
+              disabled || items.length === 0
+                ? colors.bgMuted
+                : colors.bgCard,
+            opacity: disabled || items.length === 0 || downloading ? 0.45 : 1,
+          }}
+        >
+          {downloading ? (
+            <ActivityIndicator size="small" color={colors.accent} />
+          ) : (
+            <Download
+              size={18}
+              color={
+                items.length === 0 ? colors.textDim : colors.accent
+              }
             />
-          </Pressable>
-        ))}
+          )}
+        </Pressable>
       </View>
 
-      <QrPreview
-        value={generated?.url ?? null}
-        label="Generate to encode a join URL into a QR"
-      />
-      {generated ? (
-        <Text style={{ color: colors.textDim, fontSize: 11, textAlign: "center" }}>
-          {generated.expires_at
-            ? `Single-use · expires ${new Date(generated.expires_at).toLocaleString()}`
-            : "Multi-use · does not expire"}
-        </Text>
-      ) : null}
-
       <Button
-        label={generated ? "Generate new link" : "Generate link"}
+        label={items.length ? "Generate new" : "Generate"}
         variant="primary"
         onPress={() => void onGenerate()}
         loading={loading}
@@ -287,11 +435,325 @@ function MemberInviteSection({
         disabled={disabled}
         fullWidth
       />
+
+      {downloadLink ? (
+        <View
+          style={{
+            gap: 6,
+            padding: 12,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.bgCard,
+          }}
+        >
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontSize: 11,
+              fontWeight: "700",
+              letterSpacing: 1,
+              textTransform: "uppercase",
+            }}
+          >
+            Download link (Excel + QR images)
+          </Text>
+          <Text
+            selectable
+            style={{ color: colors.accentDeep, fontSize: 12, lineHeight: 18 }}
+          >
+            {downloadLink}
+          </Text>
+          <Pressable
+            onPress={() => {
+              void copyToClipboard(downloadLink).then((result) =>
+                alertCopyResult(result, downloadLink),
+              );
+            }}
+            style={{
+              alignSelf: "flex-start",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingVertical: 6,
+            }}
+          >
+            <Copy size={14} color={colors.accent} />
+            <Text
+              style={{ color: colors.accent, fontSize: 12, fontWeight: "600" }}
+            >
+              Copy download link
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {items.length === 0 ? (
+        <QrPreview
+          value={null}
+          label="Generate to mint invite QR code(s)"
+        />
+      ) : items.length === 1 ? (
+        <>
+          <QrPreview value={items[0]?.url ?? null} />
+          <Text
+            style={{
+              color: colors.textDim,
+              fontSize: 11,
+              textAlign: "center",
+            }}
+          >
+            {inviteExpiryLabel(items[0]?.expires_at ?? null)}
+          </Text>
+          <Button
+            label="Download"
+            variant="secondary"
+            onPress={() =>
+              void downloadRows(items, `member-invite-${items[0]?.token ?? "1"}.csv`)
+            }
+            loading={downloading}
+            leftIcon={<Download size={16} color={colors.text} />}
+            disabled={downloading}
+            fullWidth
+          />
+        </>
+      ) : (
+        <View style={{ gap: 8 }}>
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontSize: 11,
+              fontWeight: "700",
+              letterSpacing: 1,
+              textTransform: "uppercase",
+            }}
+          >
+            Generated ({items.length})
+          </Text>
+          <ScrollView
+            style={{ maxHeight: 260 }}
+            contentContainerStyle={{ gap: 8, paddingBottom: 4 }}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
+            {items.map((item, index) => (
+              <Pressable
+                key={item.token}
+                onPress={() => setDetailIndex(index)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingVertical: 12,
+                  paddingHorizontal: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.bgCard,
+                }}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.accentGlow,
+                  }}
+                >
+                  <QrCode size={18} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontWeight: "700",
+                      fontSize: 13,
+                    }}
+                  >
+                    Invite #{index + 1}
+                  </Text>
+                  <Text
+                    style={{ color: colors.textDim, fontSize: 11 }}
+                    numberOfLines={1}
+                  >
+                    {inviteExpiryLabel(item.expires_at)}
+                  </Text>
+                </View>
+                <Text
+                  style={{
+                    color: colors.accent,
+                    fontWeight: "600",
+                    fontSize: 12,
+                  }}
+                >
+                  Details
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {disabled ? (
         <Text style={{ color: colors.warning, fontSize: 12, lineHeight: 18 }}>
           {unavailableHint}
         </Text>
       ) : null}
+
+      <Modal
+        visible={detail != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDetailIndex(null)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 44, 92, 0.4)",
+            justifyContent: "center",
+            paddingHorizontal: 24,
+          }}
+          onPress={() => setDetailIndex(null)}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: "#fff",
+              borderRadius: 20,
+              padding: 18,
+              gap: 12,
+              maxHeight: "85%",
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text
+                style={{ color: colors.text, fontSize: 16, fontWeight: "700" }}
+              >
+                Invite #{(detailIndex ?? 0) + 1}
+              </Text>
+              <Pressable onPress={() => setDetailIndex(null)} hitSlop={10}>
+                <X size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
+            {detail ? (
+              <ScrollView
+                style={{ maxHeight: 420 }}
+                contentContainerStyle={{ gap: 12, alignItems: "center" }}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View
+                  style={{
+                    padding: 14,
+                    borderRadius: 16,
+                    backgroundColor: "#fff",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <QRCode value={detail.url} size={180} />
+                </View>
+                <Text
+                  style={{
+                    color: colors.textDim,
+                    fontSize: 11,
+                    textAlign: "center",
+                  }}
+                >
+                  {inviteExpiryLabel(detail.expires_at)}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    void copyToClipboard(detail.url).then((result) =>
+                      alertCopyResult(result, detail.url),
+                    );
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: colors.bgSurface,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Copy size={14} color={colors.accent} />
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 12,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Copy link
+                  </Text>
+                </Pressable>
+                <Text
+                  selectable
+                  style={{
+                    color: colors.textDim,
+                    fontSize: 11,
+                    textAlign: "center",
+                  }}
+                  numberOfLines={4}
+                >
+                  {detail.url}
+                </Text>
+                <Button
+                  label="Download"
+                  variant="primary"
+                  onPress={() =>
+                    void downloadRows(
+                      [detail],
+                      `member-invite-${detail.token}.csv`,
+                    )
+                  }
+                  loading={downloading}
+                  leftIcon={<Download size={16} color="#fff" />}
+                  disabled={downloading}
+                  fullWidth
+                />
+                {downloadLink ? (
+                  <View style={{ width: "100%", gap: 4 }}>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Download link (Excel + QR images)
+                    </Text>
+                    <Text
+                      selectable
+                      style={{
+                        color: colors.accentDeep,
+                        fontSize: 11,
+                        lineHeight: 16,
+                      }}
+                    >
+                      {downloadLink}
+                    </Text>
+                  </View>
+                ) : null}
+              </ScrollView>
+            ) : null}
+            <ToastHost />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Card>
   );
 }

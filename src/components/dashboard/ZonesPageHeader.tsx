@@ -143,7 +143,7 @@ export function ZonesPageHeader({
           />
           <View style={[styles.dropdown, { marginTop: insets.top + 72 }]}>
             <Text style={styles.dropdownTitle}>
-              Saved zones ({layers.length})
+              Zones ({layers.length})
             </Text>
             {loadingList && layers.length === 0 ? (
               <ActivityIndicator
@@ -153,7 +153,7 @@ export function ZonesPageHeader({
             ) : null}
             {!loadingList && layers.length === 0 ? (
               <Text style={styles.emptyText}>
-                {listError ? "Could not load zones." : "No saved zones yet."}
+                {listError ? "Could not load zones." : "No zones yet."}
               </Text>
             ) : null}
             <ScrollView
@@ -180,7 +180,9 @@ export function ZonesPageHeader({
                         {layer.name}
                         {mine ? (
                           <Text style={styles.mineTag}> · Mine</Text>
-                        ) : null}
+                        ) : (
+                          <Text style={styles.publicTag}> · Public</Text>
+                        )}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
                         {summary || layer.zoneType.replace("_", " ")}
@@ -394,6 +396,11 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 12,
     fontWeight: "700",
+  },
+  publicTag: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
   },
   swatch: {
     width: 10,

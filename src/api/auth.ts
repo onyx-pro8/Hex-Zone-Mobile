@@ -31,6 +31,8 @@ export type AuthUser = {
   phone?: string | null;
   avatar_url?: string | null;
   active?: boolean;
+  communal_id?: string | null;
+  communalId?: string | null;
   mapCenter?: MapCenter | null;
   map_center?: MapCenter | null;
 };
@@ -137,26 +139,27 @@ export async function loginRequest(payload: LoginPayload) {
 }
 
 export async function registerRequest(payload: RegisterPayload) {
-  if (
-    payload.registrationType === "USER" &&
+  // Individual (EXCLUSIVE) is always user-role. Solo accounts omit accountOwnerId;
+  // invited members keep accountOwnerId to link under their administrator.
+  const normalized: RegisterPayload =
     payload.accountType === "EXCLUSIVE"
-  ) {
-    return {
-      data: null,
-      error: "Exclusive accounts cannot register users.",
-      loading: false,
-    };
-  }
+      ? {
+          ...payload,
+          registrationType: "USER",
+          registrationCode: payload.registrationCode?.trim() || "FREE",
+        }
+      : payload;
+
   const primary = await request<{ id?: string }>({
     method: "POST",
     url: "/register",
-    data: payload,
+    data: normalized,
   });
   if (!primary.error) return primary;
   return request<{ id?: string }>({
     method: "POST",
     url: "/owners/register",
-    data: mapLegacyRegisterPayload(payload),
+    data: mapLegacyRegisterPayload(normalized),
   });
 }
 
@@ -328,5 +331,13 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
     mapCenter,
     map_center: mapCenter,
     active: typeof raw.active === "boolean" ? raw.active : true,
+    communal_id:
+      (typeof raw.communal_id === "string" && raw.communal_id.trim()) ||
+      (typeof raw.communalId === "string" && raw.communalId.trim()) ||
+      null,
+    communalId:
+      (typeof raw.communalId === "string" && raw.communalId.trim()) ||
+      (typeof raw.communal_id === "string" && raw.communal_id.trim()) ||
+      null,
   };
 }

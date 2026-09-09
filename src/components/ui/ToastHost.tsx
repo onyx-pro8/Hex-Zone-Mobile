@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -16,13 +16,12 @@ import {
   XCircle,
 } from "lucide-react-native";
 import {
-  subscribeToast,
+  dismissToast,
+  subscribeToastStack,
   type ToastItem,
   type ToastType,
 } from "@/lib/toast";
 import { colors, radius, shadow } from "@/theme/colors";
-
-const MAX_VISIBLE = 3;
 
 type Tone = {
   border: string;
@@ -85,10 +84,10 @@ function ToastIcon({ type, color }: { type: ToastType; color: string }) {
 
 function ToastCard({
   item,
-  onDismiss,
+  manageLifetime,
 }: {
   item: ToastItem;
-  onDismiss: (id: string) => void;
+  manageLifetime: boolean;
 }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-12)).current;
@@ -108,6 +107,8 @@ function ToastCard({
       }),
     ]).start();
 
+    if (!manageLifetime) return;
+
     const timer = setTimeout(() => {
       Animated.parallel([
         Animated.timing(opacity, {
@@ -121,15 +122,16 @@ function ToastCard({
           useNativeDriver: true,
         }),
       ]).start(({ finished }) => {
-        if (finished) onDismiss(item.id);
+        if (finished) dismissToast(item.id);
       });
     }, item.duration);
 
     return () => clearTimeout(timer);
-  }, [item.duration, item.id, onDismiss, opacity, translateY]);
+  }, [item.duration, item.id, manageLifetime, opacity, translateY]);
 
   return (
     <Animated.View
+      pointerEvents="auto"
       style={[
         styles.card,
         {
@@ -157,7 +159,7 @@ function ToastCard({
         </Text>
       </View>
       <Pressable
-        onPress={() => onDismiss(item.id)}
+        onPress={() => dismissToast(item.id)}
         hitSlop={10}
         accessibilityLabel="Dismiss"
         style={styles.dismiss}
@@ -168,61 +170,71 @@ function ToastCard({
   );
 }
 
+type ToastHostProps = {
+  /**
+   * Primary host owns auto-dismiss timers. Mount once at the app root.
+   * Extra hosts inside Modals/BottomSheets should omit this so timers are not doubled.
+   */
+  primary?: boolean;
+};
+
 /**
- * Global toast stack — mount once near the app root.
- * Uses a transparent Modal so toasts render above BottomSheet / other Modals
- * (absolute zIndex alone cannot cover native Modal layers).
+ * Toast stack overlay.
+ * Primary host uses a transparent Modal so toasts stack above other Modals
+ * (invite detail, bottom sheets). pointerEvents="box-none" keeps empty space
+ * from eating taps where the platform allows it.
  */
-export function ToastHost() {
+export function ToastHost({ primary = false }: ToastHostProps) {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ToastItem[]>([]);
 
-  const dismiss = useCallback((id: string) => {
-    setItems((prev) => prev.filter((t) => t.id !== id));
-  }, []);
+  useEffect(() => subscribeToastStack(setItems), []);
 
-  useEffect(() => {
-    return subscribeToast((toast) => {
-      setItems((prev) => {
-        const next = [...prev, toast];
-        return next.length > MAX_VISIBLE
-          ? next.slice(next.length - MAX_VISIBLE)
-          : next;
-      });
-    });
-  }, []);
+  if (items.length === 0) return null;
 
-  const visible = items.length > 0;
+  const stack = (
+    <View pointerEvents="box-none" style={styles.overlay}>
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.host,
+          { paddingTop: Math.max(insets.top, 12) + 8 },
+        ]}
+      >
+        {items.map((item) => (
+          <ToastCard
+            key={item.id}
+            item={item}
+            manageLifetime={primary}
+          />
+        ))}
+      </View>
+    </View>
+  );
+
+  if (!primary) return stack;
 
   return (
     <Modal
-      visible={visible}
+      visible
       transparent
       animationType="none"
       statusBarTranslucent
       presentationStyle="overFullScreen"
-      onRequestClose={() => setItems([])}
+      onRequestClose={() => {
+        items.forEach((item) => dismissToast(item.id));
+      }}
     >
-      <View pointerEvents="box-none" style={styles.modalRoot}>
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.host,
-            { paddingTop: Math.max(insets.top, 12) + 8 },
-          ]}
-        >
-          {items.map((item) => (
-            <ToastCard key={item.id} item={item} onDismiss={dismiss} />
-          ))}
-        </View>
-      </View>
+      {stack}
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalRoot: {
-    flex: 1,
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 99999,
+    elevation: 99999,
   },
   host: {
     paddingHorizontal: 16,

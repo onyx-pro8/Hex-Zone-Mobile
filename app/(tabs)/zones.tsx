@@ -30,7 +30,9 @@ import {
   useFloatingFabBottom,
 } from "@/components/navigation/FloatingTabBar";
 import { useAuth } from "@/context/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { MAX_ZONE_NAME_LENGTH, useZoneBuilder } from "@/hooks/useZoneBuilder";
+import { normalizeAccountType } from "@/lib/accountLimits";
 import { isClosedPolygon, layerFocusPoint, shapeFocusPoint, zoneRecordToLayer, type MapZoneLayer, type ZoneShapeItem } from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
@@ -45,12 +47,22 @@ const CHROME_SIDE_WIDTH = 78;
 
 export default function DashboardScreen() {
   const { ownerZoneId, user } = useAuth();
+  const isAdmin = useIsAdmin();
+  const accountType = useMemo(
+    () => normalizeAccountType(user?.accountType, user?.account_type),
+    [user?.accountType, user?.account_type],
+  );
+  /** Individual accounts are user-role only and never create primary zones. */
+  const canChoosePrimaryTier =
+    isAdmin && accountType !== "EXCLUSIVE";
   const insets = useSafeAreaInsets();
   const builder = useZoneBuilder(ownerZoneId || undefined, {
     currentUserId: user?.id != null ? String(user.id) : undefined,
     currentUserName: user?.name?.trim() || undefined,
-    isAccountAdministrator:
-      String(user?.role ?? "").toLowerCase() === "administrator",
+    isAccountAdministrator: canChoosePrimaryTier,
+    assignedCommunalId:
+      user?.communal_id ?? user?.communalId ?? null,
+    communalIdLocked: accountType === "EXCLUSIVE",
   });
 
   const fabBottom = useFloatingFabBottom();
@@ -80,16 +92,15 @@ export default function DashboardScreen() {
     setDetailScrollEnabled(!open);
   }, []);
 
-  /** Include public zones on the map during communal flow so focus works for others' zones. */
+  /** Include public defining zones on the map for every user (not only communal flow). */
   const mapLayers = useMemo(() => {
-    if (builder.zoneType !== "communal_id") return builder.layers;
     const byId = new Map(builder.layers.map((layer) => [layer.id, layer]));
     builder.publicZones.forEach((zone, index) => {
       const layer = zoneRecordToLayer(zone, index);
       if (layer && !byId.has(layer.id)) byId.set(layer.id, layer);
     });
     return Array.from(byId.values());
-  }, [builder.layers, builder.publicZones, builder.zoneType]);
+  }, [builder.layers, builder.publicZones]);
 
   const focusZoneOnMap = useCallback((zoneId: string) => {
     setDetailOpen(false);
@@ -774,7 +785,7 @@ export default function DashboardScreen() {
             </View>
           ) : null}
 
-          {String(user?.role ?? "").toLowerCase() === "administrator" &&
+          {canChoosePrimaryTier &&
           builder.capabilities?.can_create_zone !== false ? (
             <View style={{ gap: 8 }}>
               <Text

@@ -102,7 +102,7 @@ export type QrJoinPayload = {
   last_name: string;
   address: string;
   phone?: string;
-  /** Required for system-admin invites (new Exclusive network admin). */
+  /** Required for system-admin invites (new Individual user account). */
   zone_id?: string;
 };
 

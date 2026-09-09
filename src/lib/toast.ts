@@ -15,9 +15,12 @@ export type ToastItem = {
   duration: number;
 };
 
-type Listener = (toast: ToastItem) => void;
+const MAX_VISIBLE = 3;
 
-const listeners = new Set<Listener>();
+type StackListener = (items: ToastItem[]) => void;
+
+const stackListeners = new Set<StackListener>();
+let items: ToastItem[] = [];
 let seq = 0;
 
 /** Suppress identical toasts fired back-to-back (e.g. setError + toast.warning). */
@@ -25,11 +28,25 @@ const DEDUPE_MS = 1200;
 let lastFingerprint = "";
 let lastShownAt = 0;
 
-export function subscribeToast(listener: Listener): () => void {
-  listeners.add(listener);
+function emitStack(): void {
+  const snapshot = items;
+  stackListeners.forEach((listener) => listener(snapshot));
+}
+
+/** Subscribe to the active toast stack (shared across every ToastHost). */
+export function subscribeToastStack(listener: StackListener): () => void {
+  stackListeners.add(listener);
+  listener(items);
   return () => {
-    listeners.delete(listener);
+    stackListeners.delete(listener);
   };
+}
+
+export function dismissToast(id: string): void {
+  const next = items.filter((t) => t.id !== id);
+  if (next.length === items.length) return;
+  items = next;
+  emitStack();
 }
 
 function fingerprint(message: string, type: ToastType, title?: string): string {
@@ -62,7 +79,10 @@ export function showToast(message: string, options: ToastOptions = {}): void {
     type,
     duration: options.duration ?? 3200,
   };
-  listeners.forEach((listener) => listener(toast));
+  const next = [...items, toast];
+  items =
+    next.length > MAX_VISIBLE ? next.slice(next.length - MAX_VISIBLE) : next;
+  emitStack();
 }
 
 export const toast = {

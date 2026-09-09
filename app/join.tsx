@@ -232,7 +232,7 @@ export default function JoinScreen() {
               }
               subtitle={
                 isNewNetworkAdmin
-                  ? "Exclusive admin of a new network"
+                  ? "Individual account for a new network"
                   : "Join the inviter's zone"
               }
             />
@@ -273,10 +273,10 @@ export default function JoinScreen() {
                   {previewError
                     ? previewError
                     : isNewNetworkAdmin
-                      ? "You will become the Exclusive administrator of a new network. Choose a network ID below."
+                      ? "You will create an Individual (user-role) account for a new network. Choose a network ID below."
                       : preview?.zone_id
-                        ? `Your account joins zone ${preview.zone_id}. Account type matches the inviter.`
-                        : "Your account will inherit the inviter's zone and account type."}
+                        ? `Your account joins zone ${preview.zone_id} as an Individual (user-role) member.`
+                        : "Your account joins the inviter's zone as an Individual (user-role) member."}
                 </Text>
                 <View
                   style={{
@@ -332,9 +332,17 @@ export default function JoinScreen() {
                     </Pressable>
                   </View>
                   <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                    Account type: Exclusive
+                    Account type: Individual · Role: User
+                    {"\n"}
+                    Up to 3 secondary zones · No member invites · No smart-home
                   </Text>
                 </View>
+              ) : preview && !previewError ? (
+                <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                  Account type: Individual · Role: User
+                  {"\n"}
+                  Up to 2 secondary zones · No member invites · No smart-home
+                </Text>
               ) : null}
 
               <View style={{ flexDirection: "row", gap: 12 }}>
@@ -405,7 +413,7 @@ export default function JoinScreen() {
                   authToken
                     ? "Sign out & create account"
                     : isNewNetworkAdmin
-                      ? "Create Exclusive network"
+                      ? "Create Individual account"
                       : "Create account"
                 }
                 onPress={() => void onJoin()}

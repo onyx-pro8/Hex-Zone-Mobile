@@ -226,6 +226,29 @@ export async function generateMemberInviteQr(payload?: {
   };
 }
 
+export type MemberInviteXlsxExport = {
+  download_url: string;
+  file_name: string;
+  expires_in_seconds: number;
+};
+
+/** Server builds Excel with embedded QR images; returns a short-lived download URL. */
+export async function exportMemberInviteXlsx(payload: {
+  tokens: string[];
+  join_base_url?: string;
+}): Promise<ApiResult<MemberInviteXlsxExport>> {
+  return request<MemberInviteXlsxExport>({
+    method: "POST",
+    url: "/utils/qr/export-xlsx",
+    data: {
+      tokens: payload.tokens,
+      ...(payload.join_base_url
+        ? { join_base_url: payload.join_base_url }
+        : { join_base_url: webAppBaseUrl() }),
+    },
+  });
+}
+
 /* ------------------------- Guest access QR (zone) ----------------------- */
 
 export type GuestAccessQrLink = {
