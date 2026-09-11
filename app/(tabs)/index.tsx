@@ -307,7 +307,7 @@ export default function MessagesScreen() {
           : wsStatus === "connecting"
             ? " · connecting socket"
             : "";
-      return `Push + inbox sync${ws}`;
+      return "";
     }
     return permissionError ?? "Enable notifications in a dev build for alarms";
   }, [pushToken, permissionError, wsStatus]);

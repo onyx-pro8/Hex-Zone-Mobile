@@ -162,7 +162,9 @@ export type PrivateSearchMember = {
   last_name: string | null;
   email: string;
   zone_id: string | null;
+  /** Distance from sender when available; empty when unknown. Never an email. */
   subtitle: string;
+  distance_meters?: number | null;
 };
 
 export type PrivateSearchMembersResponse = {

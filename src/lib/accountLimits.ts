@@ -5,6 +5,17 @@ export type NormalizedAccountType =
   | "ENHANCED"
   | "ENHANCED_PLUS";
 
+/** Organization (enhanced_plus) total-user caps by level. */
+export const ENHANCED_PLUS_MEMBER_LIMITS: Record<number, number> = {
+  1: 20,
+  2: 50,
+  3: 100,
+  4: 500,
+  5: 2500,
+};
+
+export const FAMILY_MEMBER_LIMIT = 10;
+
 export function normalizeAccountType(
   accountType?: string | null,
   legacyAccountType?: string | null,
@@ -29,6 +40,14 @@ export function normalizeAccountType(
   return "PRIVATE";
 }
 
+export function normalizeTierLevel(tierLevel?: number | string | null): number | null {
+  if (tierLevel == null || tierLevel === "") return null;
+  const n = typeof tierLevel === "number" ? tierLevel : Number(tierLevel);
+  if (!Number.isFinite(n)) return null;
+  const level = Math.trunc(n);
+  return level in ENHANCED_PLUS_MEMBER_LIMITS ? level : null;
+}
+
 export function getDeviceLimit(type: NormalizedAccountType): number {
   if (type === "PRIVATE") return 1;
   if (type === "PRIVATE_PLUS") return 10;
@@ -37,11 +56,20 @@ export function getDeviceLimit(type: NormalizedAccountType): number {
   return Number.POSITIVE_INFINITY; // ENHANCED_PLUS
 }
 
-/** Members allowed per account. `Infinity` means unbounded. */
-export function getMemberLimit(type: NormalizedAccountType): number {
-  // Private supports many users sharing the same zone type.
-  // Individual and Individual Pro are solo (no invited members).
+/**
+ * Total members allowed per account (admin + invited).
+ * `Infinity` means unbounded (Private / system admin).
+ */
+export function getMemberLimit(
+  type: NormalizedAccountType,
+  tierLevel?: number | string | null,
+): number {
   if (type === "EXCLUSIVE" || type === "ENHANCED") return 1;
+  if (type === "PRIVATE_PLUS") return FAMILY_MEMBER_LIMIT;
+  if (type === "ENHANCED_PLUS") {
+    const level = normalizeTierLevel(tierLevel) ?? 1;
+    return ENHANCED_PLUS_MEMBER_LIMITS[level] ?? ENHANCED_PLUS_MEMBER_LIMITS[1];
+  }
   return Number.POSITIVE_INFINITY;
 }
 
@@ -174,6 +202,27 @@ export function deviceLimitDescription(type: NormalizedAccountType): string {
     case "ENHANCED_PLUS":
       return "Organization accounts have no smart-home hub cap. Only one phone/web session can be active at a time; takeover removes the other login device.";
   }
+}
+
+export function memberLimitDescription(
+  type: NormalizedAccountType,
+  tierLevel?: number | string | null,
+): string {
+  const limit = getMemberLimit(type, tierLevel);
+  if (type === "PRIVATE_PLUS") {
+    return "Family accounts allow up to 10 users (administrator + members).";
+  }
+  if (type === "ENHANCED_PLUS") {
+    const level = normalizeTierLevel(tierLevel) ?? 1;
+    return `Organization Level ${level} allows up to ${limit} users (administrator + members).`;
+  }
+  if (!Number.isFinite(limit)) {
+    return "Private accounts have no member invite cap.";
+  }
+  if (limit <= 1) {
+    return `${accountTypeLabel(type)} accounts are solo and cannot invite members.`;
+  }
+  return `${accountTypeLabel(type)} accounts allow up to ${limit} users.`;
 }
 
 export function formatLimit(used: number, limit: number): string {

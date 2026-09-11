@@ -33,6 +33,8 @@ export type AuthUser = {
   active?: boolean;
   communal_id?: string | null;
   communalId?: string | null;
+  tier_level?: number | null;
+  tierLevel?: number | null;
   mapCenter?: MapCenter | null;
   map_center?: MapCenter | null;
 };
@@ -339,5 +341,17 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
       (typeof raw.communalId === "string" && raw.communalId.trim()) ||
       (typeof raw.communal_id === "string" && raw.communal_id.trim()) ||
       null,
+    tier_level:
+      typeof raw.tier_level === "number"
+        ? raw.tier_level
+        : typeof raw.tierLevel === "number"
+          ? raw.tierLevel
+          : null,
+    tierLevel:
+      typeof raw.tierLevel === "number"
+        ? raw.tierLevel
+        : typeof raw.tier_level === "number"
+          ? raw.tier_level
+          : null,
   };
 }

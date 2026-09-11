@@ -246,9 +246,8 @@ export function useZoneBuilder(
   const refresh = useCallback(async () => {
     setLoadingList(true);
     setListError(null);
-    const [zonesRes, publicRes, capsRes, membersRes] = await Promise.all([
+    const [zonesRes, capsRes, membersRes] = await Promise.all([
       getZones(),
-      listPublicZones({ limit: 200 }),
       getZoneCapabilities(),
       getMembers(),
     ]);
@@ -269,23 +268,14 @@ export function useZoneBuilder(
       const selfName = scope?.currentUserName?.trim();
       if (selfId && selfName) nameById.set(selfId, selfName);
 
+      // Network-scoped only — do not merge cross-account public defining zones
+      // into map/list (those stay on /zones/public for communal picker).
       const byRecordId = new Map<string, SavedZone>();
       if (!zonesRes.error) {
         for (const row of zonesRes.data ?? []) {
           const resolved = resolveZoneOwnerName(row as SavedZone, nameById);
           byRecordId.set(String(resolved.id), resolved);
         }
-      }
-      // Public defining zones are visible to every account — merge into the list/map.
-      if (!publicRes.error && publicRes.data) {
-        setPublicZones(publicRes.data);
-        for (const row of publicRes.data) {
-          const id = String(row.id);
-          if (byRecordId.has(id)) continue;
-          byRecordId.set(id, resolveZoneOwnerName(row as SavedZone, nameById));
-        }
-      } else {
-        setPublicZones([]);
       }
 
       const rows = Array.from(byRecordId.values());
