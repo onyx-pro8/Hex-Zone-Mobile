@@ -157,7 +157,8 @@ export function InboxMessageCard({
   const isService = isServiceMessageType(item.type);
   const mapsUrl = messageCoordinatesMapsUrl(item);
   const locationLabel = formatMessageCoordinatesLabel(item);
-  // Previous inbox layout: friendly zone name + network id, e.g. "Geofence zone (Network-X5OTSW)".
+  // Inbox heading: delivery zone name + sender network id, e.g. "Geofence zone (ZN-HOME)".
+  // Multi-zone sender view uses "My zone and N more zones".
   const zoneLabel = messageZoneLabel(item, {
     viewerOwnerId: selfOwnerId,
     zoneNames,

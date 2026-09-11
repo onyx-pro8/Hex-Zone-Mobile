@@ -65,7 +65,29 @@ import {
   validateServicePaCompose,
   type ServicePaComposeFields,
 } from "@/lib/servicePaTopics";
-import { colors } from "@/theme/colors";
+import { colors, shadow } from "@/theme/colors";
+
+function memberBroadcastName(member: PrivateSearchMember): string {
+  return (member.broadcast_name || "").trim() || member.display_name;
+}
+
+/** Distance subtitle only — never fall back to email. */
+function memberDistanceLabel(member: PrivateSearchMember): string {
+  const sub = (member.subtitle || "").trim();
+  if (sub && !sub.includes("@")) return sub;
+  if (
+    typeof member.distance_meters === "number" &&
+    Number.isFinite(member.distance_meters) &&
+    member.distance_meters >= 0
+  ) {
+    const meters = member.distance_meters;
+    if (meters < 1000) return `${Math.round(meters)} m away`;
+    const km = meters / 1000;
+    if (km < 10) return `${km.toFixed(1)} km away`;
+    return `${Math.round(km)} km away`;
+  }
+  return "";
+}
 
 function waitMs(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -753,24 +775,18 @@ export function ComposeMessageSheet({
 
   return (
     <>
-      <BottomSheet visible={visible} onClose={closeAll} maxHeight="88%">
-        <View
-          style={{
-            paddingHorizontal: 24,
-            paddingTop: 24,
-            gap: 12,
-            paddingBottom: Math.max(bottomInset, 16) + 12,
-            flexGrow: 1,
-            flexShrink: 1,
-            position: "relative",
-            overflow: "hidden",
-          }}
-        >
-          {receiversModalOpen ? (
-            <View style={receiversModalStyles.root} pointerEvents="box-none">
+      <BottomSheet
+        visible={visible}
+        onClose={closeAll}
+        maxHeight="88%"
+        fullScreenOverlay={
+          receiversModalOpen ? (
+            <View style={receiversModalStyles.root}>
               <Pressable
                 style={StyleSheet.absoluteFill}
                 onPress={() => setReceiversModalOpen(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close receivers list"
               />
               <View style={receiversModalStyles.card}>
                 <View style={receiversModalStyles.header}>
@@ -824,27 +840,30 @@ export function ComposeMessageSheet({
                               No receivers in this zone.
                             </Text>
                           ) : (
-                            group.members.map((m) => (
-                              <View
-                                key={`${group.zoneRecordId}-${m.id}`}
-                                style={receiversModalStyles.row}
-                              >
-                                <Text
-                                  style={receiversModalStyles.name}
-                                  numberOfLines={1}
+                            group.members.map((m) => {
+                              const distance = memberDistanceLabel(m);
+                              return (
+                                <View
+                                  key={`${group.zoneRecordId}-${m.id}`}
+                                  style={receiversModalStyles.row}
                                 >
-                                  {m.display_name}
-                                </Text>
-                                {m.subtitle || m.email ? (
                                   <Text
-                                    style={receiversModalStyles.meta}
+                                    style={receiversModalStyles.name}
                                     numberOfLines={1}
                                   >
-                                    {m.subtitle || m.email}
+                                    {memberBroadcastName(m)}
                                   </Text>
-                                ) : null}
-                              </View>
-                            ))
+                                  {distance ? (
+                                    <Text
+                                      style={receiversModalStyles.meta}
+                                      numberOfLines={1}
+                                    >
+                                      {distance}
+                                    </Text>
+                                  ) : null}
+                                </View>
+                              );
+                            })
                           )}
                         </View>
                       ))}
@@ -860,26 +879,41 @@ export function ComposeMessageSheet({
                     keyboardShouldPersistTaps="handled"
                     nestedScrollEnabled
                   >
-                    {zoneRecipients.map((m) => (
-                      <View key={m.id} style={receiversModalStyles.row}>
-                        <Text style={receiversModalStyles.name} numberOfLines={1}>
-                          {m.display_name}
-                        </Text>
-                        {m.subtitle || m.email ? (
-                          <Text
-                            style={receiversModalStyles.meta}
-                            numberOfLines={1}
-                          >
-                            {m.subtitle || m.email}
+                    {zoneRecipients.map((m) => {
+                      const distance = memberDistanceLabel(m);
+                      return (
+                        <View key={m.id} style={receiversModalStyles.row}>
+                          <Text style={receiversModalStyles.name} numberOfLines={1}>
+                            {memberBroadcastName(m)}
                           </Text>
-                        ) : null}
-                      </View>
-                    ))}
+                          {distance ? (
+                            <Text
+                              style={receiversModalStyles.meta}
+                              numberOfLines={1}
+                            >
+                              {distance}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
                   </ScrollView>
                 )}
               </View>
             </View>
-          ) : null}
+          ) : null
+        }
+      >
+        <View
+          style={{
+            paddingHorizontal: 24,
+            paddingTop: 24,
+            gap: 12,
+            paddingBottom: Math.max(bottomInset, 16) + 12,
+            flexGrow: 1,
+            flexShrink: 1,
+          }}
+        >
           <View style={{ alignItems: "center", paddingBottom: 10 }}>
             <View
               style={{
@@ -1092,21 +1126,25 @@ export function ComposeMessageSheet({
                     {(selectedZoneRecordId != null
                       ? zoneRecipients
                       : privateSearchResults
-                    ).map((m) => (
+                    ).map((m) => {
+                      const distance = memberDistanceLabel(m);
+                      const name = memberBroadcastName(m);
+                      return (
                       <Pressable
                         key={m.id}
                         onPress={() => {
                           setComposeReceiverId(String(m.id));
-                          setPrivateSearchQuery(m.display_name);
+                          setPrivateSearchQuery(name);
                         }}
                       >
                         <Chip
-                          label={`${m.display_name} — ${m.subtitle || m.email}`}
+                          label={distance ? `${name} — ${distance}` : name}
                           active={composeReceiverId === String(m.id)}
                           style={{ marginBottom: 6 }}
                         />
                       </Pressable>
-                    ))}
+                      );
+                    })}
                     {privateSearchQuery.trim().length >= 2 &&
                     !(selectedZoneRecordId != null
                       ? zoneRecipientsLoading
@@ -1281,18 +1319,18 @@ export function ComposeMessageSheet({
 const receiversModalStyles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 20,
     justifyContent: "center",
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(15, 23, 42, 0.45)",
+    paddingHorizontal: 20,
+    backgroundColor: "rgba(15, 44, 92, 0.55)",
   },
   card: {
-    backgroundColor: colors.bgCard,
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderStrong,
     padding: 16,
     gap: 8,
+    ...shadow.card,
   },
   header: {
     flexDirection: "row",
@@ -1326,18 +1364,24 @@ const receiversModalStyles = StyleSheet.create({
     marginBottom: 4,
   },
   row: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   name: {
+    flex: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: 14,
     fontWeight: "600",
   },
   meta: {
+    flexShrink: 0,
     color: colors.textMuted,
     fontSize: 12,
-    marginTop: 2,
   },
 });

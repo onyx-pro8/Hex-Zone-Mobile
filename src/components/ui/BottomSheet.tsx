@@ -23,6 +23,8 @@ type BottomSheetProps = {
   maxHeight?: number | `${number}%`;
   contentStyle?: ViewStyle;
   overlayColor?: string;
+  /** Renders above the sheet and dim, covering the full screen (same Modal). */
+  fullScreenOverlay?: ReactNode;
 };
 
 function resolveMaxHeight(
@@ -49,6 +51,7 @@ export function BottomSheet({
   maxHeight = "88%",
   contentStyle,
   overlayColor = "rgba(15, 44, 92, 0.4)",
+  fullScreenOverlay,
 }: BottomSheetProps) {
   const { height: windowHeight } = useWindowDimensions();
   const translateY = useRef(new Animated.Value(windowHeight)).current;
@@ -122,6 +125,11 @@ export function BottomSheet({
         >
           {children}
         </Animated.View>
+        {fullScreenOverlay ? (
+          <View style={styles.fullScreenOverlay} pointerEvents="box-none">
+            {fullScreenOverlay}
+          </View>
+        ) : null}
         {/* Same Modal layer as the sheet — visible above it, does not block taps. */}
         <ToastHost />
       </View>
@@ -143,5 +151,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: colors.border,
     width: "100%",
+  },
+  fullScreenOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
   },
 });

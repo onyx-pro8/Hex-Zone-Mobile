@@ -33,7 +33,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { MAX_ZONE_NAME_LENGTH, useZoneBuilder } from "@/hooks/useZoneBuilder";
 import { normalizeAccountType } from "@/lib/accountLimits";
-import { isClosedPolygon, layerFocusPoint, shapeFocusPoint, zoneRecordToLayer, type MapZoneLayer, type ZoneShapeItem } from "@/lib/zoneGeometry";
+import { isClosedPolygon, layerFocusPoint, shapeFocusPoint, type MapZoneLayer, type ZoneShapeItem } from "@/lib/zoneGeometry";
 import { colors } from "@/theme/colors";
 
 const H3_RES_MIN = 5;
@@ -92,15 +92,8 @@ export default function DashboardScreen() {
     setDetailScrollEnabled(!open);
   }, []);
 
-  /** Include public defining zones on the map for every user (not only communal flow). */
-  const mapLayers = useMemo(() => {
-    const byId = new Map(builder.layers.map((layer) => [layer.id, layer]));
-    builder.publicZones.forEach((zone, index) => {
-      const layer = zoneRecordToLayer(zone, index);
-      if (layer && !byId.has(layer.id)) byId.set(layer.id, layer);
-    });
-    return Array.from(byId.values());
-  }, [builder.layers, builder.publicZones]);
+  /** Map shows network-scoped layers only (same as the zones list). */
+  const mapLayers = useMemo(() => builder.layers, [builder.layers]);
 
   const focusZoneOnMap = useCallback((zoneId: string) => {
     setDetailOpen(false);

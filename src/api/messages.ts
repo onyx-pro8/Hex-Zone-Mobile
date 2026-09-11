@@ -46,8 +46,10 @@ export type Message = {
   topic?: string | null;
   subtopic?: string | null;
   topic_label?: string | null;
+  /** Sender home/account network id for the inbox zone heading. */
   relevant_zone_network_id?: string | null;
   relevant_zone_name?: string | null;
+  /** `{delivery zone} ({sender network id})` or `My zone and N more zones`. */
   relevant_zone_label?: string | null;
   /** Up to 5 image URLs (https or data:) attached to the message. */
   images?: string[];

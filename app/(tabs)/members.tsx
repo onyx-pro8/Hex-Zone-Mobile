@@ -495,7 +495,11 @@ export default function MembersScreen() {
     () => normalizeAccountType(user?.accountType, user?.account_type),
     [user?.accountType, user?.account_type],
   );
-  const memberLimit = useMemo(() => getMemberLimit(accountType), [accountType]);
+  const tierLevel = user?.tierLevel ?? user?.tier_level ?? null;
+  const memberLimit = useMemo(
+    () => getMemberLimit(accountType, tierLevel),
+    [accountType, tierLevel],
+  );
   const myZoneId = (ownerZoneId || String(user?.zoneId ?? "")).trim();
   const myId = String(user?.id ?? "").trim();
   const isSystemAdmin = isSystemAdministrator({
@@ -631,6 +635,9 @@ export default function MembersScreen() {
               }}
             >
               {accountTypeLabel(accountType)} account
+              {accountType === "ENHANCED_PLUS" && tierLevel != null
+                ? ` · Level ${tierLevel}`
+                : ""}
               {Number.isFinite(memberLimit)
                 ? ` · up to ${memberLimit} member${memberLimit === 1 ? "" : "s"} per account`
                 : " · unlimited members"}

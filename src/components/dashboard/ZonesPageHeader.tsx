@@ -180,9 +180,7 @@ export function ZonesPageHeader({
                         {layer.name}
                         {mine ? (
                           <Text style={styles.mineTag}> · Mine</Text>
-                        ) : (
-                          <Text style={styles.publicTag}> · Public</Text>
-                        )}
+                        ) : null}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
                         {summary || layer.zoneType.replace("_", " ")}
@@ -396,11 +394,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 12,
     fontWeight: "700",
-  },
-  publicTag: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "600",
   },
   swatch: {
     width: 10,
