@@ -117,6 +117,24 @@ export function isSystemAdministrator(params: {
   return normalizeAccountType(params.accountType, params.legacyAccountType) === "PRIVATE";
 }
 
+/** Bulk / multi invite QR generation is system-admin only. Network admins mint one at a time. */
+export function canBulkGenerateMemberInviteQr(params: {
+  accountType?: string | null;
+  legacyAccountType?: string | null;
+  role?: string | null;
+}): boolean {
+  return isSystemAdministrator(params);
+}
+
+/** Excel/QR workbook download is system-admin only. */
+export function canDownloadMemberInviteQr(params: {
+  accountType?: string | null;
+  legacyAccountType?: string | null;
+  role?: string | null;
+}): boolean {
+  return isSystemAdministrator(params);
+}
+
 /** System administrator (Private tier) may edit the network ID in Settings. */
 export function canEditNetworkId(params: {
   accountType?: string | null;

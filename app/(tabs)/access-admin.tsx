@@ -275,10 +275,11 @@ function MemberInviteSection({
     () => EXPIRY_OPTIONS.find((o) => o.value === expiryKey)?.hours ?? 24,
     [expiryKey],
   );
-  const count = useMemo(
-    () => QR_COUNT_OPTIONS.find((o) => o.value === countKey)?.count ?? 1,
-    [countKey],
-  );
+  // Network admins are limited to a single QR; only system admin may bulk mint.
+  const count = useMemo(() => {
+    if (!isSystemAdmin) return 1;
+    return QR_COUNT_OPTIONS.find((o) => o.value === countKey)?.count ?? 1;
+  }, [countKey, isSystemAdmin]);
   const detail =
     detailIndex != null && items[detailIndex] ? items[detailIndex] : null;
 
@@ -286,16 +287,17 @@ function MemberInviteSection({
     setLoading(true);
     setDetailIndex(null);
     setDownloadLink(null);
+    const batchSize = isSystemAdmin ? count : 1;
     try {
       const next: GeneratedInvite[] = [];
-      for (let i = 0; i < count; i += 1) {
+      for (let i = 0; i < batchSize; i += 1) {
         const result = await generateMemberInviteQr({
           expires_in_hours: hours,
         });
         if (result.error || !result.data) {
           throw new Error(
             result.error ??
-              `Could not generate invite QR ${i + 1} of ${count}.`,
+              `Could not generate invite QR ${i + 1} of ${batchSize}.`,
           );
         }
         next.push({
@@ -317,10 +319,14 @@ function MemberInviteSection({
     } finally {
       setLoading(false);
     }
-  }, [count, hours]);
+  }, [count, hours, isSystemAdmin]);
 
   const downloadRows = useCallback(
     async (rows: GeneratedInvite[], fileName: string) => {
+      if (!isSystemAdmin) {
+        toast.error("Only the system administrator can download invite QR codes.");
+        return;
+      }
       setDownloading(true);
       try {
         const result = await downloadInviteQrCsv({
@@ -339,7 +345,7 @@ function MemberInviteSection({
         setDownloading(false);
       }
     },
-    [],
+    [isSystemAdmin],
   );
 
   return (
@@ -357,8 +363,8 @@ function MemberInviteSection({
       </Text>
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
         {isSystemAdmin
-          ? "Invitees create an Individual user account for a new network and choose their own network ID on the join form. Every link is single-use, including ones that never expire."
-          : "Invitees join this network as Individual (user-role) members. Every link is single-use (including never-expiring). Generate multiple codes when you need a batch for handout or printing."}
+          ? "Invitees create an Individual user account for a new network and choose their own network ID on the join form. Every link is single-use, including ones that never expire. Generate multiple codes when you need a batch for handout or printing."
+          : "Invitees join this network as Individual (user-role) members. Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
       </Text>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -373,57 +379,62 @@ function MemberInviteSection({
           onChange={setExpiryKey}
           disabled={disabled || loading}
           compact
-          style={{ flex: 1.2 }}
+          style={{ flex: 1 }}
         />
-        <FormSelect
-          label="Number of QR codes"
-          value={countKey}
-          options={QR_COUNT_OPTIONS.map((o) => ({
-            value: o.value,
-            label: o.label,
-            description: o.description,
-          }))}
-          onChange={setCountKey}
-          disabled={disabled || loading}
-          compact
-          style={{ flex: 0.85 }}
-        />
-        <Pressable
-          onPress={() =>
-            void downloadRows(
-              items,
-              `member-invites-${items.length || count}.csv`,
-            )
-          }
-          disabled={disabled || items.length === 0 || downloading}
-          accessibilityRole="button"
-          accessibilityLabel="Download all"
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor:
-              disabled || items.length === 0
-                ? colors.bgMuted
-                : colors.bgCard,
-            opacity: disabled || items.length === 0 || downloading ? 0.45 : 1,
-          }}
-        >
-          {downloading ? (
-            <ActivityIndicator size="small" color={colors.accent} />
-          ) : (
-            <Download
-              size={18}
-              color={
-                items.length === 0 ? colors.textDim : colors.accent
-              }
+        {isSystemAdmin ? (
+          <>
+            <FormSelect
+              label="Number of QR codes"
+              value={countKey}
+              options={QR_COUNT_OPTIONS.map((o) => ({
+                value: o.value,
+                label: o.label,
+                description: o.description,
+              }))}
+              onChange={setCountKey}
+              disabled={disabled || loading}
+              compact
+              style={{ flex: 0.85 }}
             />
-          )}
-        </Pressable>
+            <Pressable
+              onPress={() =>
+                void downloadRows(
+                  items,
+                  `member-invites-${items.length || count}.csv`,
+                )
+              }
+              disabled={disabled || items.length === 0 || downloading}
+              accessibilityRole="button"
+              accessibilityLabel="Download all"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: colors.border,
+                backgroundColor:
+                  disabled || items.length === 0
+                    ? colors.bgMuted
+                    : colors.bgCard,
+                opacity:
+                  disabled || items.length === 0 || downloading ? 0.45 : 1,
+              }}
+            >
+              {downloading ? (
+                <ActivityIndicator size="small" color={colors.accent} />
+              ) : (
+                <Download
+                  size={18}
+                  color={
+                    items.length === 0 ? colors.textDim : colors.accent
+                  }
+                />
+              )}
+            </Pressable>
+          </>
+        ) : null}
       </View>
 
       <Button
@@ -436,7 +447,7 @@ function MemberInviteSection({
         fullWidth
       />
 
-      {downloadLink ? (
+      {isSystemAdmin && downloadLink ? (
         <View
           style={{
             gap: 6,
@@ -491,7 +502,11 @@ function MemberInviteSection({
       {items.length === 0 ? (
         <QrPreview
           value={null}
-          label="Generate to mint invite QR code(s)"
+          label={
+            isSystemAdmin
+              ? "Generate to mint invite QR code(s)"
+              : "Generate to mint an invite QR code"
+          }
         />
       ) : items.length === 1 ? (
         <>
@@ -505,17 +520,22 @@ function MemberInviteSection({
           >
             {inviteExpiryLabel(items[0]?.expires_at ?? null)}
           </Text>
-          <Button
-            label="Download"
-            variant="secondary"
-            onPress={() =>
-              void downloadRows(items, `member-invite-${items[0]?.token ?? "1"}.csv`)
-            }
-            loading={downloading}
-            leftIcon={<Download size={16} color={colors.text} />}
-            disabled={downloading}
-            fullWidth
-          />
+          {isSystemAdmin ? (
+            <Button
+              label="Download"
+              variant="secondary"
+              onPress={() =>
+                void downloadRows(
+                  items,
+                  `member-invite-${items[0]?.token ?? "1"}.csv`,
+                )
+              }
+              loading={downloading}
+              leftIcon={<Download size={16} color={colors.text} />}
+              disabled={downloading}
+              fullWidth
+            />
+          ) : null}
         </>
       ) : (
         <View style={{ gap: 8 }}>
@@ -711,21 +731,23 @@ function MemberInviteSection({
                 >
                   {detail.url}
                 </Text>
-                <Button
-                  label="Download"
-                  variant="primary"
-                  onPress={() =>
-                    void downloadRows(
-                      [detail],
-                      `member-invite-${detail.token}.csv`,
-                    )
-                  }
-                  loading={downloading}
-                  leftIcon={<Download size={16} color="#fff" />}
-                  disabled={downloading}
-                  fullWidth
-                />
-                {downloadLink ? (
+                {isSystemAdmin ? (
+                  <Button
+                    label="Download"
+                    variant="primary"
+                    onPress={() =>
+                      void downloadRows(
+                        [detail],
+                        `member-invite-${detail.token}.csv`,
+                      )
+                    }
+                    loading={downloading}
+                    leftIcon={<Download size={16} color="#fff" />}
+                    disabled={downloading}
+                    fullWidth
+                  />
+                ) : null}
+                {isSystemAdmin && downloadLink ? (
                   <View style={{ width: "100%", gap: 4 }}>
                     <Text
                       style={{
