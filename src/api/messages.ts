@@ -531,6 +531,12 @@ export type MessageFeaturePropagationResponse = {
   skipped?: boolean;
   reason?: string | null;
   metadata?: Record<string, unknown> | null;
+  webhook_sent?: number | null;
+  webhook_failed?: number | null;
+  webhook_targets?: number | null;
+  webhook_no_urls?: boolean | null;
+  webhook_skipped?: boolean | null;
+  webhook_skipped_network?: boolean | null;
 };
 
 export function messageFromGeoPropagation(

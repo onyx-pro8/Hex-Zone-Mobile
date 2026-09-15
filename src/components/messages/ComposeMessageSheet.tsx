@@ -33,6 +33,7 @@ import {
 } from "@/api/messageFeature";
 import { listGuestRequests } from "@/api/guest";
 import { presentLocalMessageNotification } from "@/lib/notifications";
+import { toastSmartHomeWebhookDelivery } from "@/lib/smartHomeToast";
 import {
   privateLocationStatusMessage,
   type PrivateLocationStatus,
@@ -719,6 +720,7 @@ export function ComposeMessageSheet({
         });
         if (result.error) throw new Error(result.error);
         const body = result.data;
+        toastSmartHomeWebhookDelivery(body);
         if (body && !body.skipped && ownerId != null) {
           applyGeoPropagationToInbox({
             ...body,

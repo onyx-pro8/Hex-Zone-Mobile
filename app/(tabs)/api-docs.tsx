@@ -23,6 +23,7 @@ import {
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL } from "@/api/client";
 import { getToken } from "@/lib/storage";
@@ -303,7 +304,7 @@ export default function ApiDocsScreen() {
           <ScrollView
             contentContainerStyle={{
               paddingHorizontal: 16,
-              paddingBottom: 32,
+              paddingBottom: 120,
               gap: 14,
             }}
             keyboardShouldPersistTaps="handled"
@@ -585,194 +586,6 @@ export default function ApiDocsScreen() {
               </Card>
             ) : null}
 
-            {/* Parameters */}
-            <Card>
-              <Text
-                style={{
-                  color: colors.textMuted,
-                  fontSize: 10,
-                  fontWeight: "700",
-                  letterSpacing: 1.6,
-                  textTransform: "uppercase",
-                  marginBottom: 4,
-                }}
-              >
-                Parameters
-              </Text>
-              {!hasAnyParam ? (
-                <Text
-                  style={{
-                    color: colors.textDim,
-                    fontSize: 13,
-                    marginTop: 6,
-                  }}
-                >
-                  No parameters.
-                </Text>
-              ) : (
-                <View style={{ marginTop: 12, gap: 14 }}>
-                  {pathQueryParams.map((p) => (
-                    <View key={`${p.in}-${p.name}`}>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: colors.text,
-                            fontSize: 13,
-                            fontWeight: "700",
-                          }}
-                        >
-                          {p.name}
-                          {p.required ? (
-                            <Text style={{ color: colors.danger }}> *</Text>
-                          ) : null}
-                        </Text>
-                        <Text
-                          style={{
-                            color: colors.textDim,
-                            fontSize: 10,
-                            fontWeight: "700",
-                            letterSpacing: 1,
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {p.in} · {p.type ?? "string"}
-                        </Text>
-                      </View>
-                      <TextInput
-                        value={values[p.name] ?? ""}
-                        onChangeText={(v) => setField(p.name, v)}
-                        placeholder={p.placeholder ?? p.name}
-                        placeholderTextColor={colors.textDim}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        keyboardType={
-                          p.type === "number" ? "numeric" : "default"
-                        }
-                        style={{
-                          color: colors.text,
-                          fontSize: 13,
-                          fontFamily: monoFamily,
-                          backgroundColor: colors.bgSurface,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                        }}
-                      />
-                    </View>
-                  ))}
-                  {selected?.bodyJson ? (
-                    <View>
-                      <Text
-                        style={{
-                          color: colors.text,
-                          fontSize: 13,
-                          fontWeight: "700",
-                          marginBottom: 6,
-                        }}
-                      >
-                        body{" "}
-                        <Text style={{ color: colors.textDim, fontSize: 11 }}>
-                          (JSON)
-                        </Text>
-                      </Text>
-                      <TextInput
-                        value={values.body ?? ""}
-                        onChangeText={(v) => setField("body", v)}
-                        multiline
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        spellCheck={false}
-                        style={{
-                          color: colors.text,
-                          fontSize: 12,
-                          fontFamily: monoFamily,
-                          backgroundColor: colors.bgSurface,
-                          borderRadius: 10,
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          minHeight: 180,
-                          textAlignVertical: "top",
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    bodyInputs.map((p) => (
-                      <View key={`${p.in}-${p.name}`}>
-                        <View
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            gap: 8,
-                            marginBottom: 6,
-                          }}
-                        >
-                          <Text
-                            style={{
-                              color: colors.text,
-                              fontSize: 13,
-                              fontWeight: "700",
-                            }}
-                          >
-                            {p.name}
-                            {p.required ? (
-                              <Text style={{ color: colors.danger }}> *</Text>
-                            ) : null}
-                          </Text>
-                          <Text
-                            style={{
-                              color: colors.textDim,
-                              fontSize: 10,
-                              fontWeight: "700",
-                              letterSpacing: 1,
-                              textTransform: "uppercase",
-                            }}
-                          >
-                            body · {p.type ?? "string"}
-                          </Text>
-                        </View>
-                        <TextInput
-                          value={values[p.name] ?? ""}
-                          onChangeText={(v) => setField(p.name, v)}
-                          placeholder={p.placeholder ?? p.name}
-                          placeholderTextColor={colors.textDim}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          secureTextEntry={p.name
-                            .toLowerCase()
-                            .includes("password")}
-                          keyboardType={
-                            p.type === "number" ? "numeric" : "default"
-                          }
-                          style={{
-                            color: colors.text,
-                            fontSize: 13,
-                            fontFamily: monoFamily,
-                            backgroundColor: colors.bgSurface,
-                            borderRadius: 10,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            paddingHorizontal: 12,
-                            paddingVertical: 10,
-                          }}
-                        />
-                      </View>
-                    ))
-                  )}
-                </View>
-              )}
-            </Card>
-
             {/* Curl preview */}
             <Card>
               <View
@@ -868,7 +681,7 @@ export default function ApiDocsScreen() {
                   color: colors.text,
                   fontSize: 12,
                   fontFamily: monoFamily,
-                  backgroundColor: colors.bg,
+                  backgroundColor: colors.bgSurface,
                   borderRadius: 10,
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -886,11 +699,11 @@ export default function ApiDocsScreen() {
                 }}
               >
                 Edit freely for your terminal — Send below still uses the
-                parameters above.
+                parameters in Live test.
               </Text>
             </Card>
 
-            {/* Live test */}
+            {/* Live test — request inputs + send + response */}
             <Card>
               <Text
                 style={{
@@ -904,51 +717,235 @@ export default function ApiDocsScreen() {
               >
                 Live test
               </Text>
-              <Pressable
-                onPress={() => void sendLive()}
-                disabled={loading}
-                style={({ pressed }) => ({
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  paddingHorizontal: 18,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: colors.accent,
-                  opacity: loading ? 0.6 : pressed ? 0.9 : 1,
-                })}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "flex-start",
-                    gap: 8,
-                  }}
-                >
-                  <Send size={14} color="#fff" />
+
+              <View style={{ gap: 14, marginBottom: 14 }}>
+                <View>
                   <Text
                     style={{
-                      color: "#fff",
+                      color: colors.text,
                       fontSize: 13,
-                      fontWeight: "800",
-                      letterSpacing: 0.4,
+                      fontWeight: "700",
+                      marginBottom: 6,
                     }}
                   >
-                    {loading ? "SENDING…" : "SEND REQUEST"}
+                    Request URL
                   </Text>
+                  <TextInput
+                    value={previewUrl}
+                    editable={false}
+                    selectTextOnFocus
+                    multiline
+                    style={{
+                      color: colors.text,
+                      fontSize: 12,
+                      fontFamily: monoFamily,
+                      backgroundColor: colors.bgSurface,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      minHeight: 44,
+                      textAlignVertical: "top",
+                    }}
+                  />
                 </View>
-              </Pressable>
+
+                {!hasAnyParam ? (
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 13,
+                    }}
+                  >
+                    No path, query, or body parameters for this endpoint.
+                  </Text>
+                ) : (
+                  <>
+                    {pathQueryParams.map((p) => (
+                      <View key={`${p.in}-${p.name}`}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 6,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: colors.text,
+                              fontSize: 13,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {p.name}
+                            {p.required ? (
+                              <Text style={{ color: colors.danger }}> *</Text>
+                            ) : null}
+                          </Text>
+                          <Text
+                            style={{
+                              color: colors.textDim,
+                              fontSize: 10,
+                              fontWeight: "700",
+                              letterSpacing: 1,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {p.in} · {p.type ?? "string"}
+                          </Text>
+                        </View>
+                        <TextInput
+                          value={values[p.name] ?? ""}
+                          onChangeText={(v) => setField(p.name, v)}
+                          placeholder={p.placeholder ?? p.name}
+                          placeholderTextColor={colors.textDim}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType={
+                            p.type === "number" ? "numeric" : "default"
+                          }
+                          style={{
+                            color: colors.text,
+                            fontSize: 13,
+                            fontFamily: monoFamily,
+                            backgroundColor: colors.bgSurface,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            minHeight: 44,
+                          }}
+                        />
+                      </View>
+                    ))}
+                    {selected?.bodyJson ? (
+                      <View>
+                        <Text
+                          style={{
+                            color: colors.text,
+                            fontSize: 13,
+                            fontWeight: "700",
+                            marginBottom: 6,
+                          }}
+                        >
+                          body{" "}
+                          <Text style={{ color: colors.textDim, fontSize: 11 }}>
+                            (JSON)
+                          </Text>
+                        </Text>
+                        <TextInput
+                          value={values.body ?? ""}
+                          onChangeText={(v) => setField("body", v)}
+                          multiline
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          spellCheck={false}
+                          placeholder='{"key": "value"}'
+                          placeholderTextColor={colors.textDim}
+                          style={{
+                            color: colors.text,
+                            fontSize: 12,
+                            fontFamily: monoFamily,
+                            backgroundColor: colors.bgSurface,
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            minHeight: 180,
+                            textAlignVertical: "top",
+                          }}
+                        />
+                      </View>
+                    ) : (
+                      bodyInputs.map((p) => (
+                        <View key={`${p.in}-${p.name}`}>
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 8,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: colors.text,
+                                fontSize: 13,
+                                fontWeight: "700",
+                              }}
+                            >
+                              {p.name}
+                              {p.required ? (
+                                <Text style={{ color: colors.danger }}> *</Text>
+                              ) : null}
+                            </Text>
+                            <Text
+                              style={{
+                                color: colors.textDim,
+                                fontSize: 10,
+                                fontWeight: "700",
+                                letterSpacing: 1,
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              body · {p.type ?? "string"}
+                            </Text>
+                          </View>
+                          <TextInput
+                            value={values[p.name] ?? ""}
+                            onChangeText={(v) => setField(p.name, v)}
+                            placeholder={p.placeholder ?? p.name}
+                            placeholderTextColor={colors.textDim}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            secureTextEntry={p.name
+                              .toLowerCase()
+                              .includes("password")}
+                            keyboardType={
+                              p.type === "number" ? "numeric" : "default"
+                            }
+                            style={{
+                              color: colors.text,
+                              fontSize: 13,
+                              fontFamily: monoFamily,
+                              backgroundColor: colors.bgSurface,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              minHeight: 44,
+                            }}
+                          />
+                        </View>
+                      ))
+                    )}
+                  </>
+                )}
+              </View>
+
+              <Button
+                label={loading ? "Sending…" : "Send request"}
+                onPress={() => void sendLive()}
+                disabled={loading}
+                loading={loading}
+                fullWidth
+                leftIcon={<Send size={14} color="#fff" />}
+              />
+
               <View
                 style={{
                   marginTop: 14,
                   borderRadius: 12,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  backgroundColor: colors.bg,
+                  backgroundColor: colors.bgSurface,
                   padding: 12,
-                  minHeight: 120,
+                  minHeight: 140,
                 }}
               >
                 {responseStatus != null ? (
@@ -967,18 +964,24 @@ export default function ApiDocsScreen() {
                     HTTP {responseStatus}
                   </Text>
                 ) : null}
-                <Text
-                  selectable
+                <TextInput
+                  value={
+                    responseText ||
+                    "Response will appear here after you send a request."
+                  }
+                  editable={false}
+                  multiline
+                  selectTextOnFocus
                   style={{
                     color: responseText ? colors.text : colors.textDim,
                     fontSize: 12,
                     fontFamily: monoFamily,
                     lineHeight: 17,
+                    minHeight: 100,
+                    padding: 0,
+                    textAlignVertical: "top",
                   }}
-                >
-                  {responseText ||
-                    "Response will appear here after you send a request."}
-                </Text>
+                />
               </View>
             </Card>
           </ScrollView>

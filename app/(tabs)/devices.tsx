@@ -631,7 +631,7 @@ export default function DevicesScreen() {
                 />
               );
             }}
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }}
             refreshControl={
               <RefreshControl
                 refreshing={loading}

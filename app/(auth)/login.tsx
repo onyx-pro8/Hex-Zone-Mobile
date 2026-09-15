@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -37,11 +37,14 @@ import {
 } from "@/lib/secureCredentials";
 import { toast } from "@/lib/toast";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { colors } from "@/theme/colors";
 
 export default function LoginScreen() {
   const router = useRouter();
   const bottomInset = useBottomSafeInset();
+  const keyboardInset = useKeyboardBottomInset();
+  const scrollRef = useRef<ScrollView>(null);
   const { login, authError, clearAuthError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -51,6 +54,13 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [deviceChangePromptVisible, setDeviceChangePromptVisible] =
     useState(false);
+
+  const scrollFocusedFieldIntoView = useCallback(() => {
+    // Wait for keyboard + content padding to settle, then reveal the form.
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, Platform.OS === "android" ? 120 : 60);
+  }, []);
 
   // Pick up errors from background device sync (e.g. account device limit
   // hit when restoring an existing token on a second phone).
@@ -245,11 +255,16 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: Math.max(24, bottomInset + 16),
+            paddingBottom:
+              Platform.OS === "android" && keyboardInset > 0
+                ? keyboardInset + 16
+                : Math.max(24, bottomInset + 16),
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <AuthMapPanel
             center={center}
@@ -326,6 +341,7 @@ export default function LoginScreen() {
               keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
+              onFocus={scrollFocusedFieldIntoView}
               leftIcon={<Mail size={18} color={colors.textMuted} />}
             />
             <Input
@@ -343,6 +359,7 @@ export default function LoginScreen() {
               }
               value={password}
               onChangeText={setPassword}
+              onFocus={scrollFocusedFieldIntoView}
               leftIcon={<Lock size={18} color={colors.textMuted} />}
             />
 

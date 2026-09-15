@@ -259,7 +259,7 @@ export function ZoneToolsDock({
           ]}
         >
           <View style={styles.collapsedArrow}>
-            <ChevronDown size={18} color={colors.textMuted} strokeWidth={2.4} />
+            <ChevronUp size={18} color={colors.textMuted} strokeWidth={2.4} />
           </View>
           <View style={styles.collapsedDivider} />
           {selected.icon({
@@ -288,9 +288,9 @@ export function ZoneToolsDock({
           ]}
         >
           {expanded ? (
-            <ChevronUp size={22} color="#fff" strokeWidth={2.4} />
+            <ChevronDown size={22} color="#fff" strokeWidth={2.4} />
           ) : (
-            <ChevronDown size={22} color={colors.textMuted} strokeWidth={2.4} />
+            <ChevronUp size={22} color={colors.textMuted} strokeWidth={2.4} />
           )}
         </Pressable>
       )}

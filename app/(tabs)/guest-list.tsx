@@ -245,7 +245,7 @@ export default function GuestListScreen() {
                 )}
                 contentContainerStyle={{
                   paddingHorizontal: 20,
-                  paddingBottom: 24,
+                  paddingBottom: 120,
                 }}
                 refreshControl={
                   <RefreshControl

@@ -122,6 +122,9 @@ export type QrJoinResult = {
     account_type?: string;
     account_owner_id?: number | null;
     role?: string;
+    /** Rendered welcome toast text after a network-admin member invite. */
+    joinWelcomeMessage?: string | null;
+    join_welcome_message?: string | null;
   } | null;
   error: string | null;
   status?: number;

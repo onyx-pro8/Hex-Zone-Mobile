@@ -20,6 +20,7 @@ import {
   notifyIncomingInboxMessage,
 } from "@/lib/incomingMessageNotify";
 import { isRunningExpoGo } from "@/lib/pushSupport";
+import { toastSmartHomeWebhookOwnerResult } from "@/lib/smartHomeToast";
 import { toast } from "@/lib/toast";
 import { useWebSocket } from "./useWebSocket";
 
@@ -248,8 +249,25 @@ export function useMessagesFeed(options?: {
       return;
     }
     const geoEvent = parseMessageFeatureSocketEvent(lastMessage);
+    if (geoEvent?.type === "SMART_HOME_WEBHOOK") {
+      toastSmartHomeWebhookOwnerResult(geoEvent.data);
+      return;
+    }
     if (geoEvent?.type === "NEW_GEO_MESSAGE") {
       applyGeoPropagationToInbox(geoEvent.data);
+      return;
+    }
+    if (geoEvent?.type === "NEW_MESSAGE") {
+      const row = geoEvent.data;
+      if (geoEvent.memberJoinWelcome) {
+        const text = (row.message ?? "").trim();
+        if (text) {
+          toast.info(text, { title: "Welcome", duration: 4500 });
+        }
+      }
+      if (ownerId != null) void notifyIncomingInboxMessage(row, ownerId);
+      prependInboxMessage(row);
+      scheduleInboxRefetchFromSocket();
       return;
     }
     const row = parseMessageSocketPayload(lastMessage);

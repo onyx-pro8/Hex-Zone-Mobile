@@ -142,7 +142,15 @@ export default function JoinScreen() {
           join.error ?? "Could not complete invite join.",
         );
       }
+      const welcomeText = (
+        join.data.joinWelcomeMessage ??
+        join.data.join_welcome_message ??
+        ""
+      ).trim();
       await login(email.trim(), password, { rememberMe: true });
+      if (welcomeText) {
+        toast.info(welcomeText, { title: "Welcome", duration: 5000 });
+      }
       router.replace("/(tabs)");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";

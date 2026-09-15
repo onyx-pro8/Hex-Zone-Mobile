@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -167,6 +168,7 @@ function splitName(full: string): { first_name: string; last_name: string } {
 }
 
 export default function UserSettingsScreen() {
+  const router = useRouter();
   const { user, refreshUser, setUserAvatar } = useAuth();
   const settings = useAppSettings();
   const isSystemAdmin = isSystemAdministrator({
@@ -372,6 +374,7 @@ export default function UserSettingsScreen() {
             title="User settings"
             subtitle="Profile, address & broadcast name"
             showBack
+            onBack={() => router.replace("/(tabs)")}
           />
 
           <View style={{ paddingHorizontal: 20 }}>
