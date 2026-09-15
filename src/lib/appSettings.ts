@@ -37,6 +37,12 @@ export type AppSettings = {
   address: string;
   sharedNotification: SharedNotificationSettings;
   quickMessages: Record<QuickMessageType, string>;
+  /**
+   * Admin template for the SERVICE welcome when a member joins.
+   * Placeholders: {member_name}, {network_name}, {first_name}, {last_name}.
+   * Blank uses the server default.
+   */
+  memberJoinWelcome: string;
 };
 
 export const QUICK_MESSAGE_LABELS: Record<QuickMessageType, string> = {
@@ -46,6 +52,9 @@ export const QUICK_MESSAGE_LABELS: Record<QuickMessageType, string> = {
   UNKNOWN: "Unknown alert",
   WELLNESS_CHECK: "Wellness check",
 };
+
+export const DEFAULT_MEMBER_JOIN_WELCOME =
+  "Welcome! {member_name} has joined the {network_name}.";
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   broadcastName: "",
@@ -65,6 +74,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     UNKNOWN: "Unknown alert reported in the zone.",
     WELLNESS_CHECK: "Wellness check: please confirm you are safe and well.",
   },
+  memberJoinWelcome: "",
 };
 
 /**
@@ -113,6 +123,10 @@ function mergeSettings(raw: unknown): AppSettings {
         ]),
       ),
     },
+    memberJoinWelcome:
+      typeof row.memberJoinWelcome === "string"
+        ? row.memberJoinWelcome
+        : DEFAULT_APP_SETTINGS.memberJoinWelcome,
   };
 }
 

@@ -40,6 +40,7 @@ import {
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 
 const accountOptions: {
   value: AccountType;
@@ -80,6 +81,7 @@ const labelStyle = {
 export default function SignupScreen() {
   const router = useRouter();
   const bottomInset = useBottomSafeInset();
+  const keyboardInset = useKeyboardBottomInset();
   const { register } = useAuth();
   const params = useLocalSearchParams<{ invite_token?: string | string[] }>();
   const inviteToken = useMemo(() => {
@@ -218,9 +220,13 @@ export default function SignupScreen() {
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom: Math.max(24, bottomInset + 16),
+            paddingBottom:
+              Platform.OS === "android" && keyboardInset > 0
+                ? keyboardInset + 16
+                : Math.max(24, bottomInset + 16),
           }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <AuthMapPanel
             center={center}

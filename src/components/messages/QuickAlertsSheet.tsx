@@ -19,6 +19,7 @@ import { useAuth } from "@/context/AuthContext";
 import { propagateMessageFeatureMessage } from "@/api/messageFeature";
 import { resolveBroadcastName, useAppSettings, type QuickMessageType } from "@/lib/appSettings";
 import { presentLocalMessageNotification } from "@/lib/notifications";
+import { toastSmartHomeWebhookDelivery } from "@/lib/smartHomeToast";
 import {
   messagePositionSourceLabel,
   resolveMessagePropagationPositionForType,
@@ -264,6 +265,7 @@ export function QuickAlertsSheet({
           position: resolved.position,
         });
         if (result.error) throw new Error(result.error);
+        toastSmartHomeWebhookDelivery(result.data);
         setStatus(
           `${toMessageTypeLabel(type as MessageType)} sent · ${messagePositionSourceLabel(resolved.source)}`,
         );

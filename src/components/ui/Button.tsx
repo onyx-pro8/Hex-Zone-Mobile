@@ -75,32 +75,32 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
   if (variant === "primary") {
     return (
       <Animated.View
-        style={{
-          height: sz.height,
-          borderRadius: sz.height / 2,
-          alignSelf: fullWidth ? "stretch" : "auto",
-          opacity: isDisabled ? 0.6 : 1,
-          shadowColor: colors.accent,
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.45,
-          shadowRadius: 18,
-          elevation: 10,
-          transform: [{ scale: scaleAnim }],
-        }}
+        style={[
+          {
+            height: sz.height,
+            borderRadius: sz.height / 2,
+            alignSelf: fullWidth ? "stretch" : "auto",
+            opacity: isDisabled ? 0.6 : 1,
+            shadowColor: colors.accent,
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.35,
+            shadowRadius: 12,
+            elevation: 6,
+            transform: [{ scale: scaleAnim }],
+          },
+          style,
+        ]}
       >
         <Pressable
           ref={ref}
           disabled={isDisabled}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
-          style={[
-            {
-              flex: 1,
-              borderRadius: sz.height / 2,
-              overflow: "hidden",
-            },
-            style,
-          ]}
+          style={{
+            flex: 1,
+            borderRadius: sz.height / 2,
+            overflow: "hidden",
+          }}
           {...rest}
         >
           <LinearGradient
@@ -129,6 +129,7 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
                     fontWeight: "700",
                     letterSpacing: 0.4,
                   }}
+                  numberOfLines={1}
                 >
                   {label}
                 </Text>
@@ -160,33 +161,33 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
 
   return (
     <Animated.View
-      style={{
-        height: sz.height,
-        borderRadius: sz.height / 2,
-        alignSelf: fullWidth ? "stretch" : "auto",
-        opacity: isDisabled ? 0.6 : 1,
-        transform: [{ scale: scaleAnim }],
-      }}
+      style={[
+        {
+          height: sz.height,
+          borderRadius: sz.height / 2,
+          alignSelf: fullWidth ? "stretch" : "auto",
+          opacity: isDisabled ? 0.6 : 1,
+          transform: [{ scale: scaleAnim }],
+        },
+        style,
+      ]}
     >
       <Pressable
         ref={ref}
         disabled={isDisabled}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        style={[
-          {
-            flex: 1,
-            paddingHorizontal: sz.px,
-            borderRadius: sz.height / 2,
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: p.bg,
-            borderWidth: p.border ? 1 : 0,
-            borderColor: p.border,
-          },
-          style,
-        ]}
+        style={{
+          flex: 1,
+          paddingHorizontal: sz.px,
+          borderRadius: sz.height / 2,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: p.bg,
+          borderWidth: p.border ? 1 : 0,
+          borderColor: p.border,
+        }}
         {...rest}
       >
         {loading ? (
@@ -201,6 +202,7 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
                 fontWeight: "600",
                 letterSpacing: 0.3,
               }}
+              numberOfLines={1}
             >
               {label}
             </Text>

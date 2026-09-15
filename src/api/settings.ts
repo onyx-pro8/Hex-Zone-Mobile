@@ -13,7 +13,9 @@ export type RemoteAppSettings = {
   broadcastName?: string;
   address?: string;
   sharedNotification?: Partial<AppSettings["sharedNotification"]>;
+  smartHomeDevices?: Array<{ hid: string; name?: string; active?: boolean }>;
   quickMessages?: Partial<AppSettings["quickMessages"]>;
+  memberJoinWelcome?: string;
 };
 
 export async function getRemoteAppSettings() {

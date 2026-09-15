@@ -105,6 +105,11 @@ export default function TabsLayout() {
           <Tabs.Screen name="recent-services" options={{ href: null }} />
           <Tabs.Screen name="settings" options={{ href: null }} />
           <Tabs.Screen name="user-settings" options={{ href: null }} />
+          <Tabs.Screen name="smart-home-settings" options={{ href: null }} />
+          <Tabs.Screen name="quick-alert-messages" options={{ href: null }} />
+          <Tabs.Screen name="member-join-welcome" options={{ href: null }} />
+          <Tabs.Screen name="guest-management" options={{ href: null }} />
+          <Tabs.Screen name="notification-settings" options={{ href: null }} />
           <Tabs.Screen name="emergency-log" options={{ href: null }} />
           <Tabs.Screen name="alerts" options={{ href: null }} />
           <Tabs.Screen name="private-thread" options={{ href: null }} />

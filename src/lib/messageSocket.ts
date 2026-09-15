@@ -4,12 +4,22 @@ import { normalizeMessage, type Message, type MessageFeaturePropagationResponse 
 type IncomingNewMessage = {
   type: "NEW_MESSAGE";
   data: Message;
+  memberJoinWelcome?: boolean;
 };
 
 export type MessageFeatureSocketEvent =
   | IncomingNewMessage
   | { type: "NEW_GEO_MESSAGE"; data: MessageFeaturePropagationResponse }
-  | { type: "PERMISSION_MESSAGE"; data: Record<string, unknown> };
+  | { type: "PERMISSION_MESSAGE"; data: Record<string, unknown> }
+  | {
+      type: "SMART_HOME_WEBHOOK";
+      data: {
+        ok?: boolean;
+        hid?: string;
+        title?: string;
+        toast?: string;
+      };
+    };
 
 type SocketEvent =
   | MessageFeatureSocketEvent
@@ -60,6 +70,23 @@ export function parseMessageSocketPayload(raw: string): Message | null {
     return event.data;
   }
   return null;
+}
+
+/** True when the NEW_MESSAGE frame is a member-join welcome toast. */
+export function isMemberJoinWelcomeSocketEvent(raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw) as { type?: unknown; data?: unknown };
+    if (parsed.type !== "NEW_MESSAGE" || !parsed.data || typeof parsed.data !== "object") {
+      return false;
+    }
+    const data = parsed.data as Record<string, unknown>;
+    return (
+      data.member_join_welcome === true ||
+      data.memberJoinWelcome === true
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function parseInboxSocketRefetchSignal(raw: string): boolean {
@@ -256,7 +283,19 @@ export function parseMessageFeatureSocketEvent(
     const parsed = JSON.parse(raw) as SocketEvent;
     if (parsed.type === "NEW_MESSAGE") {
       const normalized = normalizeMessage(parsed.data);
-      if (normalized) return { type: "NEW_MESSAGE", data: normalized };
+      if (normalized) {
+        const data =
+          parsed.data && typeof parsed.data === "object"
+            ? (parsed.data as Record<string, unknown>)
+            : {};
+        const memberJoinWelcome =
+          data.member_join_welcome === true || data.memberJoinWelcome === true;
+        return {
+          type: "NEW_MESSAGE",
+          data: normalized,
+          ...(memberJoinWelcome ? { memberJoinWelcome: true } : {}),
+        };
+      }
     }
     if (parsed.type === "NEW_GEO_MESSAGE" && isPropagationResponse(parsed.data)) {
       return { type: "NEW_GEO_MESSAGE", data: parsed.data };
@@ -265,6 +304,17 @@ export function parseMessageFeatureSocketEvent(
       return {
         type: "PERMISSION_MESSAGE",
         data: parsed.data as Record<string, unknown>,
+      };
+    }
+    if (parsed.type === "SMART_HOME_WEBHOOK" && parsed.data && typeof parsed.data === "object") {
+      return {
+        type: "SMART_HOME_WEBHOOK",
+        data: parsed.data as {
+          ok?: boolean;
+          hid?: string;
+          title?: string;
+          toast?: string;
+        },
       };
     }
   } catch {

@@ -210,7 +210,7 @@ export default function GuestArrivalMessagesScreen() {
             </View>
           ) : (
             <ScrollView
-              contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 40 }}
+              contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 120 }}
               keyboardShouldPersistTaps="handled"
               refreshControl={
                 <RefreshControl

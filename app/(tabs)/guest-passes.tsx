@@ -240,7 +240,7 @@ export default function GuestPassesScreen() {
                 )}
                 contentContainerStyle={{
                   paddingHorizontal: 20,
-                  paddingBottom: 24,
+                  paddingBottom: 120,
                 }}
                 refreshControl={
                   <RefreshControl
