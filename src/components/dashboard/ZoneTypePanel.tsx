@@ -348,8 +348,8 @@ export function ZoneTypePanel({
       <View style={{ gap: 12 }}>
         <Text style={hintStyle}>
           {builder.communalIdLocked
-            ? "Communal does not draw a zone. Select public zones, then save to assign your system-issued Communal ID."
-            : "Communal does not draw a zone. Select public zones, validate or generate a Communal ID, then save to assign it."}
+            ? "Communal does not draw a zone. Select primary zones in your network, then save to assign your system-issued Communal ID."
+            : "Communal does not draw a zone. Select primary zones in your network, validate or generate a Communal ID, then save to assign it."}
         </Text>
         <PublicZonesMultiSelect
           zones={builder.publicZones}

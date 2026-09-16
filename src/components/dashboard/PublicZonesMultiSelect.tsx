@@ -134,7 +134,7 @@ export function PublicZonesMultiSelect({
           textTransform: "uppercase",
         }}
       >
-        Public zones
+        Network primary zones
       </Text>
 
       <View
@@ -162,10 +162,10 @@ export function PublicZonesMultiSelect({
                 }}
               >
                 {loading
-                  ? "Loading public zones…"
+                  ? "Loading network primary zones…"
                   : zones.length === 0
-                    ? "No public zones yet"
-                    : "Search and select public zones…"}
+                    ? "No primary zones in your network yet"
+                    : "Search and select primary zones…"}
               </Text>
             </Pressable>
           ) : (
@@ -254,7 +254,7 @@ export function PublicZonesMultiSelect({
                   fontWeight: "700",
                 }}
               >
-                Select public zones
+                Select network primary zones
               </Text>
               <Pressable onPress={closeDropdown} hitSlop={10}>
                 <X size={18} color={colors.textMuted} />
@@ -313,7 +313,9 @@ export function PublicZonesMultiSelect({
                 >
                   {loading
                     ? "Loading…"
-                    : `No zones match “${query.trim() || "…"}”.`}
+                    : zones.length === 0
+                      ? "No primary zones in your network yet"
+                      : `No zones match “${query.trim() || "…"}”.`}
                 </Text>
               }
               renderItem={({ item: zone }) => {
@@ -396,7 +398,7 @@ export function PublicZonesMultiSelect({
               }}
             >
               <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                {selectedIds.length} selected · {zones.length} public
+                {selectedIds.length} selected · {zones.length} available
               </Text>
               <Pressable
                 onPress={closeDropdown}

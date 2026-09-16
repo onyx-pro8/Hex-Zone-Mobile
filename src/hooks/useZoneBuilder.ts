@@ -268,8 +268,8 @@ export function useZoneBuilder(
       const selfName = scope?.currentUserName?.trim();
       if (selfId && selfName) nameById.set(selfId, selfName);
 
-      // Network-scoped only — do not merge cross-account public defining zones
-      // into map/list (those stay on /zones/public for communal picker).
+      // Network-scoped only — communal picker uses /zones/public (network
+      // primary zones), not merged into map/list.
       const byRecordId = new Map<string, SavedZone>();
       if (!zonesRes.error) {
         for (const row of zonesRes.data ?? []) {
