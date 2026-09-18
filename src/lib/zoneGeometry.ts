@@ -432,6 +432,18 @@ export function canDeleteSavedZone(
   return creatorId === scope.currentUserId;
 }
 
+/** Same policy as delete: admin for primary, creator for secondary. */
+export function canEditSavedZone(
+  zone: SavedZone,
+  scope?: {
+    currentUserId?: string;
+    isAccountAdministrator?: boolean;
+    isSystemAdministrator?: boolean;
+  },
+): boolean {
+  return canDeleteSavedZone(zone, scope);
+}
+
 export function zoneRecordToLayer(
   zone: SavedZone,
   index: number,

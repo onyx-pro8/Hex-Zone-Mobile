@@ -10,6 +10,8 @@ const DEVICE_HID_KEY = "zoneweaver:device_hid";
 const PUSH_TOKEN_KEY = "zoneweaver:push_token";
 const MAP_CENTER_KEY = "zoneweaver:map_center";
 const GUEST_SESSION_KEY = "zoneweaver:guest_session";
+/** After logout/inactivity, block silent credential re-login until the next manual login. */
+const SUPPRESS_SILENT_REAUTH_KEY = "zoneweaver:suppress_silent_reauth";
 
 /** Sign out after this long with no foreground activity (12 hours). */
 export const SESSION_INACTIVITY_MS = 12 * 60 * 60 * 1000;
@@ -61,6 +63,26 @@ export async function getRememberMe(): Promise<boolean> {
     return value === "1";
   } catch {
     return true;
+  }
+}
+
+export async function setSuppressSilentReauth(value: boolean): Promise<void> {
+  try {
+    if (value) {
+      await AsyncStorage.setItem(SUPPRESS_SILENT_REAUTH_KEY, "1");
+    } else {
+      await AsyncStorage.removeItem(SUPPRESS_SILENT_REAUTH_KEY);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function getSuppressSilentReauth(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(SUPPRESS_SILENT_REAUTH_KEY)) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -128,6 +150,17 @@ export async function getOrCreateDeviceHid(): Promise<string> {
   } catch {
     return `MOB-${randomHidSuffix(8)}`;
   }
+}
+
+/** Mint a new phone HID (used when the previous one is stuck on another account). */
+export async function rotateDeviceHid(): Promise<string> {
+  const next = `MOB-${randomHidSuffix(8)}`;
+  try {
+    await AsyncStorage.setItem(DEVICE_HID_KEY, next);
+  } catch {
+    /* ignore */
+  }
+  return next;
 }
 
 export async function setDeviceHid(hid: string): Promise<void> {

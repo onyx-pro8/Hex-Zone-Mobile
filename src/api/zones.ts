@@ -27,6 +27,8 @@ export type SavedZone = {
   geo_fence_polygon?: unknown;
   created_at?: string;
   updated_at?: string;
+  /** True when the zone is visible because it was tagged with this network's Communal ID. */
+  shared_via_communal?: boolean;
   /** Present on create when member secondaries were auto-removed. */
   evicted_zones?: {
     id: number;
@@ -98,7 +100,7 @@ export async function createZone(payload: CreateZonePayload) {
 
 export async function updateZone(id: string | number, payload: UpdateZonePayload) {
   return request<SavedZone>({
-    method: "PUT",
+    method: "PATCH",
     url: `/zones/${id}`,
     data: payload,
   });
@@ -193,13 +195,44 @@ export async function validateZoneReference(
 
 export async function generateZoneReference(
   zoneType: "communal_id" = "communal_id",
+  options?: { reference_id?: string; persist?: boolean },
 ) {
   return request<ZoneReferenceValidateResult>({
     method: "POST",
     url: "/zones/generate-reference",
-    data: { zone_type: zoneType },
+    data: {
+      zone_type: zoneType,
+      ...(options?.reference_id
+        ? { reference_id: options.reference_id }
+        : {}),
+      persist: options?.persist ?? true,
+    },
   });
 }
+
+export async function listCommunalIds() {
+  return request<CommunalIdRow[]>({
+    method: "GET",
+    url: "/zones/communal-ids",
+  });
+}
+
+export async function listZonesForCommunalId(referenceId: string) {
+  const id = referenceId.trim();
+  return request<SavedZone[]>({
+    method: "GET",
+    url: `/zones/communal-ids/${encodeURIComponent(id)}/zones`,
+  });
+}
+
+export type CommunalIdRow = {
+  reference_id: string;
+  creator_id?: number | null;
+  creator_name?: string | null;
+  network_id: string;
+  zone_count: number;
+  created_at?: string | null;
+};
 
 export async function listPublicZones(params?: {
   skip?: number;

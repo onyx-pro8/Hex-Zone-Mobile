@@ -45,6 +45,23 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     params: [],
   },
   {
+    id: "utils-email-available",
+    method: "GET",
+    path: "/utils/email-available",
+    group: "core",
+    description:
+      "Public: check whether an email is free before multi-step signup/invite onboarding advances past credentials.",
+    public: true,
+    params: [
+      {
+        name: "email",
+        in: "query",
+        required: true,
+        placeholder: "alex@example.com",
+      },
+    ],
+  },
+  {
     id: "utils-registration-code",
     method: "GET",
     path: "/utils/registration-code",

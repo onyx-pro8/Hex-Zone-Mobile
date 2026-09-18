@@ -8,20 +8,24 @@ import {
 } from "@/lib/expoLocation";
 import { getMembers } from "@/api/members";
 import {
-  assignCommunalId,
   createZone,
   deleteZone,
   generateZoneReference,
   getZoneCapabilities,
   getZones,
+  listCommunalIds,
   listPublicZones,
+  listZonesForCommunalId,
   previewDynamicZone,
+  updateZone,
   validateZoneReference,
+  type CommunalIdRow,
   type CommunalZoneSummary,
   type CreateZonePayload,
   type DynamicZonePreviewResult,
   type GovernmentAddressMode,
   type SavedZone,
+  type UpdateZonePayload,
   type ZoneCapabilities,
   type ZoneReferenceValidateResult,
   type ZoneType,
@@ -32,14 +36,31 @@ import {
   circleToGeoJsonPolygon,
   colorForZoneType,
   canDeleteSavedZone,
+  canEditSavedZone,
   isClosedPolygon,
+  layerFocusPoint,
   latLngRingToGeoJsonPolygon,
+  normalizeZoneType,
+  readZoneCenter,
+  readZoneCircles,
+  readZoneRings,
   ringsFromGeoJsonPolygon,
   savedZoneRecordId,
   zoneRecordToLayer,
   type MapZoneLayer,
   type ZoneCircle,
 } from "@/lib/zoneGeometry";
+
+/** Draw-tool id returned when loading a saved zone for edit. */
+export type ZoneEditToolId =
+  | "polygon"
+  | "circle"
+  | "grid"
+  | "proximity"
+  | "dynamic"
+  | "communal_id"
+  | "government_local_code"
+  | "object";
 
 export type GovernmentFields = {
   postal: string;
@@ -67,10 +88,12 @@ export type ZoneBuilderScope = {
   currentUserId?: string;
   currentUserName?: string;
   isAccountAdministrator?: boolean;
-  /** Server-assigned Communal ID for Individual accounts. */
+  /** @deprecated Individuals no longer receive Communal IDs. */
   assignedCommunalId?: string | null;
-  /** When true, Communal ID input / validate / generate are locked. */
+  /** @deprecated Members/Individuals no longer use Communal tools. */
   communalIdLocked?: boolean;
+  /** Network admins may validate/generate Communal IDs and attach them to primaries. */
+  canUseCommunalTools?: boolean;
 };
 
 function resolveZoneOwnerName(
@@ -92,18 +115,61 @@ function resolveZoneOwnerName(
   return resolved ? { ...zone, owner_name: resolved } : zone;
 }
 
+/** True when a zone config lists this Communal ID. */
+export function zoneHasCommunalId(
+  zone: SavedZone,
+  referenceId: string,
+): boolean {
+  const wanted = referenceId.trim().toUpperCase();
+  if (!wanted) return false;
+  const cfg = (zone.config ?? {}) as Record<string, unknown>;
+  const raw = cfg.communal_ids ?? cfg.communalIds;
+  const ids: string[] = [];
+  if (Array.isArray(raw)) {
+    for (const item of raw) {
+      if (typeof item === "string" && item.trim()) {
+        ids.push(item.trim().toUpperCase());
+      }
+    }
+  }
+  const legacy = cfg.communal_id ?? cfg.communalId;
+  if (typeof legacy === "string" && legacy.trim()) {
+    ids.push(legacy.trim().toUpperCase());
+  }
+  return ids.includes(wanted);
+}
+
 export function useZoneBuilder(
   ownerZoneId: string | undefined,
   scope?: ZoneBuilderScope,
 ) {
-  const communalIdLocked = Boolean(scope?.communalIdLocked);
-  const assignedCommunalId = (
-    scope?.assignedCommunalId ?? ""
-  )
-    .trim()
-    .toUpperCase();
+  const canUseCommunalTools = Boolean(
+    scope?.canUseCommunalTools ?? scope?.isAccountAdministrator,
+  );
+  const communalIdLocked = false;
+  const assignedCommunalId = "";
 
   const [layers, setLayers] = useState<MapZoneLayer[]>([]);
+  /**
+   * Zones tagged with this network's Communal IDs (often other networks).
+   * Drawn on the map, but not listed under Zones — open via Communal ID tap.
+   */
+  const [communalMapLayers, setCommunalMapLayers] = useState<MapZoneLayer[]>(
+    [],
+  );
+  /** All public Communal IDs (any network) — used by the attach picker. */
+  const [publicCommunalIds, setPublicCommunalIds] = useState<CommunalIdRow[]>(
+    [],
+  );
+  /** Communal IDs minted on this network — zones list sidebar only. */
+  const networkCommunalIds = useMemo(() => {
+    const mine = String(ownerZoneId ?? "").trim();
+    if (!mine) return [];
+    return publicCommunalIds.filter(
+      (row) => String(row.network_id ?? "").trim() === mine,
+    );
+  }, [ownerZoneId, publicCommunalIds]);
+
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -125,6 +191,10 @@ export function useZoneBuilder(
   );
   /** Admin create tier: true = primary, false = secondary. Always secondary for non-admins. */
   const [createAsPrimary, setCreateAsPrimary] = useState(false);
+
+  /** DB record id of the zone currently loaded for edit (`null` = create mode). */
+  const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
+  const [editingZoneName, setEditingZoneName] = useState<string | null>(null);
 
   const [zoneType, setZoneType] = useState<ZoneType>("geofence");
   const [zoneName, setZoneName] = useState("My zone");
@@ -185,47 +255,26 @@ export function useZoneBuilder(
   const [matchedCommunalZones, setMatchedCommunalZones] = useState<
     CommunalZoneSummary[]
   >([]);
-  const [definingCommunalCode, setDefiningCommunalCodeState] = useState("");
-  const [definingCommunalValidating, setDefiningCommunalValidating] =
-    useState(false);
-  const [definingCommunalExists, setDefiningCommunalExists] = useState<
-    boolean | null
-  >(null);
+  const [definingCommunalIds, setDefiningCommunalIds] = useState<string[]>([]);
 
-  const setCommunalCode = useCallback(
-    (value: string) => {
-      if (communalIdLocked) return;
-      setCommunalCodeState(value);
-    },
-    [communalIdLocked],
-  );
+  const setCommunalCode = useCallback((value: string) => {
+    setCommunalCodeState(value);
+  }, []);
 
-  const setDefiningCommunalCode = useCallback(
-    (value: string) => {
-      if (communalIdLocked) return;
-      setDefiningCommunalCodeState(value);
-    },
-    [communalIdLocked],
-  );
+  const removeDefiningCommunalId = useCallback((id: string) => {
+    const normalized = id.trim().toUpperCase();
+    setDefiningCommunalIds((prev) =>
+      prev.filter((item) => item !== normalized),
+    );
+  }, []);
 
-  // Individuals always use their server-assigned Communal ID.
-  useEffect(() => {
-    if (!communalIdLocked || !assignedCommunalId) return;
-    setCommunalCodeState(assignedCommunalId);
-    setDefiningCommunalCodeState(assignedCommunalId);
-    setCommunalExists(true);
-    setDefiningCommunalExists(true);
-    setCommunalValidation({
-      valid: true,
-      zone_type: "communal_id",
-      reference_id: assignedCommunalId,
-      geometry: {},
-      config: { communal_id: assignedCommunalId },
-      h3_cells: [],
-      exists: true,
-      message: `Assigned Communal ID ${assignedCommunalId}.`,
-    });
-  }, [communalIdLocked, assignedCommunalId]);
+  const addDefiningCommunalId = useCallback((id: string) => {
+    const normalized = id.trim().toUpperCase();
+    if (!normalized) return;
+    setDefiningCommunalIds((prev) =>
+      prev.includes(normalized) ? prev : [...prev, normalized],
+    );
+  }, []);
 
   // government
   const [governmentMode, setGovernmentMode] =
@@ -246,10 +295,11 @@ export function useZoneBuilder(
   const refresh = useCallback(async () => {
     setLoadingList(true);
     setListError(null);
-    const [zonesRes, capsRes, membersRes] = await Promise.all([
+    const [zonesRes, capsRes, membersRes, communalRes] = await Promise.all([
       getZones(),
       getZoneCapabilities(),
       getMembers(),
+      listCommunalIds(),
     ]);
     if (zonesRes.error) {
       setListError(zonesRes.error);
@@ -257,6 +307,22 @@ export function useZoneBuilder(
     } else {
       setListError(null);
     }
+
+    const communalRows =
+      !communalRes.error && communalRes.data ? communalRes.data : [];
+    setPublicCommunalIds(communalRows);
+
+    const mine = String(ownerZoneId ?? "").trim();
+    const myCommunalWithZones = communalRows.filter(
+      (row) =>
+        String(row.network_id ?? "").trim() === mine &&
+        Number(row.zone_count ?? 0) > 0,
+    );
+    const sharedBatches = await Promise.all(
+      myCommunalWithZones.map((row) =>
+        listZonesForCommunalId(row.reference_id),
+      ),
+    );
 
     {
       const nameById = new Map<string, string>();
@@ -268,21 +334,46 @@ export function useZoneBuilder(
       const selfName = scope?.currentUserName?.trim();
       if (selfId && selfName) nameById.set(selfId, selfName);
 
-      // Network-scoped only — communal picker uses /zones/public (network
-      // primary zones), not merged into map/list.
-      const byRecordId = new Map<string, SavedZone>();
+      const ownById = new Map<string, SavedZone>();
+      const communalById = new Map<string, SavedZone>();
+
       if (!zonesRes.error) {
         for (const row of zonesRes.data ?? []) {
           const resolved = resolveZoneOwnerName(row as SavedZone, nameById);
-          byRecordId.set(String(resolved.id), resolved);
+          if (row.shared_via_communal) {
+            communalById.set(String(resolved.id), {
+              ...resolved,
+              shared_via_communal: true,
+            });
+          } else {
+            ownById.set(String(resolved.id), resolved);
+          }
         }
       }
 
-      const rows = Array.from(byRecordId.values());
-      const mapped = rows
-        .map((row, i) => zoneRecordToLayer(row, i))
-        .filter((z): z is MapZoneLayer => z !== null);
-      setLayers(mapped);
+      for (const batch of sharedBatches) {
+        if (batch.error || !batch.data) continue;
+        for (const row of batch.data) {
+          const key = String(row.id);
+          if (ownById.has(key)) continue;
+          const resolved = resolveZoneOwnerName(
+            { ...row, shared_via_communal: true },
+            nameById,
+          );
+          communalById.set(key, resolved);
+        }
+      }
+
+      setLayers(
+        Array.from(ownById.values())
+          .map((row, i) => zoneRecordToLayer(row, i))
+          .filter((z): z is MapZoneLayer => z !== null),
+      );
+      setCommunalMapLayers(
+        Array.from(communalById.values())
+          .map((row, i) => zoneRecordToLayer(row, i))
+          .filter((z): z is MapZoneLayer => z !== null),
+      );
     }
     if (!capsRes.error && capsRes.data) {
       setCapabilities(capsRes.data);
@@ -304,7 +395,12 @@ export function useZoneBuilder(
       }
     }
     setLoadingList(false);
-  }, [scope?.currentUserId, scope?.currentUserName, scope?.isAccountAdministrator]);
+  }, [
+    ownerZoneId,
+    scope?.currentUserId,
+    scope?.currentUserName,
+    scope?.isAccountAdministrator,
+  ]);
 
   useEffect(() => {
     void refresh();
@@ -374,7 +470,7 @@ export function useZoneBuilder(
     setCommunalExists(null);
     setMatchedCommunalZones([]);
     setSelectedPublicZoneIds([]);
-    setDefiningCommunalExists(null);
+    setDefiningCommunalIds([]);
     setGovernmentValidation(null);
     setDynamicPreview(null);
     setDynamicPreviewError(null);
@@ -382,12 +478,266 @@ export function useZoneBuilder(
     setError(null);
   }, []);
 
+  const clearEditing = useCallback(() => {
+    setEditingZoneId(null);
+    setEditingZoneName(null);
+  }, []);
+
+  const cancelEdit = useCallback(() => {
+    clearEditing();
+    resetDrafts();
+    setZoneName("My zone");
+    setZoneDescription("");
+    setZoneType("geofence");
+    setGeofenceTool("polygon");
+    setStatus(null);
+  }, [clearEditing, resetDrafts]);
+
   const changeZoneType = useCallback(
     (next: ZoneType) => {
       setZoneType(next);
       resetDrafts();
     },
     [resetDrafts],
+  );
+
+  const beginEdit = useCallback(
+    (layer: MapZoneLayer): ZoneEditToolId | null => {
+      const zone = layer.raw;
+      if (
+        !canEditSavedZone(zone, {
+          currentUserId: scope?.currentUserId,
+          isAccountAdministrator: scope?.isAccountAdministrator,
+        })
+      ) {
+        toast.warning(
+          "You can edit only primary zones as administrator, or secondary zones you created.",
+        );
+        return null;
+      }
+      if (capabilities?.can_edit_active_zone === false) {
+        toast.warning(
+          capabilities.reason ?? "Editing is not available for your account right now.",
+        );
+        return null;
+      }
+
+      const recordId = savedZoneRecordId(zone);
+      const type = normalizeZoneType(zone.type ?? zone.zone_type);
+      const cfg =
+        zone.config && typeof zone.config === "object"
+          ? (zone.config as Record<string, unknown>)
+          : {};
+
+      resetDrafts();
+      setEditingZoneId(recordId);
+      setEditingZoneName(layer.name);
+      setCreateAsPrimary(
+        Boolean(
+          zone.is_primary ??
+            (zone as { isPrimary?: boolean }).isPrimary,
+        ),
+      );
+      setZoneType(type);
+      setZoneName(
+        typeof zone.name === "string" && zone.name.trim()
+          ? zone.name.trim()
+          : layer.name,
+      );
+      setZoneDescription("");
+      allowInitialGpsRef.current = false;
+
+      let tool: ZoneEditToolId = "polygon";
+
+      if (type === "geofence") {
+        const rings = readZoneRings(zone);
+        const circles = readZoneCircles(zone);
+        if (rings[0] && rings[0].length >= 3) {
+          setGeofenceTool("polygon");
+          // Keep the ring open while editing so Undo / map taps can reshape it.
+          // Save closes the polygon before sending.
+          const ring = [...rings[0]];
+          if (isClosedPolygon(ring)) {
+            ring.pop();
+          }
+          setDraftRing(ring);
+          tool = "polygon";
+        } else if (circles[0]) {
+          setGeofenceTool("circle");
+          setDraftCircle(circles[0]);
+          tool = "circle";
+        } else {
+          setGeofenceTool("polygon");
+          tool = "polygon";
+        }
+      } else if (type === "grid") {
+        const fromRow = Array.isArray(zone.h3_cells)
+          ? zone.h3_cells.filter((c): c is string => typeof c === "string")
+          : [];
+        const fromCfg = Array.isArray(cfg.h3_cells)
+          ? cfg.h3_cells.filter((c): c is string => typeof c === "string")
+          : [];
+        setSelectedH3Cells(fromRow.length > 0 ? fromRow : fromCfg);
+        tool = "grid";
+      } else if (type === "proximity") {
+        const circles = readZoneCircles(zone);
+        const center =
+          readZoneCenter(zone) ?? circles[0]?.center ?? null;
+        const radius =
+          circles[0]?.radiusMeters ??
+          Number(cfg.radius_meters) ??
+          150;
+        setProximityCenter(center);
+        setProximityRadius(
+          Number.isFinite(radius) && radius > 0 ? radius : 150,
+        );
+        const sourceRaw = String(cfg.source_type ?? "").toLowerCase();
+        setProximitySource(
+          sourceRaw === "current_location" ? "current_location" : "map_pin",
+        );
+        tool = "proximity";
+      } else if (type === "dynamic") {
+        const target = Number(cfg.target_user_count);
+        const minR = Number(cfg.min_radius_meters);
+        const maxR = Number(cfg.max_radius_meters);
+        if (Number.isFinite(target) && target > 0) setDynamicTarget(Math.trunc(target));
+        if (Number.isFinite(minR) && minR > 0) setDynamicMin(minR);
+        if (Number.isFinite(maxR) && maxR > 0) setDynamicMax(maxR);
+        const center = readZoneCenter(zone);
+        const resolved = Number(cfg.resolved_radius_meters);
+        if (
+          center &&
+          Number.isFinite(resolved) &&
+          resolved > 0
+        ) {
+          setDynamicPreview({
+            infeasible: false,
+            reason: null,
+            center: { latitude: center[0], longitude: center[1] },
+            resolved_radius_meters: resolved,
+            tight_radius_meters: resolved,
+            matched_user_count: Number(cfg.matched_user_count) || 0,
+            matched_owner_ids: [],
+            population_size: 0,
+            target_user_count: Number.isFinite(target) ? Math.trunc(target) : 5,
+            min_radius_meters: Number.isFinite(minR) ? minR : 200,
+            max_radius_meters: Number.isFinite(maxR) ? maxR : 1000,
+          });
+        }
+        tool = "dynamic";
+      } else if (type === "government_local_code") {
+        const modeRaw = String(cfg.address_mode ?? "").toLowerCase();
+        setGovernmentMode(modeRaw === "street" ? "street" : "postal");
+        setGovernmentFields({
+          postal: typeof cfg.postal_code === "string" ? cfg.postal_code : "",
+          city: typeof cfg.city === "string" ? cfg.city : "",
+          country: typeof cfg.country === "string" ? cfg.country : "",
+          street: typeof cfg.street === "string" ? cfg.street : "",
+          streetNumber:
+            typeof cfg.street_number === "string" ? cfg.street_number : "",
+        });
+        const refId =
+          typeof cfg.reference_id === "string"
+            ? cfg.reference_id
+            : typeof cfg.postal_code === "string"
+              ? cfg.postal_code
+              : typeof cfg.local_code === "string"
+                ? cfg.local_code
+                : "";
+        const geo =
+          zone.geometry && typeof zone.geometry === "object"
+            ? { ...(zone.geometry as Record<string, unknown>) }
+            : {};
+        if (zone.geo_fence_polygon != null && geo.geo_fence_polygon == null) {
+          geo.geo_fence_polygon = zone.geo_fence_polygon as Record<
+            string,
+            unknown
+          >;
+        }
+        if (refId && (geo.geo_fence_polygon || readZoneRings(zone).length > 0)) {
+          setGovernmentValidation({
+            valid: true,
+            zone_type: "government_local_code",
+            reference_id: refId,
+            display_name: zone.name ?? null,
+            geometry: geo,
+            config: cfg,
+            h3_cells: Array.isArray(zone.h3_cells)
+              ? [...zone.h3_cells]
+              : Array.isArray(cfg.h3_cells)
+                ? (cfg.h3_cells as string[])
+                : [],
+            source: "existing_zone",
+            message: "Loaded from saved zone.",
+          });
+        }
+        tool = "government_local_code";
+      } else if (type === "object") {
+        const center = readZoneCenter(zone) ?? readZoneCircles(zone)[0]?.center;
+        const radius =
+          Number(cfg.radius_meters) ||
+          readZoneCircles(zone)[0]?.radiusMeters ||
+          80;
+        setObjectCenter(center ?? null);
+        setObjectRadius(Number.isFinite(radius) && radius > 0 ? radius : 80);
+        setObjectReferenceId(
+          typeof cfg.object_id === "string" ? cfg.object_id : "",
+        );
+        setObjectQuery(
+          typeof cfg.object_name === "string" && cfg.object_name.trim()
+            ? cfg.object_name
+            : typeof cfg.object_id === "string"
+              ? cfg.object_id
+              : "",
+        );
+        tool = "object";
+      } else if (type === "communal_id") {
+        const code =
+          typeof cfg.communal_id === "string" ? cfg.communal_id : "";
+        if (code && !communalIdLocked) {
+          setCommunalCodeState(code);
+          setCommunalExists(true);
+        }
+        tool = "communal_id";
+      }
+
+      const focus = layerFocusPoint(layer);
+      if (focus) {
+        setMapCenter(focus);
+        setFitDraftToken((t) => t + 1);
+      }
+
+      const fromMulti = Array.isArray(cfg.communal_ids)
+        ? cfg.communal_ids.filter(
+            (item): item is string =>
+              typeof item === "string" && item.trim().length > 0,
+          )
+        : [];
+      const legacy =
+        typeof cfg.communal_id === "string" && type !== "communal_id"
+          ? [cfg.communal_id]
+          : [];
+      const mergedIds = [
+        ...new Set(
+          [...fromMulti, ...legacy].map((item) => item.trim().toUpperCase()),
+        ),
+      ];
+      if (mergedIds.length > 0) {
+        setDefiningCommunalIds(mergedIds);
+      }
+
+      setStatus(
+        `Editing "${layer.name}" — Undo removes vertices, tap map to add, then Update.`,
+      );
+      return tool;
+    },
+    [
+      capabilities?.can_edit_active_zone,
+      capabilities?.reason,
+      resetDrafts,
+      scope?.currentUserId,
+      scope?.isAccountAdministrator,
+    ],
   );
 
   const toggleH3Cell = useCallback((cell: string) => {
@@ -767,8 +1117,8 @@ export function useZoneBuilder(
   }, []);
 
   const validateCommunal = useCallback(async () => {
-    if (communalIdLocked) {
-      toast.info("Your assigned Communal ID is already set.");
+    if (!canUseCommunalTools) {
+      toast.warning("Only network administrators can manage Communal IDs.");
       return;
     }
     const code = communalCode.trim();
@@ -800,38 +1150,25 @@ export function useZoneBuilder(
     setMatchedCommunalZones(matched);
     setCommunalValidation(data);
     setError(null);
-    if (exists) {
-      // Reset the selector to exactly the zones already on this Communal ID.
-      setSelectedPublicZoneIds(matched.map((z) => z.id));
-      void refreshPublicZones();
-      const msg =
-        data.message ?? `Communal ID found on ${matched.length} zone(s).`;
-      setStatus(msg);
-      toast.success(msg);
-    } else {
-      setSelectedPublicZoneIds([]);
-      const msg =
-        data.message ?? "Communal ID not found. You can generate a new one.";
-      setStatus(msg);
-      toast.info(msg);
-    }
-  }, [communalCode, communalIdLocked, notifyError, refreshPublicZones, setError]);
+    const msg = exists
+      ? data.message ?? `Communal ID found on ${matched.length} zone(s).`
+      : data.message ?? "Communal ID not found. You can generate a new one.";
+    setStatus(msg);
+    if (exists) toast.info(msg);
+    else toast.success(msg);
+  }, [canUseCommunalTools, communalCode, notifyError, setError]);
 
   const generateCommunal = useCallback(async () => {
-    if (communalIdLocked) {
-      toast.warning(
-        "Individual accounts cannot generate Communal IDs. Use your assigned ID.",
-      );
-      return;
-    }
-    if (communalExists === true) {
-      toast.warning("Communal ID already exists — Generate is disabled.");
+    if (!canUseCommunalTools) {
+      toast.warning("Only network administrators can generate Communal IDs.");
       return;
     }
     setCommunalValidating(true);
     setError(null);
     setStatus("Generating communal ID…");
-    const result = await generateZoneReference("communal_id");
+    const result = await generateZoneReference("communal_id", {
+      persist: false,
+    });
     setCommunalValidating(false);
     if (result.error || !result.data) {
       notifyError(result.error ?? "Could not generate communal ID.");
@@ -842,69 +1179,12 @@ export function useZoneBuilder(
     setCommunalValidation(result.data);
     setCommunalExists(false);
     setMatchedCommunalZones([]);
-    const msg = result.data.message ?? `Generated ${result.data.reference_id}`;
+    const msg =
+      result.data.message ??
+      `Candidate ${result.data.reference_id}. Tap Save to register it.`;
     setStatus(msg);
     toast.success(msg);
-  }, [communalExists, communalIdLocked, notifyError, setError]);
-
-  const validateDefiningCommunal = useCallback(async () => {
-    if (communalIdLocked) {
-      toast.info("Your assigned Communal ID is already set.");
-      return;
-    }
-    const code = definingCommunalCode.trim();
-    if (!code) {
-      toast.warning("Enter a communal ID first.");
-      return;
-    }
-    setDefiningCommunalValidating(true);
-    const result = await validateZoneReference({
-      zone_type: "communal_id",
-      reference_id: code,
-    });
-    setDefiningCommunalValidating(false);
-    if (result.error || !result.data) {
-      setDefiningCommunalExists(null);
-      toast.error(result.error ?? "Could not validate communal ID.");
-      return;
-    }
-    const exists =
-      result.data.exists === true || result.data.valid === true;
-    setDefiningCommunalExists(exists);
-    setDefiningCommunalCodeState(
-      (result.data.reference_id || code).toUpperCase(),
-    );
-    if (exists) {
-      toast.info(
-        result.data.message ?? "Communal ID already exists on other zones.",
-      );
-    } else {
-      toast.success(result.data.message ?? "Communal ID is available.");
-    }
-  }, [communalIdLocked, definingCommunalCode]);
-
-  const generateDefiningCommunal = useCallback(async () => {
-    if (communalIdLocked) {
-      toast.warning(
-        "Individual accounts cannot generate Communal IDs. Use your assigned ID.",
-      );
-      return;
-    }
-    if (definingCommunalExists === true) {
-      toast.warning("Communal ID already exists — Generate is disabled.");
-      return;
-    }
-    setDefiningCommunalValidating(true);
-    const result = await generateZoneReference("communal_id");
-    setDefiningCommunalValidating(false);
-    if (result.error || !result.data) {
-      toast.error(result.error ?? "Could not generate communal ID.");
-      return;
-    }
-    setDefiningCommunalCodeState(result.data.reference_id);
-    setDefiningCommunalExists(false);
-    toast.success(result.data.message ?? `Generated ${result.data.reference_id}`);
-  }, [communalIdLocked, definingCommunalExists]);
+  }, [canUseCommunalTools, notifyError, setError]);
 
   const validateGovernment = useCallback(async () => {
     const f = governmentFields;
@@ -955,20 +1235,22 @@ export function useZoneBuilder(
   }, [governmentFields, governmentMode, notifyError, setError]);
 
   const canSave = useMemo(() => {
-    if (capabilities && capabilities.can_create_zone === false) {
-      // Assigning communal IDs to existing zones still allowed.
-      if (zoneType !== "communal_id") return false;
+    const isEditing = editingZoneId != null;
+    if (isEditing && capabilities?.can_edit_active_zone === false) {
+      return false;
     }
     if (zoneType === "communal_id") {
       return (
-        selectedPublicZoneIds.length > 0 &&
+        canUseCommunalTools &&
         communalCode.trim().length >= 3 &&
-        (communalIdLocked || communalExists !== null)
+        communalExists !== true
       );
+    }
+    if (capabilities && capabilities.can_create_zone === false && !isEditing) {
+      return false;
     }
     const trimmed = zoneName.trim();
     if (!trimmed || trimmed.length > MAX_ZONE_NAME_LENGTH) return false;
-    if (capabilities && capabilities.can_create_zone === false) return false;
     if (zoneType === "geofence") {
       if (geofenceTool === "polygon") {
         // Allow either a closed polygon or any 3+ vertex sketch — save will
@@ -999,12 +1281,13 @@ export function useZoneBuilder(
     }
     return false;
   }, [
+    canUseCommunalTools,
     communalCode,
     communalExists,
-    communalIdLocked,
     draftCircle,
     draftRing,
     dynamicPreview,
+    editingZoneId,
     geofenceTool,
     governmentValidation,
     objectCenter,
@@ -1013,7 +1296,6 @@ export function useZoneBuilder(
     proximityCenter,
     proximityRadius,
     selectedH3Cells,
-    selectedPublicZoneIds,
     zoneName,
     zoneType,
     capabilities,
@@ -1040,33 +1322,52 @@ export function useZoneBuilder(
       : {};
 
     if (zoneType === "communal_id") {
+      if (!canUseCommunalTools) {
+        notifyError("Only network administrators can save Communal IDs.");
+        return false;
+      }
+      const code = communalCode.trim().toUpperCase();
+      if (code.length < 3) {
+        notifyError("Enter or generate a Communal ID first.");
+        return false;
+      }
+      if (communalExists === true) {
+        toast.info(`Communal ID ${code} is already saved.`);
+        return true;
+      }
       setSaving(true);
-      setStatus("Assigning Communal ID…");
-      const result = await assignCommunalId({
-        communal_id: communalCode.trim().toUpperCase(),
-        zone_ids: selectedPublicZoneIds,
-        is_public: true,
+      setStatus("Saving Communal ID…");
+      const result = await generateZoneReference("communal_id", {
+        reference_id: code,
+        persist: true,
       });
       setSaving(false);
       if (result.error || !result.data) {
-        notifyError(result.error ?? "Could not assign Communal ID.");
+        notifyError(result.error ?? "Could not save Communal ID.");
         setStatus(null);
         return false;
       }
-      toast.success(result.data.message);
-      setStatus(result.data.message);
+      const saved = (result.data.reference_id || code).toUpperCase();
+      setCommunalCodeState(saved);
       setCommunalExists(true);
-      await refreshPublicZones();
+      setCommunalValidation(result.data);
+      const msg = result.data.message ?? `Saved Communal ID ${saved}.`;
+      setStatus(msg);
+      toast.success(msg);
       await refresh();
       return true;
     }
 
-    const communalConfigExtra = definingCommunalCode.trim()
-      ? {
-          communal_id: definingCommunalCode.trim().toUpperCase(),
-          is_public: true,
-        }
-      : { is_public: true };
+    const communalConfigExtra =
+      canUseCommunalTools && createAsPrimary
+        ? {
+            communal_ids: definingCommunalIds,
+            ...(definingCommunalIds[0]
+              ? { communal_id: definingCommunalIds[0] }
+              : {}),
+            is_public: true,
+          }
+        : { is_public: true };
 
     if (zoneType === "geofence") {
       const polygon =
@@ -1181,8 +1482,36 @@ export function useZoneBuilder(
       return false;
     }
 
+    const isEditing = editingZoneId != null;
+
     setSaving(true);
-    setStatus("Saving zone…");
+    setStatus(isEditing ? "Updating zone…" : "Saving zone…");
+
+    if (isEditing) {
+      const updatePayload: UpdateZonePayload = {
+        name: payload.name,
+        type: payload.type,
+        zone_type: payload.zone_type,
+        geometry: payload.geometry,
+        config: payload.config,
+        h3_cells: payload.h3_cells,
+        geo_fence_polygon: payload.geo_fence_polygon,
+      };
+      const result = await updateZone(editingZoneId, updatePayload);
+      setSaving(false);
+      if (result.error || !result.data) {
+        notifyError(result.error ?? "Zone update failed.");
+        setStatus(null);
+        return false;
+      }
+      setStatus(`Zone "${payload.name}" updated.`);
+      toast.success(`Zone "${payload.name}" updated.`);
+      clearEditing();
+      resetDrafts();
+      await refresh();
+      return true;
+    }
+
     const tierStamp =
       scope?.isAccountAdministrator === true && createAsPrimary
         ? { is_primary: true }
@@ -1213,15 +1542,19 @@ export function useZoneBuilder(
     return true;
   }, [
     canSave,
+    canUseCommunalTools,
+    clearEditing,
     communalCode,
+    communalExists,
     createAsPrimary,
-    definingCommunalCode,
+    definingCommunalIds,
     draftCircle,
     draftRing,
     dynamicMax,
     dynamicMin,
     dynamicPreview,
     dynamicTarget,
+    editingZoneId,
     geofenceTool,
     governmentValidation,
     notifyError,
@@ -1234,15 +1567,12 @@ export function useZoneBuilder(
     proximityRadius,
     proximitySource,
     refresh,
-    refreshPublicZones,
     resetDrafts,
     scope?.isAccountAdministrator,
     selectedH3Cells,
-    selectedPublicZoneIds,
     zoneDescription,
     zoneName,
     zoneType,
-    notifyError,
     setError,
   ]);
 
@@ -1279,6 +1609,10 @@ export function useZoneBuilder(
                   setStatus(null);
                   return;
                 }
+                if (editingZoneId === recordId) {
+                  clearEditing();
+                  resetDrafts();
+                }
                 setStatus("Zone deleted.");
                 await refresh();
               })();
@@ -1287,7 +1621,16 @@ export function useZoneBuilder(
         ],
       );
     },
-    [notifyError, refresh, scope?.currentUserId, scope?.isAccountAdministrator, setError],
+    [
+      clearEditing,
+      editingZoneId,
+      notifyError,
+      refresh,
+      resetDrafts,
+      scope?.currentUserId,
+      scope?.isAccountAdministrator,
+      setError,
+    ],
   );
 
   const canDeleteLayer = useCallback(
@@ -1297,6 +1640,19 @@ export function useZoneBuilder(
         isAccountAdministrator: scope?.isAccountAdministrator,
       }),
     [scope?.currentUserId, scope?.isAccountAdministrator],
+  );
+
+  const canEditLayer = useCallback(
+    (layer: MapZoneLayer) =>
+      canEditSavedZone(layer.raw, {
+        currentUserId: scope?.currentUserId,
+        isAccountAdministrator: scope?.isAccountAdministrator,
+      }) && capabilities?.can_edit_active_zone !== false,
+    [
+      capabilities?.can_edit_active_zone,
+      scope?.currentUserId,
+      scope?.isAccountAdministrator,
+    ],
   );
 
   const draftColor = useMemo(() => colorForZoneType(zoneType), [zoneType]);
@@ -1344,11 +1700,20 @@ export function useZoneBuilder(
   return {
     // list state
     layers,
+    communalMapLayers,
+    networkCommunalIds,
+    publicCommunalIds,
     loadingList,
     listError,
     refresh,
     remove,
     canDeleteLayer,
+    canEditLayer,
+    beginEdit,
+    cancelEdit,
+    editingZoneId,
+    editingZoneName,
+    isEditing: editingZoneId != null,
     capabilities,
     createAsPrimary,
     setCreateAsPrimary,
@@ -1443,6 +1808,7 @@ export function useZoneBuilder(
     dynamicPreviewError,
 
     // communal
+    canUseCommunalTools,
     communalCode,
     setCommunalCode,
     communalValidation,
@@ -1457,12 +1823,9 @@ export function useZoneBuilder(
     matchedCommunalZones,
     validateCommunal,
     generateCommunal,
-    definingCommunalCode,
-    setDefiningCommunalCode,
-    definingCommunalValidating,
-    definingCommunalExists,
-    validateDefiningCommunal,
-    generateDefiningCommunal,
+    definingCommunalIds,
+    addDefiningCommunalId,
+    removeDefiningCommunalId,
 
     // government
     governmentMode,

@@ -9,50 +9,67 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Layers, Save, Trash2 } from "lucide-react-native";
+import { Layers, Pencil, Save, Trash2 } from "lucide-react-native";
 import { AppHeader } from "@/components/ui/AppHeader";
 import {
   isOwnZone,
   listZoneShapes,
+  savedZoneRecordId,
   summarizeZone,
   zoneOwnerLabel,
   type MapZoneLayer,
   type ZoneShapeItem,
 } from "@/lib/zoneGeometry";
+import type { CommunalIdRow } from "@/api/zones";
 import { colors } from "@/theme/colors";
 
 type Props = {
   subtitle: string;
   layers: MapZoneLayer[];
+  networkCommunalIds?: CommunalIdRow[];
   loadingList: boolean;
   listError: string | null;
   currentUserId?: string;
   listOpen: boolean;
   onListOpenChange: (open: boolean) => void;
   canDeleteLayer: (layer: MapZoneLayer) => boolean;
+  canEditLayer: (layer: MapZoneLayer) => boolean;
+  editingZoneId?: string | null;
   onSelectLayer: (layer: MapZoneLayer) => void;
   onSelectShape: (layer: MapZoneLayer, shape: ZoneShapeItem) => void;
+  onSelectCommunalId?: (row: CommunalIdRow) => void;
+  onEditLayer: (layer: MapZoneLayer) => void;
   onDeleteLayer: (layer: MapZoneLayer) => void;
   onSave: () => void;
   saving: boolean;
   canSave: boolean;
+  saveLabel?: string;
+  /** Hide Save when the active tool does not create a zone (e.g. Communal). */
+  showSave?: boolean;
 };
 
 export function ZonesPageHeader({
   subtitle,
   layers,
+  networkCommunalIds = [],
   loadingList,
   listError,
   currentUserId,
   listOpen,
   onListOpenChange,
   canDeleteLayer,
+  canEditLayer,
+  editingZoneId,
   onSelectLayer,
   onSelectShape,
+  onSelectCommunalId,
+  onEditLayer,
   onDeleteLayer,
   onSave,
   saving,
   canSave,
+  saveLabel = "Save",
+  showSave = true,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [shapesLayer, setShapesLayer] = useState<MapZoneLayer | null>(null);
@@ -108,26 +125,30 @@ export function ZonesPageHeader({
           />
         </View>
 
-        <Pressable
-          onPress={onSave}
-          disabled={!canSave || saving}
-          accessibilityRole="button"
-          accessibilityLabel="Save zone"
-          style={[
-            styles.sideBtn,
-            styles.saveBtn,
-            {
-              backgroundColor: canSave ? colors.accent : colors.textDim,
-            },
-          ]}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Save size={15} color="#fff" strokeWidth={2.4} />
-          )}
-          {!saving && <Text style={styles.saveBtnText}>Save</Text>}
-        </Pressable>
+        {showSave ? (
+          <Pressable
+            onPress={onSave}
+            disabled={!canSave || saving}
+            accessibilityRole="button"
+            accessibilityLabel="Save zone"
+            style={[
+              styles.sideBtn,
+              styles.saveBtn,
+              {
+                backgroundColor: canSave ? colors.accent : colors.textDim,
+              },
+            ]}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Save size={15} color="#fff" strokeWidth={2.4} />
+            )}
+            {!saving && <Text style={styles.saveBtnText}>{saveLabel}</Text>}
+          </Pressable>
+        ) : (
+          <View style={styles.sideBtnSpacer} />
+        )}
       </View>
 
       <Modal
@@ -142,16 +163,18 @@ export function ZonesPageHeader({
             onPress={() => onListOpenChange(false)}
           />
           <View style={[styles.dropdown, { marginTop: insets.top + 72 }]}>
-            <Text style={styles.dropdownTitle}>
-              Zones ({layers.length})
-            </Text>
-            {loadingList && layers.length === 0 ? (
+            <Text style={styles.dropdownTitle}>Zones ({layers.length})</Text>
+            {loadingList &&
+            layers.length === 0 &&
+            networkCommunalIds.length === 0 ? (
               <ActivityIndicator
                 color={colors.accent}
                 style={{ marginVertical: 16 }}
               />
             ) : null}
-            {!loadingList && layers.length === 0 ? (
+            {!loadingList &&
+            layers.length === 0 &&
+            networkCommunalIds.length === 0 ? (
               <Text style={styles.emptyText}>
                 {listError ? "Could not load zones." : "No zones yet."}
               </Text>
@@ -160,14 +183,88 @@ export function ZonesPageHeader({
               style={{ maxHeight: 280 }}
               keyboardShouldPersistTaps="handled"
             >
+              {networkCommunalIds.length > 0 ? (
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={styles.sectionLabel}>
+                    Communal IDs ({networkCommunalIds.length})
+                  </Text>
+                  {networkCommunalIds.map((row) => {
+                    const generator =
+                      row.creator_name?.trim() ||
+                      (row.creator_id != null
+                        ? `User #${row.creator_id}`
+                        : "Unknown");
+                    const network = row.network_id?.trim() || "—";
+                    const zonesLabel =
+                      row.zone_count === 0
+                        ? "0 zones"
+                        : `${row.zone_count} zone${row.zone_count === 1 ? "" : "s"}`;
+                    const canOpen = Number(row.zone_count ?? 0) > 0;
+                    return (
+                      <Pressable
+                        key={row.reference_id}
+                        onPress={() => {
+                          if (!canOpen || !onSelectCommunalId) return;
+                          onSelectCommunalId(row);
+                        }}
+                        disabled={!canOpen}
+                        style={[
+                          styles.communalRow,
+                          !canOpen ? { opacity: 0.7 } : null,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.swatch,
+                            { backgroundColor: "#8B5CF6" },
+                          ]}
+                        />
+                        <View style={styles.communalIdBlock}>
+                          <Text style={styles.rowName} numberOfLines={1}>
+                            {row.reference_id}
+                          </Text>
+                          <Text style={styles.rowMeta} numberOfLines={1}>
+                            {zonesLabel}
+                          </Text>
+                        </View>
+                        <View style={styles.communalMetaBlock}>
+                          <Text
+                            style={styles.communalMetaPrimary}
+                            numberOfLines={1}
+                          >
+                            {generator}
+                          </Text>
+                          <Text
+                            style={styles.communalMetaSecondary}
+                            numberOfLines={1}
+                          >
+                            {network}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+              {layers.length > 0 && networkCommunalIds.length > 0 ? (
+                <Text style={styles.sectionLabel}>Zones</Text>
+              ) : null}
               {layers.map((layer) => {
                 const summary = summarizeZone(layer.raw);
                 const owner = zoneOwnerLabel(layer.raw);
                 const mine = isOwnZone(layer.raw, currentUserId);
+                const isEditing =
+                  editingZoneId != null &&
+                  savedZoneRecordId(layer.raw) === editingZoneId;
+                const mayEdit = canEditLayer(layer);
                 return (
                   <View
                     key={layer.id}
-                    style={[styles.layerRow, mine ? styles.layerRowMine : null]}
+                    style={[
+                      styles.layerRow,
+                      mine ? styles.layerRowMine : null,
+                      isEditing ? styles.layerRowEditing : null,
+                    ]}
                   >
                     <View
                       style={[styles.swatch, { backgroundColor: layer.color }]}
@@ -181,6 +278,9 @@ export function ZonesPageHeader({
                         {mine ? (
                           <Text style={styles.mineTag}> · Mine</Text>
                         ) : null}
+                        {isEditing ? (
+                          <Text style={styles.editingTag}> · Editing</Text>
+                        ) : null}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
                         {summary || layer.zoneType.replace("_", " ")}
@@ -190,6 +290,29 @@ export function ZonesPageHeader({
                           {owner}
                         </Text>
                       ) : null}
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onEditLayer(layer)}
+                      disabled={!mayEdit}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit zone ${layer.name}`}
+                      style={{
+                        padding: 8,
+                        borderRadius: 10,
+                        backgroundColor: mayEdit
+                          ? isEditing
+                            ? "rgba(47,128,237,0.18)"
+                            : "rgba(47,128,237,0.1)"
+                          : "rgba(148,163,184,0.12)",
+                        opacity: mayEdit ? 1 : 0.45,
+                      }}
+                    >
+                      <Pencil
+                        size={14}
+                        color={mayEdit ? colors.accent : colors.textDim}
+                        strokeWidth={2.2}
+                      />
                     </Pressable>
                     <Pressable
                       onPress={() => onDeleteLayer(layer)}
@@ -311,6 +434,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 6,
   },
+  sideBtnSpacer: {
+    width: 72,
+    flexShrink: 0,
+  },
   headerCard: {
     flex: 1,
     borderRadius: 18,
@@ -369,6 +496,47 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 4,
   },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginTop: 4,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  communalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  communalIdBlock: {
+    flexShrink: 1,
+    maxWidth: "46%",
+    gap: 1,
+  },
+  communalMetaBlock: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    gap: 1,
+  },
+  communalMetaPrimary: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  communalMetaSecondary: {
+    color: colors.textDim,
+    fontSize: 11,
+    textAlign: "right",
+  },
   emptyText: {
     color: colors.textDim,
     fontSize: 13,
@@ -390,10 +558,19 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(47, 128, 237, 0.08)",
     borderColor: colors.accentSoft,
   },
+  layerRowEditing: {
+    borderColor: colors.accent,
+    borderWidth: 1.5,
+  },
   mineTag: {
     color: colors.accent,
     fontSize: 12,
     fontWeight: "700",
+  },
+  editingTag: {
+    color: colors.accentDeep,
+    fontSize: 12,
+    fontWeight: "800",
   },
   swatch: {
     width: 10,
