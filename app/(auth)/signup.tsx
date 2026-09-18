@@ -23,11 +23,15 @@ import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
 import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
-import { Button } from "@/components/ui/Button";
 import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
+import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
+import { OnboardingNav } from "@/components/auth/OnboardingNav";
 import { useAuth } from "@/context/AuthContext";
 import {
+  checkEmailAvailable,
   fetchRegistrationCode,
+  validateSignupEmail,
+  validateSignupPassword,
   type AccountType,
   type RegistrationType,
 } from "@/api/auth";
@@ -41,6 +45,15 @@ import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
+
+const TOTAL_STEPS = 5;
+const STEP_LABELS = [
+  "Credentials",
+  "Name",
+  "Contact",
+  "Account",
+  "Network",
+];
 
 const accountOptions: {
   value: AccountType;
@@ -91,6 +104,7 @@ export default function SignupScreen() {
     return typeof raw === "string" ? raw.trim() : "";
   }, [params.invite_token]);
 
+  const [step, setStep] = useState(1);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -107,12 +121,19 @@ export default function SignupScreen() {
   const [useExistingZone, setUseExistingZone] = useState(false);
   const [existingZoneId, setExistingZoneId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [checkingCredentials, setCheckingCredentials] = useState(false);
   const [registrationCode, setRegistrationCode] = useState("FREE");
   const [regCodeLoading, setRegCodeLoading] = useState(false);
 
   const isIndividual = accountType === "EXCLUSIVE";
+  const isInviteFlow = Boolean(inviteToken);
 
   const loadRegistrationCode = useCallback(async () => {
+    if (inviteToken) {
+      setRegistrationCode(inviteToken);
+      setRegCodeLoading(false);
+      return;
+    }
     if (accountType === "EXCLUSIVE") {
       setRegistrationCode("FREE");
       setRegCodeLoading(false);
@@ -127,7 +148,7 @@ export default function SignupScreen() {
       setRegistrationCode(result.data);
     }
     setRegCodeLoading(false);
-  }, [accountType]);
+  }, [accountType, inviteToken]);
 
   useEffect(() => {
     if (inviteToken) {
@@ -153,6 +174,71 @@ export default function SignupScreen() {
   const selectedZoneId =
     useExistingZone && existingZoneId ? existingZoneId : zoneId;
 
+  const goPrevious = () => {
+    setStep((current) => Math.max(1, current - 1));
+  };
+
+  const validateStep = async (current: number): Promise<boolean> => {
+    if (current === 1) {
+      const emailError = validateSignupEmail(email);
+      if (emailError) {
+        toast.error(emailError);
+        return false;
+      }
+      const passwordError = validateSignupPassword(password, confirm);
+      if (passwordError) {
+        toast.error(passwordError);
+        return false;
+      }
+      setCheckingCredentials(true);
+      try {
+        const result = await checkEmailAvailable(email);
+        if (result.error || !result.data?.available) {
+          toast.error(result.error ?? "Email already registered");
+          return false;
+        }
+        return true;
+      } finally {
+        setCheckingCredentials(false);
+      }
+    }
+    if (current === 2) {
+      if (!firstName.trim() || !lastName.trim()) {
+        toast.error("First and last name are required.");
+        return false;
+      }
+      return true;
+    }
+    if (current === 3) {
+      if (!address.trim()) {
+        toast.error("Address is required.");
+        return false;
+      }
+      return true;
+    }
+    if (current === 4) {
+      const effectiveRegistrationType: RegistrationType = isIndividual
+        ? "USER"
+        : registrationType;
+      if (
+        !isIndividual &&
+        effectiveRegistrationType === "USER" &&
+        !accountOwnerId.trim()
+      ) {
+        toast.error("User registration requires a valid account owner ID.");
+        return false;
+      }
+      return true;
+    }
+    return true;
+  };
+
+  const goNext = async () => {
+    const ok = await validateStep(step);
+    if (!ok) return;
+    setStep((current) => Math.min(TOTAL_STEPS, current + 1));
+  };
+
   const onSubmit = async () => {
     const effectiveRegistrationType: RegistrationType = isIndividual
       ? "USER"
@@ -166,10 +252,6 @@ export default function SignupScreen() {
     }
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password) {
       toast.error("Name, email and password are required.");
-      return;
-    }
-    if (password !== confirm) {
-      toast.error("Passwords do not match.");
       return;
     }
     if (
@@ -202,7 +284,9 @@ export default function SignupScreen() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       toast.error(
-        /422|exclusive|individual|account owner|zone/i.test(msg)
+        /422|exclusive|individual|account owner|zone|already registered|409/i.test(
+          msg,
+        )
           ? msg
           : "Could not create account. Please review your details and try again.",
       );
@@ -210,6 +294,35 @@ export default function SignupScreen() {
       setSubmitting(false);
     }
   };
+
+  const stepTitle =
+    step === 1
+      ? "Create an account"
+      : step === 2
+        ? "Your name"
+        : step === 3
+          ? "Contact details"
+          : step === 4
+            ? "Account setup"
+            : "Network & code";
+
+  const stepSubtitle =
+    step === 1
+      ? "Start with your email and a secure password."
+      : step === 2
+        ? "How should we address you in the zone?"
+        : step === 3
+          ? "Optional phone and your home address."
+          : step === 4
+            ? isInviteFlow
+              ? "Confirm the account type for this invite."
+              : "Choose your plan and role."
+            : "Review your registration code and network ID.";
+
+  const footerPad =
+    Platform.OS === "android" && keyboardInset > 0
+      ? keyboardInset + 12
+      : Math.max(16, bottomInset + 12);
 
   return (
     <GradientBackground>
@@ -220,565 +333,627 @@ export default function SignupScreen() {
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            paddingBottom:
-              Platform.OS === "android" && keyboardInset > 0
-                ? keyboardInset + 16
-                : Math.max(24, bottomInset + 16),
+            paddingBottom: 24,
           }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <AuthMapPanel
-            center={center}
-            addressLabel={address}
-            style={{ height: 240 }}
-          />
+          {step === 3 ? (
+            <AuthMapPanel
+              center={center}
+              addressLabel={address}
+              style={{ height: 200 }}
+            />
+          ) : null}
 
           <View style={{ paddingTop: 8 }}>
             <ScreenHeader showBack />
           </View>
 
-          {/* QR banner */}
-          <View
-            style={{
-              marginHorizontal: 20,
-              marginTop: 4,
-              marginBottom: 16,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              paddingHorizontal: 14,
-              paddingVertical: 10,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: "rgba(47,128,237,0.4)",
-              backgroundColor: "rgba(47,128,237,0.08)",
-            }}
-          >
-            <QrCode size={16} color={colors.accent} />
-            <Text style={{ color: colors.accent, fontSize: 12, flex: 1 }}>
-              Have a QR code? Scan to auto-populate your Network ID
-            </Text>
-          </View>
+          <OnboardingProgress
+            step={step}
+            total={TOTAL_STEPS}
+            labels={STEP_LABELS}
+          />
+
+          {step === 1 ? (
+            <View
+              style={{
+                marginHorizontal: 20,
+                marginBottom: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "rgba(47,128,237,0.4)",
+                backgroundColor: "rgba(47,128,237,0.08)",
+              }}
+            >
+              <QrCode size={16} color={colors.accent} />
+              <Text style={{ color: colors.accent, fontSize: 12, flex: 1 }}>
+                Have a QR invite? Open the invite link to join a network.
+              </Text>
+            </View>
+          ) : null}
 
           <View style={{ paddingHorizontal: 24 }}>
             <View
               style={{ flexDirection: "row", alignItems: "flex-end", gap: 8 }}
             >
               <Text
-                style={{ color: colors.text, fontSize: 30, fontWeight: "800" }}
+                style={{ color: colors.text, fontSize: 28, fontWeight: "800" }}
               >
-                Create an
+                {stepTitle.split(" ").slice(0, -1).join(" ") || stepTitle}
               </Text>
-              <Text
-                style={{
-                  color: colors.accent,
-                  fontSize: 30,
-                  fontWeight: "800",
-                  marginTop: -4,
-                }}
-              >
-                account
-              </Text>
+              {stepTitle.includes(" ") ? (
+                <Text
+                  style={{
+                    color: colors.accent,
+                    fontSize: 28,
+                    fontWeight: "800",
+                    marginTop: -4,
+                  }}
+                >
+                  {stepTitle.split(" ").slice(-1)[0]}
+                </Text>
+              ) : null}
             </View>
             <Text
               style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}
             >
-              Provision your member account & first zone in minutes.
+              {stepSubtitle}
             </Text>
           </View>
 
           <View style={{ paddingHorizontal: 24, gap: 14, marginTop: 24 }}>
-            {/* Registration code */}
-            <View
-              style={{
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.bgCard,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Text style={labelStyle}>Registration code</Text>
+            {step === 1 ? (
+              <>
+                <Input
+                  label="Email"
+                  placeholder="alex@safezonepatrol.app"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                  leftIcon={<Mail size={18} color={colors.textMuted} />}
+                />
+                <Input
+                  label="Password"
+                  placeholder="At least 8 characters"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                  leftIcon={<Lock size={18} color={colors.textMuted} />}
+                />
+                <Input
+                  label="Confirm password"
+                  placeholder="Repeat password"
+                  secureTextEntry
+                  value={confirm}
+                  onChangeText={setConfirm}
+                  leftIcon={<Lock size={18} color={colors.textMuted} />}
+                />
+              </>
+            ) : null}
+
+            {step === 2 ? (
+              <>
+                <Input
+                  label="First name"
+                  placeholder="Alex"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  leftIcon={<User size={18} color={colors.textMuted} />}
+                />
+                <Input
+                  label="Last name"
+                  placeholder="Chen"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  leftIcon={<User size={18} color={colors.textMuted} />}
+                />
+              </>
+            ) : null}
+
+            {step === 3 ? (
+              <>
+                <Input
+                  label="Phone (optional)"
+                  placeholder="+1 555 0123"
+                  keyboardType="phone-pad"
+                  value={phone}
+                  onChangeText={setPhone}
+                  leftIcon={<Phone size={18} color={colors.textMuted} />}
+                />
+                <AddressAutocompleteInput
+                  label="Address"
+                  placeholder="Search for a street or place…"
+                  value={address}
+                  onChange={(addr, coords) => {
+                    setAddress(addr);
+                    setAddressCoords(coords);
+                  }}
+                  leftIcon={<MapPin size={18} color={colors.textMuted} />}
+                />
+              </>
+            ) : null}
+
+            {step === 4 ? (
+              <>
+                <Text style={[labelStyle, { marginTop: 6 }]}>Account type</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  {accountOptions.map((option) => {
+                    const active = accountType === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => {
+                          setAccountType(option.value);
+                          if (option.value === "EXCLUSIVE") {
+                            setRegistrationType("USER");
+                            setAccountOwnerId("");
+                            setRegistrationCode(
+                              inviteToken ? inviteToken : "FREE",
+                            );
+                          } else if (registrationType !== "USER") {
+                            setRegistrationType("ADMINISTRATOR");
+                          }
+                        }}
+                        style={{
+                          flexBasis: "48%",
+                          flexGrow: 1,
+                          padding: 14,
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          borderColor: active ? colors.accent : colors.border,
+                          backgroundColor: active
+                            ? "rgba(47,128,237,0.1)"
+                            : colors.bgCard,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.text,
+                            fontSize: 14,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {option.title}
+                        </Text>
+                        <Text
+                          style={{
+                            color: colors.textMuted,
+                            fontSize: 11,
+                            marginTop: 6,
+                          }}
+                        >
+                          {option.lines[0]}
+                        </Text>
+                        <Text
+                          style={{
+                            color: colors.textDim,
+                            fontSize: 11,
+                            marginTop: 2,
+                          }}
+                        >
+                          {option.lines[1]}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
                 {!isIndividual ? (
-                  <Pressable
-                    onPress={() => void loadRegistrationCode()}
-                    disabled={regCodeLoading}
-                    hitSlop={6}
+                  <View
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
-                      paddingHorizontal: 10,
-                      paddingVertical: 5,
-                      borderRadius: 8,
-                      backgroundColor: colors.bgSurface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      opacity: regCodeLoading ? 0.6 : 1,
-                    }}
-                  >
-                    {regCodeLoading ? (
-                      <Loader2 size={12} color={colors.textMuted} />
-                    ) : (
-                      <RefreshCw size={12} color={colors.textMuted} />
-                    )}
-                    <Text
-                      style={{
-                        color: colors.textMuted,
-                        fontSize: 10,
-                        fontWeight: "700",
-                        letterSpacing: 1.4,
-                      }}
-                    >
-                      RETRY
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-              {isIndividual ? (
-                <View
-                  style={{
-                    marginTop: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 12,
-                    borderRadius: 10,
-                    backgroundColor: colors.bgSurface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.accent,
-                      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-                      fontSize: 14,
-                    }}
-                  >
-                    FREE
-                  </Text>
-                </View>
-              ) : regCodeLoading ? (
-                <Text
-                  style={{
-                    color: colors.textMuted,
-                    fontSize: 13,
-                    marginTop: 8,
-                  }}
-                >
-                  Requesting registration code from server…
-                </Text>
-              ) : !registrationCode ? (
-                <Text
-                  style={{
-                    color: colors.textMuted,
-                    fontSize: 13,
-                    marginTop: 8,
-                  }}
-                >
-                  No registration code yet. Tap Retry.
-                </Text>
-              ) : (
-                <View
-                  style={{
-                    marginTop: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 12,
-                    borderRadius: 10,
-                    backgroundColor: colors.bgSurface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.accent,
-                      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-                      fontSize: 14,
-                    }}
-                  >
-                    {registrationCode}
-                  </Text>
-                </View>
-              )}
-              <Text
-                style={{ color: colors.textDim, fontSize: 11, marginTop: 8 }}
-              >
-                {isIndividual
-                  ? "Individual accounts use a FREE registration code and always register as a user."
-                  : "Issued by the server when you open this page. Required for administrator self-registration."}
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <Input
-                label="First name"
-                placeholder="Alex"
-                value={firstName}
-                onChangeText={setFirstName}
-                leftIcon={<User size={18} color={colors.textMuted} />}
-                containerStyle={{ flex: 1 }}
-              />
-              <Input
-                label="Last name"
-                placeholder="Chen"
-                value={lastName}
-                onChangeText={setLastName}
-                containerStyle={{ flex: 1 }}
-              />
-            </View>
-            <Input
-              label="Email"
-              placeholder="alex@safezonepatrol.app"
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-              leftIcon={<Mail size={18} color={colors.textMuted} />}
-            />
-
-            <Input
-              label="Phone (optional)"
-              placeholder="+1 555 0123"
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-              leftIcon={<Phone size={18} color={colors.textMuted} />}
-            />
-
-            <AddressAutocompleteInput
-              label="Address"
-              placeholder="Search for a street or place…"
-              value={address}
-              onChange={(addr, coords) => {
-                setAddress(addr);
-                setAddressCoords(coords);
-              }}
-              leftIcon={<MapPin size={18} color={colors.textMuted} />}
-            />
-
-            {/* Account type tiles */}
-            <Text style={[labelStyle, { marginTop: 6 }]}>Account type</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-              {accountOptions.map((option) => {
-                const active = accountType === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => {
-                      setAccountType(option.value);
-                      if (option.value === "EXCLUSIVE") {
-                        setRegistrationType("USER");
-                        setAccountOwnerId("");
-                        setRegistrationCode("FREE");
-                      } else if (registrationType === "USER") {
-                        // keep USER selection for other tiers
-                      } else {
-                        setRegistrationType("ADMINISTRATOR");
-                      }
-                    }}
-                    style={{
-                      flexBasis: "48%",
-                      flexGrow: 1,
                       padding: 14,
                       borderRadius: 14,
                       borderWidth: 1,
-                      borderColor: active ? colors.accent : colors.border,
-                      backgroundColor: active
-                        ? "rgba(47,128,237,0.1)"
-                        : colors.bgCard,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                      marginTop: 4,
                     }}
                   >
+                    <Text style={labelStyle}>Registration type</Text>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      {(["ADMINISTRATOR", "USER"] as RegistrationType[]).map(
+                        (rt) => {
+                          const active = registrationType === rt;
+                          return (
+                            <Pressable
+                              key={rt}
+                              onPress={() => setRegistrationType(rt)}
+                              style={{
+                                flex: 1,
+                                paddingVertical: 12,
+                                borderRadius: 10,
+                                borderWidth: 1,
+                                borderColor: active
+                                  ? colors.accent
+                                  : colors.border,
+                                backgroundColor: active
+                                  ? "rgba(47,128,237,0.1)"
+                                  : "transparent",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: active
+                                    ? colors.text
+                                    : colors.textMuted,
+                                  fontSize: 13,
+                                  fontWeight: "600",
+                                }}
+                              >
+                                {rt === "ADMINISTRATOR"
+                                  ? "Administrator"
+                                  : "User"}
+                              </Text>
+                            </Pressable>
+                          );
+                        },
+                      )}
+                    </View>
+                    {registrationType === "USER" ? (
+                      <View style={{ marginTop: 12 }}>
+                        <Input
+                          label="Account owner ID"
+                          placeholder="101"
+                          keyboardType="numeric"
+                          value={accountOwnerId}
+                          onChangeText={setAccountOwnerId}
+                        />
+                        <Text
+                          style={{
+                            color: colors.textDim,
+                            fontSize: 11,
+                            marginTop: 6,
+                          }}
+                        >
+                          Linked users must use the admin account owner ID and
+                          matching account type/zone scope.
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                      marginTop: 4,
+                    }}
+                  >
+                    <Text style={labelStyle}>Role</Text>
                     <Text
                       style={{
                         color: colors.text,
                         fontSize: 14,
-                        fontWeight: "700",
+                        fontWeight: "600",
                       }}
                     >
-                      {option.title}
-                    </Text>
-                    <Text
-                      style={{
-                        color: colors.textMuted,
-                        fontSize: 11,
-                        marginTop: 6,
-                      }}
-                    >
-                      {option.lines[0]}
+                      User
                     </Text>
                     <Text
                       style={{
                         color: colors.textDim,
                         fontSize: 11,
-                        marginTop: 2,
+                        marginTop: 6,
+                        lineHeight: 16,
                       }}
                     >
-                      {option.lines[1]}
+                      Individual accounts are always user role. They can create
+                      up to 3 secondary zones, cannot invite members, and do not
+                      support smart-home hubs.
                     </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                  </View>
+                )}
+              </>
+            ) : null}
 
-            {/* Registration type — hidden for Individual (always user) */}
-            {!isIndividual ? (
-            <View
-              style={{
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.bgCard,
-                marginTop: 4,
-              }}
-            >
-              <Text style={labelStyle}>Registration type</Text>
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                {(["ADMINISTRATOR", "USER"] as RegistrationType[]).map((rt) => {
-                  const active = registrationType === rt;
-                  return (
-                    <Pressable
-                      key={rt}
-                      onPress={() => setRegistrationType(rt)}
+            {step === 5 ? (
+              <>
+                <View
+                  style={{
+                    padding: 14,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.bgCard,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={labelStyle}>Registration code</Text>
+                    {!isIndividual && !inviteToken ? (
+                      <Pressable
+                        onPress={() => void loadRegistrationCode()}
+                        disabled={regCodeLoading}
+                        hitSlop={6}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 8,
+                          backgroundColor: colors.bgSurface,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          opacity: regCodeLoading ? 0.6 : 1,
+                        }}
+                      >
+                        {regCodeLoading ? (
+                          <Loader2 size={12} color={colors.textMuted} />
+                        ) : (
+                          <RefreshCw size={12} color={colors.textMuted} />
+                        )}
+                        <Text
+                          style={{
+                            color: colors.textMuted,
+                            fontSize: 10,
+                            fontWeight: "700",
+                            letterSpacing: 1.4,
+                          }}
+                        >
+                          RETRY
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {isIndividual ? (
+                    <View
                       style={{
-                        flex: 1,
+                        marginTop: 8,
+                        paddingHorizontal: 12,
                         paddingVertical: 12,
                         borderRadius: 10,
+                        backgroundColor: colors.bgSurface,
                         borderWidth: 1,
-                        borderColor: active ? colors.accent : colors.border,
-                        backgroundColor: active
-                          ? "rgba(47,128,237,0.1)"
-                          : "transparent",
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.accent,
+                          fontFamily:
+                            Platform.OS === "ios" ? "Menlo" : "monospace",
+                          fontSize: 14,
+                        }}
+                      >
+                        FREE
+                      </Text>
+                    </View>
+                  ) : regCodeLoading ? (
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 13,
+                        marginTop: 8,
+                      }}
+                    >
+                      Requesting registration code from server…
+                    </Text>
+                  ) : !registrationCode ? (
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 13,
+                        marginTop: 8,
+                      }}
+                    >
+                      No registration code yet. Tap Retry.
+                    </Text>
+                  ) : (
+                    <View
+                      style={{
+                        marginTop: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                        borderRadius: 10,
+                        backgroundColor: colors.bgSurface,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        selectable
+                        style={{
+                          color: colors.accent,
+                          fontFamily:
+                            Platform.OS === "ios" ? "Menlo" : "monospace",
+                          fontSize: 14,
+                        }}
+                      >
+                        {registrationCode}
+                      </Text>
+                    </View>
+                  )}
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 11,
+                      marginTop: 8,
+                    }}
+                  >
+                    {isIndividual
+                      ? "Individual accounts always use the FREE registration code."
+                      : inviteToken
+                        ? "Using your invite token as the registration code."
+                        : "Issued by the server when you reach this step. Required for administrator self-registration."}
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    padding: 14,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.bgCard,
+                  }}
+                >
+                  <Text style={labelStyle}>Network ID</Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Pressable
+                      onPress={() => setUseExistingZone(false)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        backgroundColor: !useExistingZone
+                          ? colors.accent
+                          : colors.bgSurface,
                         alignItems: "center",
                       }}
                     >
                       <Text
                         style={{
-                          color: active ? colors.text : colors.textMuted,
-                          fontSize: 13,
-                          fontWeight: "600",
+                          color: !useExistingZone ? "#fff" : colors.textMuted,
+                          fontSize: 12,
+                          fontWeight: "700",
                         }}
                       >
-                        {rt === "ADMINISTRATOR" ? "Administrator" : "User"}
+                        Generate New
                       </Text>
                     </Pressable>
-                  );
-                })}
-              </View>
-              {registrationType === "USER" ? (
-                <View style={{ marginTop: 12 }}>
-                  <Input
-                    label="Account owner ID"
-                    placeholder="101"
-                    keyboardType="numeric"
-                    value={accountOwnerId}
-                    onChangeText={setAccountOwnerId}
-                  />
-                  <Text
-                    style={{
-                      color: colors.textDim,
-                      fontSize: 11,
-                      marginTop: 6,
-                    }}
-                  >
-                    Linked users must use the admin account owner ID and
-                    matching account type/zone scope.
-                  </Text>
+                    <Pressable
+                      onPress={() => setUseExistingZone(true)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        borderRadius: 8,
+                        backgroundColor: useExistingZone
+                          ? colors.accent
+                          : colors.bgSurface,
+                        alignItems: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: useExistingZone ? "#fff" : colors.textMuted,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        Enter Existing
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                    <TextInput
+                      editable={useExistingZone}
+                      value={useExistingZone ? existingZoneId : zoneId}
+                      onChangeText={(v) =>
+                        useExistingZone ? setExistingZoneId(v) : undefined
+                      }
+                      placeholder="Network-XXXXXXXX"
+                      placeholderTextColor={colors.textDim}
+                      autoCapitalize="characters"
+                      style={{
+                        flex: 1,
+                        backgroundColor: colors.bgSurface,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        color: useExistingZone ? colors.text : colors.accent,
+                        fontFamily:
+                          Platform.OS === "ios" ? "Menlo" : "monospace",
+                        fontSize: 13,
+                      }}
+                    />
+                    {!useExistingZone ? (
+                      <Pressable
+                        onPress={() => setZoneId(generateZoneId())}
+                        style={{
+                          paddingHorizontal: 14,
+                          borderRadius: 10,
+                          backgroundColor: colors.bgSurface,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <RefreshCw size={16} color={colors.accent} />
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
-              ) : null}
-            </View>
-            ) : (
-            <View
-              style={{
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.bgCard,
-                marginTop: 4,
-              }}
-            >
-              <Text style={labelStyle}>Role</Text>
-              <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
-                User
-              </Text>
-              <Text
+              </>
+            ) : null}
+
+            {step === 1 ? (
+              <View
                 style={{
-                  color: colors.textDim,
-                  fontSize: 11,
-                  marginTop: 6,
-                  lineHeight: 16,
+                  marginTop: 8,
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  gap: 6,
                 }}
               >
-                Individual accounts are always user role. They can create up to
-                3 secondary zones, cannot invite members, and do not support
-                smart-home hubs.
-              </Text>
-            </View>
-            )}
-
-            {/* Network ID */}
-            <View
-              style={{
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.bgCard,
-              }}
-            >
-              <Text style={labelStyle}>Network ID</Text>
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <Pressable
-                  onPress={() => setUseExistingZone(false)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 8,
-                    backgroundColor: !useExistingZone
-                      ? colors.accent
-                      : colors.bgSurface,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: !useExistingZone ? "#fff" : colors.textMuted,
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    Generate New
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setUseExistingZone(true)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 8,
-                    backgroundColor: useExistingZone
-                      ? colors.accent
-                      : colors.bgSurface,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: useExistingZone ? "#fff" : colors.textMuted,
-                      fontSize: 12,
-                      fontWeight: "700",
-                    }}
-                  >
-                    Enter Existing
-                  </Text>
-                </Pressable>
-              </View>
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
-                <TextInput
-                  editable={useExistingZone}
-                  value={useExistingZone ? existingZoneId : zoneId}
-                  onChangeText={(v) =>
-                    useExistingZone ? setExistingZoneId(v) : undefined
-                  }
-                  placeholder="Network-XXXXXXXX"
-                  placeholderTextColor={colors.textDim}
-                  autoCapitalize="characters"
-                  style={{
-                    flex: 1,
-                    backgroundColor: colors.bgSurface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 10,
-                    color: useExistingZone ? colors.text : colors.accent,
-                    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-                    fontSize: 13,
-                  }}
-                />
-                {!useExistingZone ? (
-                  <Pressable
-                    onPress={() => setZoneId(generateZoneId())}
-                    style={{
-                      paddingHorizontal: 14,
-                      borderRadius: 10,
-                      backgroundColor: colors.bgSurface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <RefreshCw size={16} color={colors.accent} />
+                <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                  already have an account?
+                </Text>
+                <Link href="/(auth)/login" asChild>
+                  <Pressable hitSlop={6}>
+                    <Text
+                      style={{
+                        color: colors.accent,
+                        fontSize: 13,
+                        fontWeight: "700",
+                      }}
+                    >
+                      Login
+                    </Text>
                   </Pressable>
-                ) : null}
+                </Link>
               </View>
-            </View>
-
-            {/* Passwords */}
-            <Input
-              label="Password"
-              placeholder="••••••••"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              leftIcon={<Lock size={18} color={colors.textMuted} />}
-            />
-            <Input
-              label="Confirm password"
-              placeholder="••••••••"
-              secureTextEntry
-              value={confirm}
-              onChangeText={setConfirm}
-              leftIcon={<Lock size={18} color={colors.textMuted} />}
-            />
-
-            <Button
-              label="Signup"
-              onPress={onSubmit}
-              loading={submitting}
-              fullWidth
-              size="lg"
-              style={{ marginTop: 16 }}
-            />
-
-            <View
-              style={{
-                marginTop: 8,
-                flexDirection: "row",
-                justifyContent: "center",
-                gap: 6,
-              }}
-            >
-              <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                already have an account?
-              </Text>
-              <Link href="/(auth)/login" asChild>
-                <Pressable hitSlop={6}>
-                  <Text
-                    style={{
-                      color: colors.accent,
-                      fontSize: 13,
-                      fontWeight: "700",
-                    }}
-                  >
-                    Login
-                  </Text>
-                </Pressable>
-              </Link>
-            </View>
+            ) : null}
           </View>
         </ScrollView>
+
+        <View
+          style={{
+            paddingHorizontal: 24,
+            paddingTop: 12,
+            paddingBottom: footerPad,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.bg,
+          }}
+        >
+          <OnboardingNav
+            showPrevious={step > 1}
+            onPrevious={goPrevious}
+            onNext={
+              step < TOTAL_STEPS ? () => void goNext() : () => void onSubmit()
+            }
+            nextLabel={step < TOTAL_STEPS ? "Next" : "Signup"}
+            nextLoading={
+              step === 1
+                ? checkingCredentials
+                : step === 5
+                  ? submitting
+                  : false
+            }
+          />
+        </View>
       </KeyboardAvoidingView>
     </GradientBackground>
   );

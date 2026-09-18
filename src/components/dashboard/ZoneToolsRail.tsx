@@ -111,6 +111,8 @@ type DockProps = {
   onToggle: () => void;
   activeTool: ZoneDrawToolId | null;
   onSelect: (tool: ZoneDrawToolId) => void;
+  /** Defaults to all draw tools; pass a filtered list to hide Communal for members. */
+  tools?: typeof ZONE_DRAW_TOOLS;
 };
 
 const ICON_SIZE = 32;
@@ -200,8 +202,10 @@ export function ZoneToolsDock({
   onToggle,
   activeTool,
   onSelect,
+  tools = ZONE_DRAW_TOOLS,
 }: DockProps) {
   const progress = useSharedValue(expanded ? 1 : 0);
+  const dockTools = tools;
 
   useEffect(() => {
     progress.value = withTiming(expanded ? 1 : 0, {
@@ -212,8 +216,8 @@ export function ZoneToolsDock({
 
   // Extra padding keeps the drop shadows from being clipped by overflow.
   const toolsHeight =
-    ZONE_DOCK_TOOLS.length * ROW_HEIGHT +
-    (ZONE_DOCK_TOOLS.length - 1) * TOOL_GAP +
+    dockTools.length * ROW_HEIGHT +
+    (dockTools.length - 1) * TOOL_GAP +
     SHADOW_PAD * 2;
 
   const stackStyle = useAnimatedStyle(() => ({
@@ -221,7 +225,7 @@ export function ZoneToolsDock({
     opacity: interpolate(progress.value, [0, 0.15, 1], [0, 1, 1]),
   }));
 
-  const selected = ZONE_DOCK_TOOLS.find((t) => t.id === activeTool) ?? null;
+  const selected = dockTools.find((t) => t.id === activeTool) ?? null;
   const showSelectedChip = !expanded && selected != null;
 
   return (
@@ -232,14 +236,14 @@ export function ZoneToolsDock({
         pointerEvents={expanded ? "box-none" : "none"}
       >
         <View style={styles.toolsInner}>
-          {ZONE_DOCK_TOOLS.map((tool, i) => (
+          {dockTools.map((tool, i) => (
             <ZoneDockButton
               key={tool.id}
               tool={tool}
               active={tool.id === activeTool}
               onPress={() => onSelect(tool.id)}
               progress={progress}
-              order={ZONE_DOCK_TOOLS.length - 1 - i}
+              order={dockTools.length - 1 - i}
             />
           ))}
         </View>

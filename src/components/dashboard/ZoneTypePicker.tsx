@@ -33,16 +33,25 @@ const OPTIONS: {
 type Props = {
   value: ZoneType;
   onChange: (next: ZoneType) => void;
+  /** Hide Communal for members / Individuals. */
+  showCommunal?: boolean;
 };
 
-export function ZoneTypePicker({ value, onChange }: Props) {
+export function ZoneTypePicker({
+  value,
+  onChange,
+  showCommunal = true,
+}: Props) {
+  const options = showCommunal
+    ? OPTIONS
+    : OPTIONS.filter((option) => option.type !== "communal_id");
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
     >
-      {OPTIONS.map((opt) => {
+      {options.map((opt) => {
         const active = opt.type === value;
         const color = colorForZoneType(opt.type);
         return (

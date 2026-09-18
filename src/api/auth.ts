@@ -287,6 +287,65 @@ export async function fetchRegistrationCode() {
   };
 }
 
+export type EmailAvailableResult = {
+  email: string;
+  available: boolean;
+  message: string;
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Client-side password rules (matches server `min_length=8`). */
+export function validateSignupPassword(
+  password: string,
+  confirm?: string,
+): string | null {
+  if (!password) return "Password is required.";
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (confirm !== undefined && password !== confirm) {
+    return "Passwords do not match.";
+  }
+  return null;
+}
+
+export function validateSignupEmail(email: string): string | null {
+  const trimmed = email.trim();
+  if (!trimmed) return "Email is required.";
+  if (!EMAIL_RE.test(trimmed)) return "Enter a valid email address.";
+  return null;
+}
+
+/**
+ * Public check used by onboarding step 1 before advancing.
+ * Returns `{ available: true }` when the email can be registered.
+ */
+export async function checkEmailAvailable(email: string) {
+  const trimmed = email.trim().toLowerCase();
+  const formatError = validateSignupEmail(trimmed);
+  if (formatError) {
+    return { data: null, error: formatError, loading: false };
+  }
+  const result = await request<EmailAvailableResult>({
+    method: "GET",
+    url: "/utils/email-available",
+    params: { email: trimmed },
+  });
+  if (result.error || !result.data) {
+    return {
+      data: null,
+      error: result.error ?? "Could not verify email availability.",
+      loading: false,
+    };
+  }
+  return {
+    data: result.data,
+    error: result.data.available
+      ? null
+      : result.data.message || "Email already registered",
+    loading: false,
+  };
+}
+
 export function normalizeUser(raw: AuthUser | null): AuthUser | null {
   if (!raw) return null;
   const first = raw.first_name ?? "";

@@ -27,9 +27,11 @@ import {
   clearToken,
   getRememberMe,
   getStoredPushToken,
+  getSuppressSilentReauth,
   getToken,
   isSessionInactive,
   setRememberMe as persistRememberMe,
+  setSuppressSilentReauth,
   setToken,
   setStoredMapCenter,
   touchLastActivity,
@@ -49,7 +51,7 @@ import {
   DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE,
   DeviceSessionConflictError,
   isLocalDeviceSessionActive,
-  setCurrentDeviceOffline,
+  releaseCurrentDeviceSession,
   syncCurrentDevice,
 } from "@/lib/deviceSync";
 import { getOrCreateDeviceHid } from "@/lib/storage";
@@ -150,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logoutInProgress.current = true;
       try {
         try {
-          await setCurrentDeviceOffline();
+          await releaseCurrentDeviceSession();
         } catch {
           /* proceed with local logout */
         }
@@ -159,6 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOwnerZoneId("");
         await clearToken();
         await clearLastActivity();
+        // Always block silent re-login after an intentional logout/session end.
+        await setSuppressSilentReauth(true);
         if (options?.clearCredentials) {
           await clearSecureCredentials();
           await persistRememberMe(false);
@@ -237,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           await clearSecureCredentials();
         }
+        await setSuppressSilentReauth(false);
 
         // Login already synced the device; skip the mount effect once.
         skipNextDeviceSyncRef.current = true;
@@ -253,6 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const trySilentReauth = useCallback(async (): Promise<boolean> => {
     if (reauthInProgress.current) return false;
+    if (await getSuppressSilentReauth()) return false;
     const remember = await getRememberMe();
     if (!remember) return false;
     const creds = await getSecureCredentials();
@@ -643,8 +649,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    const remember = await getRememberMe();
-    await performLogout({ clearCredentials: !remember });
+    // Explicit sign-out must clear saved credentials so reopening the app
+    // does not silently log the user back in via Remember Me.
+    await performLogout({ clearCredentials: true });
   }, [performLogout]);
 
   const value = useMemo<AuthContextValue>(

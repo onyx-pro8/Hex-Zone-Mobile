@@ -25,18 +25,47 @@ import { Input } from "@/components/ui/Input";
 import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
+import { OnboardingNav } from "@/components/auth/OnboardingNav";
 import { useAuth } from "@/context/AuthContext";
 import {
   joinWithQrToken,
   previewQrInviteToken,
   type QrInvitePreview,
 } from "@/api/guestPublic";
+import {
+  checkEmailAvailable,
+  validateSignupEmail,
+  validateSignupPassword,
+} from "@/api/auth";
 import { generateZoneId } from "@/lib/h3";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
+import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
+
+const TOTAL_STEPS = 5;
+const STEP_LABELS = [
+  "Credentials",
+  "Name",
+  "Contact",
+  "Account",
+  "Network",
+];
+
+const labelStyle = {
+  color: colors.textMuted,
+  fontSize: 10,
+  fontWeight: "700" as const,
+  letterSpacing: 2,
+  textTransform: "uppercase" as const,
+  marginBottom: 8,
+};
 
 export default function JoinScreen() {
   const router = useRouter();
+  const bottomInset = useBottomSafeInset();
+  const keyboardInset = useKeyboardBottomInset();
   const { token: authToken, initializing, logout, login } = useAuth();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
 
@@ -45,6 +74,7 @@ export default function JoinScreen() {
     return typeof raw === "string" ? raw.trim() : "";
   }, [params.token]);
 
+  const [step, setStep] = useState(1);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -57,6 +87,7 @@ export default function JoinScreen() {
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [checkingCredentials, setCheckingCredentials] = useState(false);
   const [paramsSettled, setParamsSettled] = useState(false);
 
   const isNewNetworkAdmin = preview?.invite_kind === "new_network_admin";
@@ -96,31 +127,64 @@ export default function JoinScreen() {
     };
   }, [inviteToken]);
 
-  const onJoin = async () => {
-    if (!firstName.trim() || !lastName.trim()) {
-      toast.error("Please enter your first and last name.");
-      return;
+  const goPrevious = () => {
+    setStep((current) => Math.max(1, current - 1));
+  };
+
+  const validateStep = async (current: number): Promise<boolean> => {
+    if (current === 1) {
+      const emailError = validateSignupEmail(email);
+      if (emailError) {
+        toast.error(emailError);
+        return false;
+      }
+      const passwordError = validateSignupPassword(password, confirm);
+      if (passwordError) {
+        toast.error(passwordError);
+        return false;
+      }
+      setCheckingCredentials(true);
+      try {
+        const result = await checkEmailAvailable(email);
+        if (result.error || !result.data?.available) {
+          toast.error(result.error ?? "Email already registered");
+          return false;
+        }
+        return true;
+      } finally {
+        setCheckingCredentials(false);
+      }
     }
-    if (!email.trim()) {
-      toast.error("Email is required.");
-      return;
+    if (current === 2) {
+      if (!firstName.trim() || !lastName.trim()) {
+        toast.error("Please enter your first and last name.");
+        return false;
+      }
+      return true;
     }
-    if (password.length < 8) {
-      toast.error("Password must be at least 8 characters.");
-      return;
+    if (current === 3) {
+      if (!address.trim()) {
+        toast.error("Address is required.");
+        return false;
+      }
+      return true;
     }
-    if (password !== confirm) {
-      toast.error("Passwords do not match.");
-      return;
-    }
-    if (!address.trim()) {
-      toast.error("Address is required.");
-      return;
-    }
-    if (isNewNetworkAdmin && !zoneId.trim()) {
+    if (current === 5 && isNewNetworkAdmin && !zoneId.trim()) {
       toast.error("Enter or generate a network ID for your new network.");
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const goNext = async () => {
+    const ok = await validateStep(step);
+    if (!ok) return;
+    setStep((current) => Math.min(TOTAL_STEPS, current + 1));
+  };
+
+  const onJoin = async () => {
+    const ok = await validateStep(5);
+    if (!ok) return;
 
     setSubmitting(true);
     try {
@@ -138,9 +202,7 @@ export default function JoinScreen() {
         ...(isNewNetworkAdmin ? { zone_id: zoneId.trim() } : {}),
       });
       if (join.error || !join.data) {
-        throw new Error(
-          join.error ?? "Could not complete invite join.",
-        );
+        throw new Error(join.error ?? "Could not complete invite join.");
       }
       const welcomeText = (
         join.data.joinWelcomeMessage ??
@@ -223,6 +285,35 @@ export default function JoinScreen() {
     );
   }
 
+  const stepTitle =
+    step === 1
+      ? "Create an account"
+      : step === 2
+        ? "Your name"
+        : step === 3
+          ? "Contact details"
+          : step === 4
+            ? "Account type"
+            : "Invite & network";
+
+  const stepSubtitle =
+    step === 1
+      ? "Start with your email and a secure password."
+      : step === 2
+        ? "How should we address you in the zone?"
+        : step === 3
+          ? "Optional phone and your home address."
+          : step === 4
+            ? "Invitees register as Individual user accounts."
+            : isNewNetworkAdmin
+              ? "Confirm your invite code and choose a network ID."
+              : "Confirm your invite code and join the host network.";
+
+  const footerPad =
+    Platform.OS === "android" && keyboardInset > 0
+      ? keyboardInset + 12
+      : Math.max(16, bottomInset + 12);
+
   return (
     <GradientBackground>
       <KeyboardAvoidingView
@@ -231,7 +322,10 @@ export default function JoinScreen() {
       >
         <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
           <ScrollView
-            contentContainerStyle={{ paddingBottom: 32 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingBottom: 24,
+            }}
             keyboardShouldPersistTaps="handled"
           >
             <ScreenHeader
@@ -245,192 +339,291 @@ export default function JoinScreen() {
               }
             />
 
+            <OnboardingProgress
+              step={step}
+              total={TOTAL_STEPS}
+              labels={STEP_LABELS}
+            />
+
+            <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
+              <Text
+                style={{ color: colors.text, fontSize: 24, fontWeight: "800" }}
+              >
+                {stepTitle}
+              </Text>
+              <Text
+                style={{ color: colors.textMuted, fontSize: 13, marginTop: 6 }}
+              >
+                {stepSubtitle}
+              </Text>
+            </View>
+
             <View style={{ paddingHorizontal: 20, gap: 14 }}>
-              <Card glow style={{ gap: 10 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <QrCode size={18} color={colors.accent} />
+              {step === 1 ? (
+                <>
+                  <Input
+                    label="Email"
+                    placeholder="alex@example.com"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    value={email}
+                    onChangeText={setEmail}
+                    leftIcon={<Mail size={18} color={colors.textMuted} />}
+                  />
+                  <Input
+                    label="Password"
+                    placeholder="At least 8 characters"
+                    secureTextEntry
+                    value={password}
+                    onChangeText={setPassword}
+                    leftIcon={<Lock size={18} color={colors.textMuted} />}
+                  />
+                  <Input
+                    label="Confirm password"
+                    placeholder="Repeat password"
+                    secureTextEntry
+                    value={confirm}
+                    onChangeText={setConfirm}
+                    leftIcon={<Lock size={18} color={colors.textMuted} />}
+                  />
+                </>
+              ) : null}
+
+              {step === 2 ? (
+                <>
+                  <Input
+                    label="First name"
+                    placeholder="Alex"
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    leftIcon={<User size={18} color={colors.textMuted} />}
+                  />
+                  <Input
+                    label="Last name"
+                    placeholder="Chen"
+                    value={lastName}
+                    onChangeText={setLastName}
+                    leftIcon={<User size={18} color={colors.textMuted} />}
+                  />
+                </>
+              ) : null}
+
+              {step === 3 ? (
+                <>
+                  <Input
+                    label="Phone (optional)"
+                    placeholder="+1 555 0123"
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                    leftIcon={<Phone size={18} color={colors.textMuted} />}
+                  />
+                  <AddressAutocompleteInput
+                    label="Address"
+                    placeholder="Search for a street or place…"
+                    value={address}
+                    onChange={(addr) => setAddress(addr)}
+                    leftIcon={<MapPin size={18} color={colors.textMuted} />}
+                  />
+                </>
+              ) : null}
+
+              {step === 4 ? (
+                <Card style={{ gap: 10 }}>
+                  <Text style={labelStyle}>Account type</Text>
                   <Text
                     style={{
                       color: colors.text,
+                      fontSize: 16,
                       fontWeight: "700",
-                      fontSize: 15,
                     }}
                   >
-                    {previewLoading
-                      ? "Checking invite…"
-                      : previewError
-                        ? "Invite unavailable"
-                        : isNewNetworkAdmin
-                          ? "System admin invite"
-                          : "Invite token detected"}
+                    Individual
                   </Text>
-                </View>
-                <Text
-                  style={{
-                    color: colors.textMuted,
-                    fontSize: 12,
-                    lineHeight: 18,
-                  }}
-                >
-                  {previewError
-                    ? previewError
-                    : isNewNetworkAdmin
-                      ? "You will create an Individual (user-role) account for a new network. Choose a network ID below."
-                      : preview?.zone_id
-                        ? `Your account joins zone ${preview.zone_id} as an Individual (user-role) member.`
-                        : "Your account joins the inviter's zone as an Individual (user-role) member."}
-                </Text>
-                <View
-                  style={{
-                    marginTop: 2,
-                    padding: 10,
-                    borderRadius: 10,
-                    backgroundColor: colors.bgSurface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
+                  <Text style={labelStyle}>Role</Text>
                   <Text
-                    selectable
                     style={{
-                      color: colors.accent,
-                      fontFamily:
-                        Platform.OS === "ios" ? "Menlo" : "monospace",
-                      fontSize: 12,
+                      color: colors.text,
+                      fontSize: 14,
+                      fontWeight: "600",
                     }}
                   >
-                    {inviteToken}
+                    User
                   </Text>
-                </View>
-              </Card>
-
-              {isNewNetworkAdmin ? (
-                <View style={{ gap: 8 }}>
-                  <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-end" }}>
-                    <Input
-                      label="Network ID"
-                      placeholder="Network-ABC123"
-                      value={zoneId}
-                      onChangeText={setZoneId}
-                      autoCapitalize="characters"
-                      containerStyle={{ flex: 1 }}
-                    />
-                    <Pressable
-                      onPress={() => setZoneId(generateZoneId())}
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 12,
+                      lineHeight: 18,
+                    }}
+                  >
+                    {isNewNetworkAdmin
+                      ? "Up to 3 secondary zones · No member invites · No smart-home hubs"
+                      : "Up to 2 secondary zones · No member invites · No smart-home hubs"}
+                  </Text>
+                  {preview?.zone_id && !isNewNetworkAdmin ? (
+                    <Text
                       style={{
-                        height: 48,
-                        width: 48,
-                        borderRadius: 12,
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        marginTop: 4,
+                      }}
+                    >
+                      Joining zone {preview.zone_id}
+                    </Text>
+                  ) : null}
+                </Card>
+              ) : null}
+
+              {step === 5 ? (
+                <>
+                  <Card glow style={{ gap: 10 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
                         alignItems: "center",
-                        justifyContent: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <QrCode size={18} color={colors.accent} />
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontWeight: "700",
+                          fontSize: 15,
+                        }}
+                      >
+                        {previewLoading
+                          ? "Checking invite…"
+                          : previewError
+                            ? "Invite unavailable"
+                            : isNewNetworkAdmin
+                              ? "System admin invite"
+                              : "Member invite"}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        lineHeight: 18,
+                      }}
+                    >
+                      {previewError
+                        ? previewError
+                        : isNewNetworkAdmin
+                          ? "You will create an Individual (user-role) account for a new network."
+                          : preview?.zone_id
+                            ? `Your account joins zone ${preview.zone_id} as an Individual (user-role) member.`
+                            : "Your account joins the inviter's zone as an Individual (user-role) member."}
+                    </Text>
+                  </Card>
+
+                  <View
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                    }}
+                  >
+                    <Text style={labelStyle}>Registration code</Text>
+                    <View
+                      style={{
+                        marginTop: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 12,
+                        borderRadius: 10,
                         backgroundColor: colors.bgSurface,
                         borderWidth: 1,
                         borderColor: colors.border,
-                        marginBottom: 2,
                       }}
-                      accessibilityLabel="Generate network ID"
                     >
-                      <RefreshCw size={18} color={colors.accent} />
-                    </Pressable>
+                      <Text
+                        style={{
+                          color: colors.accent,
+                          fontFamily:
+                            Platform.OS === "ios" ? "Menlo" : "monospace",
+                          fontSize: 14,
+                        }}
+                      >
+                        FREE
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        color: colors.textDim,
+                        fontSize: 11,
+                        marginTop: 8,
+                      }}
+                    >
+                      Individual accounts always use the FREE registration code.
+                    </Text>
                   </View>
-                  <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                    Account type: Individual · Role: User
-                    {"\n"}
-                    Up to 3 secondary zones · No member invites · No smart-home
-                  </Text>
-                </View>
-              ) : preview && !previewError ? (
-                <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                  Account type: Individual · Role: User
-                  {"\n"}
-                  Up to 2 secondary zones · No member invites · No smart-home
-                </Text>
+
+                  {isNewNetworkAdmin ? (
+                    <View style={{ gap: 8 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          gap: 10,
+                          alignItems: "flex-end",
+                        }}
+                      >
+                        <Input
+                          label="Network ID"
+                          placeholder="Network-ABC123"
+                          value={zoneId}
+                          onChangeText={setZoneId}
+                          autoCapitalize="characters"
+                          containerStyle={{ flex: 1 }}
+                        />
+                        <Pressable
+                          onPress={() => setZoneId(generateZoneId())}
+                          style={{
+                            height: 48,
+                            width: 48,
+                            borderRadius: 12,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: colors.bgSurface,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            marginBottom: 2,
+                          }}
+                          accessibilityLabel="Generate network ID"
+                        >
+                          <RefreshCw size={18} color={colors.accent} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : preview && !previewError ? (
+                    <View
+                      style={{
+                        padding: 14,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.bgCard,
+                      }}
+                    >
+                      <Text style={labelStyle}>Network ID</Text>
+                      <Text
+                        style={{
+                          color: colors.accent,
+                          fontFamily:
+                            Platform.OS === "ios" ? "Menlo" : "monospace",
+                          fontSize: 13,
+                        }}
+                      >
+                        {preview.zone_id || "Assigned by host"}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
               ) : null}
-
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <Input
-                  label="First name"
-                  placeholder="Alex"
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  leftIcon={<User size={18} color={colors.textMuted} />}
-                  containerStyle={{ flex: 1 }}
-                />
-                <Input
-                  label="Last name"
-                  placeholder="Chen"
-                  value={lastName}
-                  onChangeText={setLastName}
-                  containerStyle={{ flex: 1 }}
-                />
-              </View>
-
-              <Input
-                label="Email"
-                placeholder="alex@example.com"
-                autoCapitalize="none"
-                autoComplete="email"
-                keyboardType="email-address"
-                value={email}
-                onChangeText={setEmail}
-                leftIcon={<Mail size={18} color={colors.textMuted} />}
-              />
-
-              <Input
-                label="Phone (optional)"
-                placeholder="+1 555 0123"
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-                leftIcon={<Phone size={18} color={colors.textMuted} />}
-              />
-
-              <AddressAutocompleteInput
-                label="Address"
-                placeholder="Search for a street or place…"
-                value={address}
-                onChange={(addr) => setAddress(addr)}
-                leftIcon={<MapPin size={18} color={colors.textMuted} />}
-              />
-
-              <Input
-                label="Password"
-                placeholder="At least 8 characters"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-                leftIcon={<Lock size={18} color={colors.textMuted} />}
-              />
-              <Input
-                label="Confirm password"
-                placeholder="Repeat password"
-                secureTextEntry
-                value={confirm}
-                onChangeText={setConfirm}
-                leftIcon={<Lock size={18} color={colors.textMuted} />}
-              />
-
-              <Button
-                label={
-                  authToken
-                    ? "Sign out & create account"
-                    : isNewNetworkAdmin
-                      ? "Create Individual account"
-                      : "Create account"
-                }
-                onPress={() => void onJoin()}
-                loading={submitting}
-                disabled={!!previewError || previewLoading}
-                fullWidth
-                size="lg"
-                style={{ marginTop: 4 }}
-              />
 
               <Pressable
                 onPress={() =>
@@ -450,6 +643,40 @@ export default function JoinScreen() {
               </Pressable>
             </View>
           </ScrollView>
+
+          <View
+            style={{
+              paddingHorizontal: 20,
+              paddingTop: 12,
+              paddingBottom: footerPad,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+              backgroundColor: colors.bg,
+            }}
+          >
+            <OnboardingNav
+              showPrevious={step > 1}
+              onPrevious={goPrevious}
+              onNext={
+                step < TOTAL_STEPS ? () => void goNext() : () => void onJoin()
+              }
+              nextLabel={
+                step < TOTAL_STEPS
+                  ? "Next"
+                  : authToken
+                    ? "Sign out & Signup"
+                    : "Signup"
+              }
+              nextLoading={
+                step === 1
+                  ? checkingCredentials
+                  : step === 5
+                    ? submitting
+                    : false
+              }
+              nextDisabled={step === 5 && (!!previewError || previewLoading)}
+            />
+          </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
     </GradientBackground>

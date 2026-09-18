@@ -8,7 +8,7 @@ import {
   type DeviceRecord,
 } from "@/api/devices";
 import { normalizeAccountType, type NormalizedAccountType } from "@/lib/accountLimits";
-import { getOrCreateDeviceHid, getToken } from "@/lib/storage";
+import { getOrCreateDeviceHid, getToken, rotateDeviceHid } from "@/lib/storage";
 import type { AuthUser } from "@/api/auth";
 
 /** Thrown when login succeeds but another device holds the active session. */
@@ -150,6 +150,25 @@ export async function setCurrentDeviceOffline(): Promise<void> {
   await updateDevice(existing.id, { is_online: false });
 }
 
+/**
+ * Remove this phone's login-session row so its HID can be reused by another
+ * account on the same device (logout → QR signup for a different user).
+ */
+export async function releaseCurrentDeviceSession(): Promise<void> {
+  if (!(await getToken())) return;
+  const localHid = await getOrCreateDeviceHid();
+  const devices = await getDevices();
+  const existing = (devices.data ?? []).find(
+    (d) => String(d.hid).toUpperCase() === localHid.toUpperCase(),
+  );
+  if (!existing?.id) return;
+  if (isClientSessionHid(existing.hid)) {
+    await deleteDevice(existing.id);
+    return;
+  }
+  await updateDevice(existing.id, { is_online: false });
+}
+
 export async function signOutDevice(deviceId: number | string): Promise<void> {
   await updateDevice(deviceId, { is_online: false });
 }
@@ -216,13 +235,23 @@ export async function syncCurrentDevice(
 
     // Let the server evict offline devices when at capacity — never delete from
     // the client during login sync (that was removing the other platform's row).
-    const created = await createDevice({
+    const createPayload = {
       hid: localHid,
       name: `${display} (${platformLabel})`,
       enable_notification: true,
       propagate_enabled: true,
       is_online: true,
-    });
+    };
+    let created = await createDevice(createPayload);
+    if (
+      created.error &&
+      /already exists/i.test(created.error) &&
+      isClientSessionHid(localHid)
+    ) {
+      // HID still owned by a previous account on this phone — mint a fresh one.
+      const rotatedHid = await rotateDeviceHid();
+      created = await createDevice({ ...createPayload, hid: rotatedHid });
+    }
     if (created.error) {
       return mapCreateError(created.error);
     }
