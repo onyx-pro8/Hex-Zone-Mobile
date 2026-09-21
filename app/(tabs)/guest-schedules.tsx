@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -21,9 +20,13 @@ import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { useGuestManagementBack } from "@/hooks/useGuestManagementBack";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
+  acceptAccessSchedule,
   createAccessSchedule,
   listAccessSchedules,
+  rejectAccessSchedule,
+  revokeAccessSchedule,
   type AccessSchedule,
+  type AccessScheduleStatus,
 } from "@/api/guest";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
@@ -57,6 +60,139 @@ function isValidIso(value: string): boolean {
   if (!value.trim()) return true;
   const d = new Date(value);
   return !Number.isNaN(d.getTime());
+}
+
+function statusTone(
+  status: AccessScheduleStatus | string | undefined,
+): "success" | "warning" | "danger" | "muted" {
+  switch (status) {
+    case "ACCEPTED":
+      return "success";
+    case "PENDING":
+      return "warning";
+    case "REJECTED":
+    case "REVOKED":
+      return "danger";
+    default:
+      return "muted";
+  }
+}
+
+function ScheduleRow({
+  item,
+  isAdmin,
+  onChanged,
+}: {
+  item: AccessSchedule;
+  isAdmin: boolean;
+  onChanged: () => void;
+}) {
+  const status = (item.status || (item.active ? "ACCEPTED" : "PENDING")) as AccessScheduleStatus;
+  const [busy, setBusy] = useState(false);
+
+  const act = async (action: "accept" | "reject" | "revoke") => {
+    setBusy(true);
+    try {
+      const fn =
+        action === "accept"
+          ? acceptAccessSchedule
+          : action === "reject"
+            ? rejectAccessSchedule
+            : revokeAccessSchedule;
+      const result = await fn(item.id);
+      if (result.error) {
+        toast.error(result.error, { title: "Action failed" });
+        return;
+      }
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card style={{ marginBottom: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            gap: 10,
+            alignItems: "center",
+            flex: 1,
+          }}
+        >
+          <CalendarRange size={18} color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                color: colors.text,
+                fontWeight: "700",
+                fontSize: 14,
+              }}
+              numberOfLines={1}
+            >
+              {item.guest_name?.trim() ||
+                item.event_id ||
+                (item.guest_id
+                  ? `Guest ${item.guest_id.slice(0, 10)}`
+                  : "Schedule")}
+            </Text>
+            <Text
+              style={{
+                color: colors.textDim,
+                fontSize: 11,
+                marginTop: 2,
+              }}
+            >
+              {item.starts_at
+                ? new Date(item.starts_at).toLocaleString()
+                : "open"}{" "}
+              →{" "}
+              {item.ends_at ? new Date(item.ends_at).toLocaleString() : "open"}
+            </Text>
+          </View>
+        </View>
+        <Chip label={status} tone={statusTone(status)} />
+      </View>
+
+      {isAdmin && status === "PENDING" ? (
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
+          <Button
+            label="Accept"
+            size="sm"
+            loading={busy}
+            onPress={() => void act("accept")}
+            style={{ flex: 1 }}
+          />
+          <Button
+            label="Reject"
+            size="sm"
+            variant="danger"
+            loading={busy}
+            onPress={() => void act("reject")}
+            style={{ flex: 1 }}
+          />
+        </View>
+      ) : null}
+
+      {isAdmin && status === "ACCEPTED" ? (
+        <Button
+          label="Revoke"
+          size="sm"
+          variant="outline"
+          loading={busy}
+          onPress={() => void act("revoke")}
+          style={{ marginTop: 12 }}
+        />
+      ) : null}
+    </Card>
+  );
 }
 
 export default function GuestSchedulesScreen() {
@@ -123,6 +259,12 @@ export default function GuestSchedulesScreen() {
       if (result.error || !result.data) {
         throw new Error(result.error ?? "Could not save schedule.");
       }
+      const created = result.data;
+      if (created.status === "PENDING") {
+        toast.success("Schedule submitted — waiting for admin approval.");
+      } else {
+        toast.success("Schedule approved and active.");
+      }
       setGuestName("");
       setEventId("");
       setGuestId("");
@@ -155,8 +297,8 @@ export default function GuestSchedulesScreen() {
           title="Guest schedules"
           subtitle={
             effectiveZoneId
-              ? `Pre-approve expected guest windows · ${effectiveZoneId}`
-              : "Pre-approve expected guest windows"
+              ? `Expected guest windows · admin approval · ${effectiveZoneId}`
+              : "Expected guest windows · admin approval"
           }
           showBack
           onBack={onBack}
@@ -210,7 +352,7 @@ export default function GuestSchedulesScreen() {
                           fontWeight: "700",
                         }}
                       >
-                        Zone
+                        Network
                       </Text>
                       <Pressable
                         onPress={() => void refreshZones()}
@@ -241,150 +383,112 @@ export default function GuestSchedulesScreen() {
                   </Card>
                 ) : null}
                 <Card style={{ marginBottom: 16, gap: 12 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 10,
-                  }}
-                >
-                  <CalendarPlus size={18} color={colors.accent} />
-                  <Text
-                    style={{ color: colors.text, fontWeight: "700", fontSize: 15 }}
-                  >
-                    New schedule
-                  </Text>
-                </View>
-                <TextInput
-                  placeholder="Guest name (optional)"
-                  placeholderTextColor={colors.textDim}
-                  value={guestName}
-                  onChangeText={setGuestName}
-                  style={inputStyle()}
-                />
-                <TextInput
-                  placeholder="Event ID (optional, e.g. EVT-1234)"
-                  placeholderTextColor={colors.textDim}
-                  value={eventId}
-                  onChangeText={setEventId}
-                  style={inputStyle()}
-                />
-                <TextInput
-                  placeholder="Guest ID (optional, opaque guest UUID)"
-                  placeholderTextColor={colors.textDim}
-                  value={guestId}
-                  onChangeText={setGuestId}
-                  autoCapitalize="none"
-                  style={inputStyle()}
-                />
-                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                  Window
-                </Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {QUICK_WINDOWS.map((w) => (
-                    <Pressable
-                      key={w.hours}
-                      onPress={() => applyQuickWindow(w.hours)}
-                    >
-                      <Chip label={w.label} />
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput
-                  placeholder="Starts at (ISO, optional)"
-                  placeholderTextColor={colors.textDim}
-                  value={startsAt}
-                  onChangeText={setStartsAt}
-                  autoCapitalize="none"
-                  style={inputStyle()}
-                />
-                <TextInput
-                  placeholder="Ends at (ISO, optional)"
-                  placeholderTextColor={colors.textDim}
-                  value={endsAt}
-                  onChangeText={setEndsAt}
-                  autoCapitalize="none"
-                  style={inputStyle()}
-                />
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontSize: 13 }}>
-                    Notify zone members
-                  </Text>
-                  <Switch
-                    value={notifyAssist}
-                    onValueChange={setNotifyAssist}
-                    trackColor={{ false: colors.border, true: colors.accent }}
-                  />
-                </View>
-                <Button
-                  label="Save schedule"
-                  onPress={() => void onSave()}
-                  loading={submitting}
-                  fullWidth
-                />
-              </Card>
-              </View>
-            }
-            renderItem={({ item }) => (
-              <Card style={{ marginBottom: 10 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
                   <View
                     style={{
                       flexDirection: "row",
-                      gap: 10,
                       alignItems: "center",
-                      flex: 1,
+                      gap: 10,
                     }}
                   >
-                    <CalendarRange size={18} color={colors.accent} />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          color: colors.text,
-                          fontWeight: "700",
-                          fontSize: 14,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {item.guest_name?.trim() ||
-                          item.event_id ||
-                          (item.guest_id ? `Guest ${item.guest_id.slice(0, 10)}` : "Schedule")}
-                      </Text>
-                      <Text
-                        style={{
-                          color: colors.textDim,
-                          fontSize: 11,
-                          marginTop: 2,
-                        }}
-                      >
-                        {item.starts_at
-                          ? new Date(item.starts_at).toLocaleString()
-                          : "open"}{" "}
-                        →{" "}
-                        {item.ends_at
-                          ? new Date(item.ends_at).toLocaleString()
-                          : "open"}
-                      </Text>
-                    </View>
+                    <CalendarPlus size={18} color={colors.accent} />
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontWeight: "700",
+                        fontSize: 15,
+                      }}
+                    >
+                      New schedule request
+                    </Text>
                   </View>
-                  <Chip
-                    label={item.active ? "Active" : "Off"}
-                    tone={item.active ? "success" : "muted"}
+                  {!isAdmin ? (
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      Submissions stay pending until a network administrator
+                      accepts them.
+                    </Text>
+                  ) : null}
+                  <TextInput
+                    placeholder="Guest name (optional)"
+                    placeholderTextColor={colors.textDim}
+                    value={guestName}
+                    onChangeText={setGuestName}
+                    style={inputStyle()}
                   />
-                </View>
-              </Card>
+                  <TextInput
+                    placeholder="Event ID (optional, e.g. EVT-1234)"
+                    placeholderTextColor={colors.textDim}
+                    value={eventId}
+                    onChangeText={setEventId}
+                    style={inputStyle()}
+                  />
+                  <TextInput
+                    placeholder="Guest ID (optional, opaque guest UUID)"
+                    placeholderTextColor={colors.textDim}
+                    value={guestId}
+                    onChangeText={setGuestId}
+                    autoCapitalize="none"
+                    style={inputStyle()}
+                  />
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    Window
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {QUICK_WINDOWS.map((w) => (
+                      <Pressable
+                        key={w.hours}
+                        onPress={() => applyQuickWindow(w.hours)}
+                      >
+                        <Chip label={w.label} />
+                      </Pressable>
+                    ))}
+                  </View>
+                  <TextInput
+                    placeholder="Starts at (ISO, optional)"
+                    placeholderTextColor={colors.textDim}
+                    value={startsAt}
+                    onChangeText={setStartsAt}
+                    autoCapitalize="none"
+                    style={inputStyle()}
+                  />
+                  <TextInput
+                    placeholder="Ends at (ISO, optional)"
+                    placeholderTextColor={colors.textDim}
+                    value={endsAt}
+                    onChangeText={setEndsAt}
+                    autoCapitalize="none"
+                    style={inputStyle()}
+                  />
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ color: colors.text, fontSize: 13 }}>
+                      Notify zone members on arrival
+                    </Text>
+                    <Switch
+                      value={notifyAssist}
+                      onValueChange={setNotifyAssist}
+                      trackColor={{ false: colors.border, true: colors.accent }}
+                    />
+                  </View>
+                  <Button
+                    label={isAdmin ? "Save schedule" : "Submit for approval"}
+                    onPress={() => void onSave()}
+                    loading={submitting}
+                    fullWidth
+                  />
+                </Card>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <ScheduleRow
+                item={item}
+                isAdmin={isAdmin}
+                onChanged={() => void load()}
+              />
             )}
             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }}
             refreshControl={
@@ -397,7 +501,7 @@ export default function GuestSchedulesScreen() {
             ListEmptyComponent={
               <Card>
                 <Text style={{ color: colors.textMuted, textAlign: "center" }}>
-                  No active schedules.
+                  No schedules yet.
                 </Text>
               </Card>
             }

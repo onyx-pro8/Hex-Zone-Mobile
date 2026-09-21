@@ -229,7 +229,7 @@ export default function GuestArrivalMessagesScreen() {
                       justifyContent: "space-between",
                     }}
                   >
-                    <Text style={labelStyle}>Zone</Text>
+                    <Text style={labelStyle}>Network</Text>
                     <Pressable onPress={() => void refreshZones()} hitSlop={8}>
                       <RefreshCw size={14} color={colors.accent} />
                     </Pressable>

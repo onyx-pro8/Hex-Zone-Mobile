@@ -30,10 +30,12 @@ import { colors } from "@/theme/colors";
 function PassRow({
   pass,
   zoneId,
+  isAdmin,
   onChanged,
 }: {
   pass: GuestPass;
   zoneId: string;
+  isAdmin: boolean;
   onChanged: () => void;
 }) {
   const tone =
@@ -75,7 +77,7 @@ function PassRow({
         </View>
         <Chip label={pass.status} tone={tone} />
       </View>
-      {pass.status === "PENDING" ? (
+      {isAdmin && pass.status === "PENDING" ? (
         <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
           <Button
             label="Accept"
@@ -91,7 +93,7 @@ function PassRow({
             style={{ flex: 1 }}
           />
         </View>
-      ) : pass.status === "ACCEPTED" ? (
+      ) : isAdmin && pass.status === "ACCEPTED" ? (
         <Button
           label="Revoke"
           size="sm"
@@ -194,7 +196,7 @@ export default function GuestPassesScreen() {
                       fontWeight: "700",
                     }}
                   >
-                    Zone
+                    Network
                   </Text>
                   <Pressable onPress={() => void refreshZones()} hitSlop={8}>
                     <RefreshCw size={14} color={colors.accent} />
@@ -235,6 +237,7 @@ export default function GuestPassesScreen() {
                   <PassRow
                     pass={item}
                     zoneId={effectiveZoneId}
+                    isAdmin={isAdmin}
                     onChanged={() => void load()}
                   />
                 )}

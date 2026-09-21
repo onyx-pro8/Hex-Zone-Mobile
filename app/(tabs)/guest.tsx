@@ -25,7 +25,7 @@ export default function GuestHubScreen() {
     {
       key: "schedules",
       title: "Guest schedules",
-      subtitle: "Pre-approve expected guest windows",
+      subtitle: "Request expected guest windows (admin approves)",
       icon: <CalendarRange size={22} color={colors.accent} />,
       href: "/(tabs)/guest-schedules",
     },

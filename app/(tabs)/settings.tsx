@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Bell,
   BookOpen,
+  History,
   Home,
   LogOut,
   Smartphone,
@@ -69,6 +70,12 @@ export default function SettingsScreen() {
               title="Guest management"
               subtitle="Lists, schedules, passes & arrival copy"
               onPress={() => router.push("/(tabs)/guest-management")}
+            />
+            <SettingsNavRow
+              icon={<History size={18} color={colors.accent} />}
+              title="Access history"
+              subtitle="Guest access permission messages"
+              onPress={() => router.push("/(tabs)/access-history")}
             />
             <SettingsNavRow
               icon={<Bell size={18} color={colors.accent} />}

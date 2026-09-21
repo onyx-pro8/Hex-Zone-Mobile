@@ -132,7 +132,7 @@ export default function GuestListScreen() {
                       fontWeight: "700",
                     }}
                   >
-                    Zone
+                    Network
                   </Text>
                   <Pressable onPress={() => void refreshZones()} hitSlop={8}>
                     <RefreshCw size={14} color={colors.accent} />

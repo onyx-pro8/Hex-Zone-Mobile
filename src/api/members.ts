@@ -119,7 +119,7 @@ export async function setMemberActive(
   });
 }
 
-/** System-admin only: assign a pricing tier to an administrator account. */
+/** System-admin only: assign a pricing tier. */
 export async function setMemberAccountType(
   memberId: string | number,
   accountType: string,
@@ -128,6 +128,18 @@ export async function setMemberAccountType(
     method: "PATCH",
     url: `/owners/${encodeURIComponent(String(memberId))}`,
     data: { account_type: accountType },
+  });
+}
+
+/** System-admin only: assign administrator or user role. */
+export async function setMemberRole(
+  memberId: string | number,
+  role: "administrator" | "user",
+) {
+  return request<unknown>({
+    method: "PATCH",
+    url: `/owners/${encodeURIComponent(String(memberId))}`,
+    data: { role },
   });
 }
 

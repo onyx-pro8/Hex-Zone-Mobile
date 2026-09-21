@@ -22,6 +22,7 @@ import {
   getMembers,
   setMemberAccountType,
   setMemberActive,
+  setMemberRole,
   type Member,
 } from "@/api/members";
 import {
@@ -213,15 +214,22 @@ function ManageMemberModal({
   onClose: () => void;
   onSave: (next: {
     accountType: NormalizedAccountType;
+    role: "administrator" | "user";
     active: boolean;
   }) => void;
 }) {
   const [accountType, setAccountType] = useState<NormalizedAccountType>("EXCLUSIVE");
+  const [role, setRole] = useState<"administrator" | "user">("user");
   const [active, setActive] = useState(true);
 
   useEffect(() => {
     if (!member) return;
     setAccountType(normalizeAccountType(member.account_type));
+    setRole(
+      String(member.role ?? "").toLowerCase() === "administrator"
+        ? "administrator"
+        : "user",
+    );
     setActive(member.active !== false);
   }, [member]);
 
@@ -300,6 +308,59 @@ function ManageMemberModal({
                 {member.email}
               </Text>
             ) : null}
+          </View>
+
+          <View style={{ gap: 6 }}>
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontSize: 10,
+                fontWeight: "700",
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+              }}
+            >
+              Role
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {(
+                [
+                  { value: "administrator" as const, label: "Administrator" },
+                  { value: "user" as const, label: "User" },
+                ] as const
+              ).map((option) => {
+                const selected = role === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    disabled={busy}
+                    onPress={() => setRole(option.value)}
+                    style={{
+                      flex: 1,
+                      borderRadius: 10,
+                      paddingHorizontal: 10,
+                      paddingVertical: 7,
+                      backgroundColor: selected
+                        ? colors.accent
+                        : colors.bgSurface,
+                      borderWidth: 1,
+                      borderColor: selected ? colors.accent : colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: selected ? "#fff" : colors.text,
+                        fontWeight: "700",
+                        fontSize: 12,
+                        textAlign: "center",
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
 
           <View style={{ gap: 6 }}>
@@ -425,7 +486,7 @@ function ManageMemberModal({
               <Button
                 label={busy ? "Saving…" : "Save"}
                 size="sm"
-                onPress={() => onSave({ accountType, active })}
+                onPress={() => onSave({ accountType, role, active })}
                 disabled={busy}
                 fullWidth
               />
@@ -514,25 +575,60 @@ export default function MembersScreen() {
   }, [isSystemAdmin, filter]);
 
   const onSaveManagedMember = useCallback(
-    async (next: { accountType: NormalizedAccountType; active: boolean }) => {
+    async (next: {
+      accountType: NormalizedAccountType;
+      role: "administrator" | "user";
+      active: boolean;
+    }) => {
       if (!managing) return;
       const member = managing;
       const apiType = toApiAccountType(next.accountType);
       const prevType = String(member.account_type ?? "");
+      const prevRole =
+        String(member.role ?? "").toLowerCase() === "administrator"
+          ? ("administrator" as const)
+          : ("user" as const);
       const prevActive = member.active !== false;
 
       setPendingId(member.id);
       setMembers((prev) =>
         prev.map((row) =>
           row.id === member.id
-            ? { ...row, account_type: apiType, active: next.active }
+            ? {
+                ...row,
+                account_type: apiType,
+                role: next.role,
+                active: next.active,
+              }
             : row,
         ),
       );
 
       const typeChanged =
         normalizeAccountType(member.account_type) !== next.accountType;
+      const roleChanged = prevRole !== next.role;
       const activeChanged = prevActive !== next.active;
+
+      if (roleChanged) {
+        const roleRes = await setMemberRole(member.id, next.role);
+        if (roleRes.error) {
+          setPendingId(null);
+          setMembers((prev) =>
+            prev.map((row) =>
+              row.id === member.id
+                ? {
+                    ...row,
+                    account_type: prevType,
+                    role: prevRole,
+                    active: prevActive,
+                  }
+                : row,
+            ),
+          );
+          toast.error(roleRes.error, { title: "Could not update role" });
+          return;
+        }
+      }
 
       if (typeChanged) {
         const typeRes = await setMemberAccountType(member.id, apiType);
@@ -541,7 +637,12 @@ export default function MembersScreen() {
           setMembers((prev) =>
             prev.map((row) =>
               row.id === member.id
-                ? { ...row, account_type: prevType, active: prevActive }
+                ? {
+                    ...row,
+                    account_type: prevType,
+                    role: roleChanged ? next.role : prevRole,
+                    active: prevActive,
+                  }
                 : row,
             ),
           );
@@ -560,6 +661,7 @@ export default function MembersScreen() {
                 ? {
                     ...row,
                     account_type: typeChanged ? apiType : prevType,
+                    role: roleChanged ? next.role : prevRole,
                     active: prevActive,
                   }
                 : row,
@@ -577,9 +679,11 @@ export default function MembersScreen() {
 
       setPendingId(null);
       setManaging(null);
+      toast.success("Member updated.");
       devLog("Members: managed member updated", {
         memberId: member.id,
         accountType: apiType,
+        role: next.role,
         active: next.active,
       });
     },
@@ -643,7 +747,7 @@ export default function MembersScreen() {
                 : " · unlimited members"}
               .
               {isSystemAdmin
-                ? " Open All members and tap a user to change their account type or active status. Inactive users cannot sign in."
+                ? " Open All members and tap a user to change their role, account type, or active status. Inactive users cannot sign in."
                 : ""}
             </Text>
           </Card>

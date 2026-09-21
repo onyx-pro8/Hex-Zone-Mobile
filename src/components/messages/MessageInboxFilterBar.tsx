@@ -125,15 +125,17 @@ export function MessageInboxFilterBar({
           onChange={onZoneFilterChange}
           emphasized={zoneFilter !== "all"}
         />
-        <FilterSelectChip
-          label="Type"
-          value={typeFilter}
-          options={typeSelectOptions}
-          onChange={(next) =>
-            onTypeFilterChange(next === "all" ? "all" : (next as MessageType))
-          }
-          emphasized={typeFilter !== "all"}
-        />
+        {typeOptions.length > 0 ? (
+          <FilterSelectChip
+            label="Type"
+            value={typeFilter}
+            options={typeSelectOptions}
+            onChange={(next) =>
+              onTypeFilterChange(next === "all" ? "all" : (next as MessageType))
+            }
+            emphasized={typeFilter !== "all"}
+          />
+        ) : null}
         <DateRangeFilterChip
           dateFrom={dateFrom}
           dateTo={dateTo}
