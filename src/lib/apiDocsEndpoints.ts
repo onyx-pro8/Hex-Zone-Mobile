@@ -441,7 +441,7 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     method: "POST",
     path: "/message-feature/access/schedules",
     group: "core",
-    description: "Create expected-guest schedule and member-assist policy.",
+    description: "Create expected-guest schedule (PENDING until admin accepts; admins auto-accept).",
     bodyJson: true,
     params: [
       { name: "body", in: "body", required: true, placeholder: "JSON body" },
@@ -452,7 +452,7 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     method: "GET",
     path: "/message-feature/access/schedules",
     group: "core",
-    description: "List access schedules by zone_id query.",
+    description: "List access schedules by zone_id (all statuses).",
     params: [
       {
         name: "zone_id",
@@ -460,6 +460,36 @@ export const API_ENDPOINTS: EndpointSpec[] = [
         required: true,
         placeholder: "ZONE-7A29",
       },
+    ],
+  },
+  {
+    id: "message-feature-access-schedules-accept",
+    method: "POST",
+    path: "/message-feature/access/schedules/{schedule_id}/accept",
+    group: "core",
+    description: "Admin accepts a PENDING guest schedule.",
+    params: [
+      { name: "schedule_id", in: "path", required: true, placeholder: "1" },
+    ],
+  },
+  {
+    id: "message-feature-access-schedules-reject",
+    method: "POST",
+    path: "/message-feature/access/schedules/{schedule_id}/reject",
+    group: "core",
+    description: "Admin rejects a PENDING guest schedule.",
+    params: [
+      { name: "schedule_id", in: "path", required: true, placeholder: "1" },
+    ],
+  },
+  {
+    id: "message-feature-access-schedules-revoke",
+    method: "POST",
+    path: "/message-feature/access/schedules/{schedule_id}/revoke",
+    group: "core",
+    description: "Admin revokes an ACCEPTED guest schedule.",
+    params: [
+      { name: "schedule_id", in: "path", required: true, placeholder: "1" },
     ],
   },
   {
@@ -508,7 +538,7 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     path: "/utils/qr/generate",
     group: "core",
     description:
-      "Generate QR invite token. System admin (Private): new Individual user account. Family/Organization: Individual user member on inviter zone.",
+      "Generate QR invite token. System admin (Private): new Individual user account. Family/Organization: same-type user member. Individual Pro: one Individual user on primary zone.",
     bodyJson: true,
     params: [
       { name: "body", in: "body", required: true, placeholder: "JSON body" },
@@ -532,7 +562,7 @@ export const API_ENDPOINTS: EndpointSpec[] = [
     path: "/utils/qr/join",
     group: "core",
     description:
-      "Register via QR invite. All invitees become Individual (Exclusive) user accounts. System-admin invites require zone_id (new network).",
+      "Register via QR invite. Family/Organization invitees inherit the inviter account type (user role). Individual Pro invites create an Individual user. System-admin invites create an independent Individual and require zone_id (new network).",
     public: true,
     bodyJson: true,
     params: [

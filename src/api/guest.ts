@@ -518,6 +518,12 @@ export async function rejectGuestRequest(requestId: string, zoneId: string) {
 
 /* --------------------------- Access schedules --------------------------- */
 
+export type AccessScheduleStatus =
+  | "PENDING"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "REVOKED";
+
 export type AccessSchedule = {
   id: number;
   zone_id: string;
@@ -528,8 +534,11 @@ export type AccessSchedule = {
   ends_at: string | null;
   notify_member_assist: boolean;
   active: boolean;
+  status: AccessScheduleStatus;
   created_by_owner_id: number | null;
+  reviewed_by?: number | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 export type CreateAccessSchedulePayload = {
@@ -558,5 +567,26 @@ export async function createAccessSchedule(payload: CreateAccessSchedulePayload)
       ...payload,
       notify_member_assist: payload.notify_member_assist ?? false,
     },
+  });
+}
+
+export async function acceptAccessSchedule(scheduleId: number) {
+  return request<AccessSchedule>({
+    method: "POST",
+    url: `/message-feature/access/schedules/${scheduleId}/accept`,
+  });
+}
+
+export async function rejectAccessSchedule(scheduleId: number) {
+  return request<AccessSchedule>({
+    method: "POST",
+    url: `/message-feature/access/schedules/${scheduleId}/reject`,
+  });
+}
+
+export async function revokeAccessSchedule(scheduleId: number) {
+  return request<AccessSchedule>({
+    method: "POST",
+    url: `/message-feature/access/schedules/${scheduleId}/revoke`,
   });
 }

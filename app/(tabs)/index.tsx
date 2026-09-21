@@ -169,6 +169,7 @@ function MessageRow({
 export default function MessagesScreen() {
   const { user } = useAuth();
   const { isOnline } = useMemberPresence();
+  const router = useRouter();
   const searchParams = useLocalSearchParams<{
     type?: string;
     message?: string;
@@ -210,6 +211,13 @@ export default function MessagesScreen() {
         : "";
     if (typeParam) {
       const resolved = toMessageType(typeParam);
+      if (resolved === "PERMISSION") {
+        router.replace({
+          pathname: "/(tabs)/access-history",
+          params: messageParam ? { message: messageParam } : undefined,
+        } as unknown as Href);
+        return;
+      }
       if (resolved && getMessageTypeCategory(resolved) !== "Alarm") {
         setTypeFilter(resolved);
       }
@@ -218,16 +226,20 @@ export default function MessagesScreen() {
   }, [
     searchParams.type,
     searchParams.message,
+    router,
   ]);
 
   const inboxTypeOptions = useMemo(
-    () => messageTypesForCategories(["Alert", "Access"]),
+    () =>
+      messageTypesForCategories(["Alert", "Access"]).filter(
+        (option) => option.type !== "PERMISSION",
+      ),
     [],
   );
 
   const allZoneIds = useMemo(() => {
     const fromMessages = messages
-      .filter((m) => m.category !== "Alarm")
+      .filter((m) => m.category !== "Alarm" && m.type !== "PERMISSION")
       .map((m) => String(m.zone_id ?? "").trim())
       .filter(Boolean);
     return Array.from(new Set(fromMessages)).sort();
@@ -243,6 +255,7 @@ export default function MessagesScreen() {
     () =>
       applyMessageInboxFilters(messages, {
         excludeCategories: ["Alarm"],
+        excludeTypes: ["PERMISSION"],
         zoneFilter,
         typeFilter,
         dateFrom,

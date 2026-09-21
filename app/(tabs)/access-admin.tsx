@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,22 +9,17 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
 import { toast } from "@/lib/toast";
 import {
-  CalendarRange,
-  Check,
   Copy,
   Download,
   Link as LinkIcon,
-  MessageSquareText,
   QrCode,
   RefreshCw,
-  Ticket,
-  UserCheck,
   X,
 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
@@ -35,29 +30,19 @@ import { Chip } from "@/components/ui/Chip";
 import { FormSelect } from "@/components/ui/FormSelect";
 import { ToastHost } from "@/components/ui/ToastHost";
 import { useAuth } from "@/context/AuthContext";
-import { useWebSocket } from "@/hooks/useWebSocket";
 import {
-  parseGuestRequestChangedSocketEvent,
-} from "@/lib/messageSocket";
-import {
-  approveGuestRequest,
   createGuestAccessQrToken,
   fetchNetworkAccessQrToken,
   generateMemberInviteQr,
   getGuestAccessQrLink,
   getGuestAccessQrTokenLink,
-  guestRequestShowsApprovalActions,
   listGuestAccessQrTokens,
-  listGuestRequests,
-  rejectGuestRequest,
   revokeGuestAccessQrToken,
   toAccessDeepLink,
   type GuestAccessQrToken,
-  type GuestRequest,
 } from "@/api/guest";
 import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { devLog } from "@/lib/devConsole";
-import { presentLocalMessageNotification } from "@/lib/notifications";
 import {
   canAdministratorInviteUserMember,
   isSystemAdministrator,
@@ -364,7 +349,7 @@ function MemberInviteSection({
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
         {isSystemAdmin
           ? "Invitees create an Individual user account for a new network and choose their own network ID on the join form. Every link is single-use, including ones that never expire. Generate multiple codes when you need a batch for handout or printing."
-          : "Invitees join this network as Individual (user-role) members. Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
+          : "Invitees join this network as user-role members (Family/Organization keep your account type; Individual Pro invites one Individual). Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
       </Text>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1160,30 +1145,9 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
 }
 
 export default function AccessScreen() {
-  const router = useRouter();
-  const { user, token } = useAuth();
-  const {
-    effectiveZoneId,
-    accountZoneId,
-    candidateZoneIds,
-    zonesLoading,
-    setPickedZoneId,
-    refresh: refreshZones,
-  } = useEffectiveZoneId();
+  const { user } = useAuth();
+  const { effectiveZoneId } = useEffectiveZoneId();
   const [tab, setTab] = useState<Tab>("member");
-  const [requests, setRequests] = useState<GuestRequest[]>([]);
-  const [loadingRequests, setLoadingRequests] = useState(false);
-  const [requestsError, setRequestsError] = useState<string | null>(null);
-  // Track which pending arrivals we've already alerted on, and skip the first
-  // load so we don't fire a burst of notifications for pre-existing requests.
-  const notifiedRequestIdsRef = useRef<Set<string>>(new Set());
-  const notifyPrimedRef = useRef(false);
-
-  const { lastMessage, status: wsStatus } = useWebSocket({
-    token,
-    zoneIds: effectiveZoneId ? [effectiveZoneId] : [],
-    enabled: Boolean(token && effectiveZoneId),
-  });
 
   const params = useLocalSearchParams<{
     gt?: string;
@@ -1237,127 +1201,13 @@ export default function AccessScreen() {
     }
   }, [memberInviteDisabled]);
 
-  const loadRequests = useCallback(async () => {
-    if (!effectiveZoneId) return;
-    setLoadingRequests(true);
-    setRequestsError(null);
-    try {
-      const result = await listGuestRequests(effectiveZoneId);
-      if (result.error) {
-        setRequestsError(result.error);
-        setRequests([]);
-        return;
-      }
-      const rows = result.data ?? [];
-      setRequests(rows);
-
-      const pending = rows.filter(
-        (r) => r.approval_status === "PENDING" || r.approval_status === "ARRIVED",
-      );
-      const fresh = pending.filter(
-        (r) => !notifiedRequestIdsRef.current.has(r.id),
-      );
-      if (notifyPrimedRef.current && fresh.length > 0) {
-        const title =
-          fresh.length === 1
-            ? "New guest request"
-            : `${fresh.length} new guest requests`;
-        const body =
-          fresh.length === 1
-            ? `${fresh[0]?.guest_name ?? "A guest"} is requesting access to this zone.`
-            : "Several guests are requesting access to this zone.";
-        void presentLocalMessageNotification({
-          title,
-          body,
-          channelId: "messages",
-          data: { event: "GUEST_ACCESS_REQUEST", zone_id: effectiveZoneId },
-        });
-      }
-      for (const r of pending) notifiedRequestIdsRef.current.add(r.id);
-      notifyPrimedRef.current = true;
-    } finally {
-      setLoadingRequests(false);
-    }
-  }, [effectiveZoneId]);
-
-  // Reset notification de-dupe state when switching zones.
-  useEffect(() => {
-    notifiedRequestIdsRef.current = new Set();
-    notifyPrimedRef.current = false;
-  }, [effectiveZoneId]);
-
-  useEffect(() => {
-    void loadRequests();
-  }, [loadRequests]);
-
-  // Poll so the admin is alerted to new arrivals while this screen is open —
-  // only when the WebSocket is not connected.
-  useEffect(() => {
-    if (!effectiveZoneId) return;
-    if (wsStatus === "open") return;
-    const interval = setInterval(() => {
-      void loadRequests();
-    }, 20_000);
-    return () => clearInterval(interval);
-  }, [effectiveZoneId, loadRequests, wsStatus]);
-
-  useEffect(() => {
-    if (wsStatus === "open") void loadRequests();
-  }, [wsStatus, loadRequests]);
-
-  useEffect(() => {
-    if (!lastMessage) return;
-    const changed = parseGuestRequestChangedSocketEvent(lastMessage);
-    if (changed) {
-      if (
-        changed.zone_id &&
-        effectiveZoneId &&
-        changed.zone_id !== effectiveZoneId
-      ) {
-        return;
-      }
-      void loadRequests();
-      return;
-    }
-    try {
-      const parsed = JSON.parse(lastMessage) as { type?: string };
-      if (
-        parsed.type === "unexpected_guest" ||
-        parsed.type === "guest_is_here" ||
-        parsed.type === "PERMISSION_MESSAGE"
-      ) {
-        void loadRequests();
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [lastMessage, loadRequests, effectiveZoneId]);
-
-  const onApprove = async (requestId: string) => {
-    const result = await approveGuestRequest(requestId, effectiveZoneId);
-    if (result.error) {
-      toast.error(result.error, { title: "Approve failed" });
-      return;
-    }
-    void loadRequests();
-  };
-
-  const onReject = async (requestId: string) => {
-    const result = await rejectGuestRequest(requestId, effectiveZoneId);
-    if (result.error) {
-      toast.error(result.error, { title: "Reject failed" });
-      return;
-    }
-    void loadRequests();
-  };
-
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
           <AppHeader
             title="Access"
-            subtitle="QR invites & guest arrivals"
+            subtitle="QR invites"
           />
 
           <SegmentedTabs tab={tab} onChange={setTab} />
@@ -1370,159 +1220,7 @@ export default function AccessScreen() {
                 isSystemAdmin={isSystemAdmin}
               />
             ) : (
-              <>
-                <NetworkAccessSection zoneId={effectiveZoneId} />
-              </>
-            )}
-
-            <Pressable onPress={() => router.push("/(tabs)/guest-passes")}>
-              <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-                <Ticket size={24} color={colors.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: "700" }}>
-                    Guest passes
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    Pre-register expected guests with event IDs
-                  </Text>
-                </View>
-              </Card>
-            </Pressable>
-
-            <Pressable onPress={() => router.push("/(tabs)/guest-schedules")}>
-              <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-                <CalendarRange size={24} color={colors.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: "700" }}>
-                    Guest schedules
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    Pre-approve expected guest time windows
-                  </Text>
-                </View>
-              </Card>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push("/(tabs)/guest-arrival-messages")}
-            >
-              <Card style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-                <MessageSquareText size={24} color={colors.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: "700" }}>
-                    Arrival messages
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    Set the &quot;expected&quot; and &quot;waiting for approval&quot; wording
-                  </Text>
-                </View>
-              </Card>
-            </Pressable>
-
-            <Text
-              style={{
-                color: colors.text,
-                fontSize: 16,
-                fontWeight: "700",
-                marginTop: 8,
-              }}
-            >
-              Pending arrivals
-            </Text>
-
-            {requestsError ? (
-              <Card>
-                <Text style={{ color: colors.danger, fontSize: 12 }}>
-                  {requestsError}
-                </Text>
-              </Card>
-            ) : null}
-
-            {loadingRequests ? (
-              <ActivityIndicator color={colors.accent} />
-            ) : requests.length === 0 ? (
-              <Card>
-                <Text style={{ color: colors.textMuted, textAlign: "center" }}>
-                  No pending guest requests for this zone.
-                </Text>
-              </Card>
-            ) : (
-              requests.map((req) => (
-                <Card key={req.id} style={{ marginBottom: 10 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        gap: 10,
-                        alignItems: "center",
-                      }}
-                    >
-                      <UserCheck size={20} color={colors.accent} />
-                      <View>
-                        <Text
-                          style={{
-                            color: colors.text,
-                            fontWeight: "700",
-                            fontSize: 15,
-                          }}
-                        >
-                          {req.guest_name ?? "Guest"}
-                        </Text>
-                        <Text
-                          style={{
-                            color: colors.textDim,
-                            fontSize: 11,
-                            marginTop: 2,
-                          }}
-                        >
-                          {new Date(req.created_at).toLocaleString()}
-                        </Text>
-                      </View>
-                    </View>
-                    <Chip
-                      label={req.approval_status}
-                      tone={
-                        req.approval_status === "PENDING"
-                          ? "warning"
-                          : req.approval_status === "APPROVED"
-                            ? "success"
-                            : "danger"
-                      }
-                    />
-                  </View>
-                  {guestRequestShowsApprovalActions(req) ? (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        gap: 10,
-                        marginTop: 14,
-                      }}
-                    >
-                      <Button
-                        label="Approve"
-                        size="sm"
-                        onPress={() => void onApprove(req.id)}
-                        leftIcon={<Check size={14} color="#fff" />}
-                        style={{ flex: 1 }}
-                      />
-                      <Button
-                        label="Reject"
-                        size="sm"
-                        variant="danger"
-                        onPress={() => void onReject(req.id)}
-                        leftIcon={<X size={14} color={colors.danger} />}
-                        style={{ flex: 1 }}
-                      />
-                    </View>
-                  ) : null}
-                </Card>
-              ))
+              <NetworkAccessSection zoneId={effectiveZoneId} />
             )}
           </View>
         </ScrollView>

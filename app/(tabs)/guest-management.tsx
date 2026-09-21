@@ -36,7 +36,7 @@ export default function GuestManagementScreen() {
             <SettingsNavRow
               icon={<CalendarRange size={18} color={colors.accent} />}
               title="Guest schedules"
-              subtitle="Pre-approve expected guest windows"
+              subtitle="Expected windows · admin approval"
               onPress={() => router.push("/(tabs)/guest-schedules")}
             />
             <SettingsNavRow

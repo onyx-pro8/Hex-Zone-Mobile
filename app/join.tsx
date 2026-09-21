@@ -91,6 +91,13 @@ export default function JoinScreen() {
   const [paramsSettled, setParamsSettled] = useState(false);
 
   const isNewNetworkAdmin = preview?.invite_kind === "new_network_admin";
+  const membersAtCapacity =
+    !isNewNetworkAdmin && Boolean(preview?.members_at_capacity);
+  const [capacityBlocked, setCapacityBlocked] = useState(false);
+
+  useEffect(() => {
+    setCapacityBlocked(false);
+  }, [inviteToken]);
 
   useEffect(() => {
     if (inviteToken) {
@@ -202,7 +209,14 @@ export default function JoinScreen() {
         ...(isNewNetworkAdmin ? { zone_id: zoneId.trim() } : {}),
       });
       if (join.error || !join.data) {
-        throw new Error(join.error ?? "Could not complete invite join.");
+        const msg = join.error ?? "Could not complete invite join.";
+        const isCapacity =
+          join.status === 403 &&
+          /limited|capacity|independent Individual/i.test(msg);
+        if (isCapacity) {
+          setCapacityBlocked(true);
+        }
+        throw new Error(msg);
       }
       const welcomeText = (
         join.data.joinWelcomeMessage ??
@@ -224,6 +238,8 @@ export default function JoinScreen() {
       setSubmitting(false);
     }
   };
+
+  const showCapacityNotice = membersAtCapacity || capacityBlocked;
 
   if (initializing || !paramsSettled) {
     return (
@@ -359,6 +375,40 @@ export default function JoinScreen() {
             </View>
 
             <View style={{ paddingHorizontal: 20, gap: 14 }}>
+              {showCapacityNotice ? (
+                <Card
+                  style={{
+                    gap: 10,
+                    borderColor: "#D4A017",
+                    backgroundColor: "#FFF8E7",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#5C4300",
+                      fontWeight: "700",
+                      fontSize: 15,
+                    }}
+                  >
+                    Currently the number of members on this account is limited.
+                  </Text>
+                  <Text
+                    style={{
+                      color: "#7A5A00",
+                      fontSize: 13,
+                      lineHeight: 18,
+                    }}
+                  >
+                    You can sign up as an independent Individual account instead.
+                  </Text>
+                  <Button
+                    label="Sign up as Individual"
+                    onPress={() => router.replace("/(auth)/signup")}
+                    fullWidth
+                  />
+                </Card>
+              ) : null}
+
               {step === 1 ? (
                 <>
                   <Input
@@ -627,7 +677,9 @@ export default function JoinScreen() {
 
               <Pressable
                 onPress={() =>
-                  router.replace(authToken ? "/(tabs)" : "/(auth)/welcome")
+                  showCapacityNotice
+                    ? router.replace("/(auth)/signup")
+                    : router.replace(authToken ? "/(tabs)" : "/(auth)/welcome")
                 }
               >
                 <Text
@@ -638,7 +690,9 @@ export default function JoinScreen() {
                     marginTop: 6,
                   }}
                 >
-                  Cancel
+                  {showCapacityNotice
+                    ? "Create Independent Individual account"
+                    : "Cancel"}
                 </Text>
               </Pressable>
             </View>
@@ -654,28 +708,36 @@ export default function JoinScreen() {
               backgroundColor: colors.bg,
             }}
           >
-            <OnboardingNav
-              showPrevious={step > 1}
-              onPrevious={goPrevious}
-              onNext={
-                step < TOTAL_STEPS ? () => void goNext() : () => void onJoin()
-              }
-              nextLabel={
-                step < TOTAL_STEPS
-                  ? "Next"
-                  : authToken
-                    ? "Sign out & Signup"
-                    : "Signup"
-              }
-              nextLoading={
-                step === 1
-                  ? checkingCredentials
-                  : step === 5
-                    ? submitting
-                    : false
-              }
-              nextDisabled={step === 5 && (!!previewError || previewLoading)}
-            />
+            {showCapacityNotice ? (
+              <Button
+                label="Sign up as Individual"
+                onPress={() => router.replace("/(auth)/signup")}
+                fullWidth
+              />
+            ) : (
+              <OnboardingNav
+                showPrevious={step > 1}
+                onPrevious={goPrevious}
+                onNext={
+                  step < TOTAL_STEPS ? () => void goNext() : () => void onJoin()
+                }
+                nextLabel={
+                  step < TOTAL_STEPS
+                    ? "Next"
+                    : authToken
+                      ? "Sign out & Signup"
+                      : "Signup"
+                }
+                nextLoading={
+                  step === 1
+                    ? checkingCredentials
+                    : step === 5
+                      ? submitting
+                      : false
+                }
+                nextDisabled={step === 5 && (!!previewError || previewLoading)}
+              />
+            )}
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>

@@ -31,7 +31,6 @@ import {
 import { toast } from "@/lib/toast";
 import {
   ADMIN_ASSIGNABLE_ACCOUNT_TYPES,
-  OWNER_SELF_ASSIGNABLE_ACCOUNT_TYPES,
   accountTypeLabel,
   canEditOwnAccountType,
   isSystemAdministrator,
@@ -176,11 +175,12 @@ export default function UserSettingsScreen() {
     legacyAccountType: user?.account_type,
     role: user?.role,
   });
-  const canEditAccountType =
-    isSystemAdmin || canEditOwnAccountType({ role: user?.role });
-  const accountTypeOptions = isSystemAdmin
-    ? ADMIN_ASSIGNABLE_ACCOUNT_TYPES
-    : OWNER_SELF_ASSIGNABLE_ACCOUNT_TYPES;
+  const canEditAccountType = canEditOwnAccountType({
+    role: user?.role,
+    accountType: user?.accountType,
+    legacyAccountType: user?.account_type,
+  });
+  const accountTypeOptions = ADMIN_ASSIGNABLE_ACCOUNT_TYPES;
 
   const [name, setName] = useState((user?.name ?? "").trim());
   const [email, setEmail] = useState((user?.email ?? "").trim());
@@ -248,11 +248,8 @@ export default function UserSettingsScreen() {
     if (isSystemAdmin) {
       return "As system administrator you can assign any pricing tier, including Private.";
     }
-    if (canEditAccountType) {
-      return "You can change your pricing tier. Private is reserved for system administrators.";
-    }
-    return `Your account type is ${accountTypeLabel(accountType)}. Only an administrator can change it.`;
-  }, [accountType, canEditAccountType, isSystemAdmin]);
+    return `Your account type is ${accountTypeLabel(accountType)}. Only the system administrator can change it.`;
+  }, [accountType, isSystemAdmin]);
 
   const clearAvatar = () => {
     keepLocalAvatarPreview.current = false;

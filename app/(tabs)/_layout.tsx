@@ -109,6 +109,7 @@ export default function TabsLayout() {
           <Tabs.Screen name="quick-alert-messages" options={{ href: null }} />
           <Tabs.Screen name="member-join-welcome" options={{ href: null }} />
           <Tabs.Screen name="guest-management" options={{ href: null }} />
+          <Tabs.Screen name="access-history" options={{ href: null }} />
           <Tabs.Screen name="notification-settings" options={{ href: null }} />
           <Tabs.Screen name="emergency-log" options={{ href: null }} />
           <Tabs.Screen name="alerts" options={{ href: null }} />

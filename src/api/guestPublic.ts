@@ -110,6 +110,8 @@ export type QrInvitePreview = {
   invite_kind: "member" | "new_network_admin";
   account_type: string;
   zone_id?: string | null;
+  /** True when the inviter account has no remaining member seats. */
+  members_at_capacity?: boolean;
 };
 
 export type QrJoinResult = {

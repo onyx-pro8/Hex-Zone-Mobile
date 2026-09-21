@@ -64,7 +64,8 @@ export function getMemberLimit(
   type: NormalizedAccountType,
   tierLevel?: number | string | null,
 ): number {
-  if (type === "EXCLUSIVE" || type === "ENHANCED") return 1;
+  if (type === "EXCLUSIVE") return 1;
+  if (type === "ENHANCED") return 2; // Individual Pro: admin + 1 invited Individual
   if (type === "PRIVATE_PLUS") return FAMILY_MEMBER_LIMIT;
   if (type === "ENHANCED_PLUS") {
     const level = normalizeTierLevel(tierLevel) ?? 1;
@@ -144,16 +145,13 @@ export function canEditNetworkId(params: {
 }
 
 export const MEMBER_INVITE_UNAVAILABLE_HINT =
-  "Member invite QR is available to administrators on Private, Family, and Organization accounts. Individual and Individual Pro accounts are solo and cannot invite members. Use Guest access to invite visitors.";
+  "Member invite QR is available to administrators on Private, Family, Organization, and Individual Pro accounts. Individual accounts are solo and cannot invite members. Use Guest access to invite visitors.";
 
 export function memberInviteUnavailableHint(
   type: NormalizedAccountType,
 ): string {
   if (type === "EXCLUSIVE") {
     return "Individual accounts are user-role only and cannot invite members. Use Guest access to invite visitors.";
-  }
-  if (type === "ENHANCED") {
-    return "Individual Pro accounts are solo and cannot invite members. Use Guest access to invite visitors.";
   }
   return MEMBER_INVITE_UNAVAILABLE_HINT;
 }
@@ -204,8 +202,11 @@ export function toApiAccountType(type: NormalizedAccountType): string {
 
 export function canEditOwnAccountType(params: {
   role?: string | null;
+  accountType?: string | null;
+  legacyAccountType?: string | null;
 }): boolean {
-  return String(params.role ?? "").toLowerCase() === "administrator";
+  // Only the system administrator may change account types (including their own).
+  return isSystemAdministrator(params);
 }
 export function deviceLimitDescription(type: NormalizedAccountType): string {
   switch (type) {
@@ -229,6 +230,9 @@ export function memberLimitDescription(
   const limit = getMemberLimit(type, tierLevel);
   if (type === "PRIVATE_PLUS") {
     return "Family accounts allow up to 10 users (administrator + members).";
+  }
+  if (type === "ENHANCED") {
+    return "Individual Pro accounts allow the administrator plus 1 invited Individual.";
   }
   if (type === "ENHANCED_PLUS") {
     const level = normalizeTierLevel(tierLevel) ?? 1;

@@ -35,6 +35,10 @@ export type MessageInboxFilterParams = {
   excludeCategories?: readonly MessageCategory[];
   /** Keep only these categories (e.g. Alarm on Incoming Alarms). */
   includeCategories?: readonly MessageCategory[];
+  /** Drop these types before other filters (e.g. PERMISSION on Home). */
+  excludeTypes?: readonly MessageType[];
+  /** Keep only these types (e.g. PERMISSION on Access history). */
+  includeTypes?: readonly MessageType[];
 };
 
 export function messageCreatedDay(createdAt: string): string {
@@ -95,10 +99,16 @@ export function applyMessageInboxFilters<T extends InboxFilterableMessage>(
   const search = params.search ?? "";
   const exclude = params.excludeCategories;
   const include = params.includeCategories;
+  const excludeTypes = params.excludeTypes;
+  const includeTypes = params.includeTypes;
 
   return messages.filter((message) => {
     if (exclude?.includes(message.category)) return false;
     if (include && include.length > 0 && !include.includes(message.category)) {
+      return false;
+    }
+    if (excludeTypes?.includes(message.type)) return false;
+    if (includeTypes && includeTypes.length > 0 && !includeTypes.includes(message.type)) {
       return false;
     }
     if (zoneFilter !== "all" && message.zone_id !== zoneFilter) return false;
