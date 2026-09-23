@@ -42,7 +42,7 @@ export default function GuestManagementScreen() {
             <SettingsNavRow
               icon={<Ticket size={18} color={colors.accent} />}
               title="Guest passes"
-              subtitle="Pre-registered passes with event IDs"
+              subtitle="Create Event IDs — accepted immediately"
               onPress={() => router.push("/(tabs)/guest-passes")}
             />
             <SettingsNavRow

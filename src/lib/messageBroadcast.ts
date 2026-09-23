@@ -5,21 +5,29 @@ import type { Message } from "@/api/messages";
  * `broadcast_name` to `msg`/`raw_payload` so receivers can display a friendly
  * identity instead of a numeric owner id.
  */
+function pickDisplayName(
+  o: Record<string, unknown> | null,
+  keys: string[],
+): string | null {
+  if (!o) return null;
+  for (const key of keys) {
+    const v = o[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 export function readMessageBroadcastName(
   message: Pick<Message, "raw_payload">,
 ): string | null {
   const rp = message.raw_payload;
   if (!rp || typeof rp !== "object") return null;
-  const pick = (o: Record<string, unknown> | null): string | null => {
-    if (!o) return null;
-    const v = o.broadcast_name ?? o.broadcastName;
-    return typeof v === "string" && v.trim() ? v.trim() : null;
-  };
-  const top = pick(rp as Record<string, unknown>);
+  const keys = ["broadcast_name", "broadcastName", "guest_name", "guestName"];
+  const top = pickDisplayName(rp as Record<string, unknown>, keys);
   if (top) return top;
   const msg = (rp as Record<string, unknown>).msg;
   if (msg && typeof msg === "object" && !Array.isArray(msg)) {
-    return pick(msg as Record<string, unknown>);
+    return pickDisplayName(msg as Record<string, unknown>, keys);
   }
   return null;
 }
@@ -30,6 +38,44 @@ export type BroadcastLabelOptions = {
   selfRealName?: string | null;
   resolveOwnerName?: (ownerId: number) => string | null | undefined;
 };
+
+const GUEST_RECENT_ACTIVE_MS = 5 * 60 * 1000;
+
+/** True when a guest-authored row is recent enough to treat the sender as online. */
+export function isRecentGuestActivity(createdAt: string | null | undefined): boolean {
+  if (!createdAt) return false;
+  const t = new Date(createdAt).getTime();
+  return Number.isFinite(t) && Date.now() - t < GUEST_RECENT_ACTIVE_MS;
+}
+
+/** Guest session id to use for presence when the inbox row is guest-authored. */
+export function guestInboxPresenceId(
+  item: Pick<Message, "guest_sender_id" | "guest_id" | "sender_id">,
+): string | null {
+  const fromSender = (item.guest_sender_id ?? "").trim();
+  if (fromSender) return fromSender;
+  if (item.sender_id === 0) {
+    const gid = (item.guest_id ?? "").trim();
+    if (gid) return gid;
+  }
+  return null;
+}
+
+/** Inbox green-dot for a guest sender: live presence, last-seen flag, or a fresh message. */
+export function isGuestInboxSenderOnline(
+  item: Pick<Message, "guest_sender_id" | "guest_id" | "sender_id" | "created_at"> & {
+    guest_online?: boolean;
+  },
+  isGuestOnline: (guestId: string | null | undefined) => boolean,
+): boolean {
+  const gid = guestInboxPresenceId(item);
+  if (!gid) return false;
+  return (
+    item.guest_online === true ||
+    isGuestOnline(gid) ||
+    isRecentGuestActivity(item.created_at)
+  );
+}
 
 function isOwnMessage(
   message: Pick<Message, "sender_id">,
@@ -69,8 +115,8 @@ export function messageAvatarLabel(
   }
   const resolved = options.resolveOwnerName?.(message.sender_id);
   if (resolved && resolved.trim()) return resolved.trim();
-  if (message.guest_sender_id != null) return "Guest";
   const embedded = readMessageBroadcastName(message);
   if (embedded && embedded.toUpperCase() !== "ME") return embedded;
+  if (message.guest_sender_id != null) return "Guest";
   return "";
 }

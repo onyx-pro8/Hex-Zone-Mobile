@@ -5,6 +5,7 @@ import {
   Pressable,
   RefreshControl,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,14 +19,38 @@ import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { useGuestManagementBack } from "@/hooks/useGuestManagementBack";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
-  acceptGuestPass,
+  createGuestPass,
   listGuestPasses,
-  rejectGuestPass,
   revokeGuestPass,
   type GuestPass,
 } from "@/api/guest";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
+
+const QUICK_EXPIRY: { label: string; hours: number }[] = [
+  { label: "24 hours", hours: 24 },
+  { label: "7 days", hours: 24 * 7 },
+  { label: "30 days", hours: 24 * 30 },
+];
+
+function isoFromNow(offsetHours: number): string {
+  const d = new Date();
+  d.setHours(d.getHours() + offsetHours);
+  return d.toISOString();
+}
+
+function inputStyle() {
+  return {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontSize: 14,
+  } as const;
+}
 
 function PassRow({
   pass,
@@ -45,14 +70,8 @@ function PassRow({
         ? "warning"
         : "danger";
 
-  const act = async (action: "accept" | "reject" | "revoke") => {
-    const fn =
-      action === "accept"
-        ? acceptGuestPass
-        : action === "reject"
-          ? rejectGuestPass
-          : revokeGuestPass;
-    const result = await fn(pass.id, zoneId);
+  const onRevoke = async () => {
+    const result = await revokeGuestPass(pass.id, zoneId);
     if (result.error) {
       toast.error(result.error, { title: "Action failed" });
       return;
@@ -77,28 +96,12 @@ function PassRow({
         </View>
         <Chip label={pass.status} tone={tone} />
       </View>
-      {isAdmin && pass.status === "PENDING" ? (
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
-          <Button
-            label="Accept"
-            size="sm"
-            onPress={() => void act("accept")}
-            style={{ flex: 1 }}
-          />
-          <Button
-            label="Reject"
-            size="sm"
-            variant="danger"
-            onPress={() => void act("reject")}
-            style={{ flex: 1 }}
-          />
-        </View>
-      ) : isAdmin && pass.status === "ACCEPTED" ? (
+      {isAdmin && pass.status === "ACCEPTED" ? (
         <Button
           label="Revoke"
           size="sm"
           variant="outline"
-          onPress={() => void act("revoke")}
+          onPress={() => void onRevoke()}
           style={{ marginTop: 12 }}
         />
       ) : null}
@@ -118,6 +121,11 @@ export default function GuestPassesScreen() {
   } = useEffectiveZoneId();
   const [passes, setPasses] = useState<GuestPass[]>([]);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [eventId, setEventId] = useState("");
+  const [guestName, setGuestName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [expiresAt, setExpiresAt] = useState(() => isoFromNow(24));
 
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
@@ -134,6 +142,50 @@ export default function GuestPassesScreen() {
     void load();
   }, [load]);
 
+  const onCreate = useCallback(async () => {
+    if (!effectiveZoneId) {
+      toast.error("Set up a primary zone before creating a guest pass.");
+      return;
+    }
+    const eid = eventId.trim();
+    if (!eid) {
+      toast.error("Event ID is required.");
+      return;
+    }
+    const exp = new Date(expiresAt);
+    if (Number.isNaN(exp.getTime()) || exp <= new Date()) {
+      toast.error("Expiry must be a future date (ISO).");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await createGuestPass({
+        zone_id: effectiveZoneId,
+        event_id: eid,
+        expires_at: exp.toISOString(),
+        ...(guestName.trim() ? { guest_name: guestName.trim() } : {}),
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+      });
+      if (result.error || !result.data) {
+        throw new Error(result.error ?? "Could not create guest pass.");
+      }
+      toast.success(
+        `Guest pass is active. Share Event ID ${result.data.event_id} with your guest.`,
+      );
+      setEventId("");
+      setGuestName("");
+      setNotes("");
+      setExpiresAt(isoFromNow(24));
+      void load();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Could not create guest pass.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }, [effectiveZoneId, eventId, expiresAt, guestName, notes, load]);
+
   const showZonePicker = isAdmin && candidateZoneIds.length > 1;
 
   return (
@@ -143,8 +195,8 @@ export default function GuestPassesScreen() {
           title="Guest passes"
           subtitle={
             effectiveZoneId
-              ? `Pre-registered arrivals · ${effectiveZoneId}`
-              : "Pre-registered arrivals"
+              ? `New Event IDs are accepted immediately · ${effectiveZoneId}`
+              : "New Event IDs are accepted immediately"
           }
           showBack
           onBack={onBack}
@@ -175,95 +227,163 @@ export default function GuestPassesScreen() {
             </Card>
           </View>
         ) : (
-          <>
-            {showZonePicker ? (
-              <View
-                style={{ paddingHorizontal: 20, marginBottom: 8, gap: 8 }}
-              >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text
+          <FlatList
+            data={passes}
+            keyExtractor={(item) => item.id}
+            ListHeaderComponent={
+              <View style={{ gap: 12, marginBottom: 8 }}>
+                {showZonePicker ? (
+                  <Card style={{ gap: 8 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 11,
+                          letterSpacing: 1,
+                          textTransform: "uppercase",
+                          fontWeight: "700",
+                        }}
+                      >
+                        Network
+                      </Text>
+                      <Pressable
+                        onPress={() => void refreshZones()}
+                        hitSlop={8}
+                      >
+                        <RefreshCw size={14} color={colors.accent} />
+                      </Pressable>
+                    </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      {candidateZoneIds.map((zid) => (
+                        <Pressable
+                          key={zid}
+                          onPress={() => setPickedZoneId(zid)}
+                        >
+                          <Chip
+                            label={zid}
+                            active={zid === effectiveZoneId}
+                          />
+                        </Pressable>
+                      ))}
+                    </View>
+                  </Card>
+                ) : null}
+                <Card style={{ gap: 12 }}>
+                  <View
                     style={{
-                      color: colors.textMuted,
-                      fontSize: 11,
-                      letterSpacing: 1,
-                      textTransform: "uppercase",
-                      fontWeight: "700",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
                     }}
                   >
-                    Network
-                  </Text>
-                  <Pressable onPress={() => void refreshZones()} hitSlop={8}>
-                    <RefreshCw size={14} color={colors.accent} />
-                  </Pressable>
-                </View>
-                <View
-                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
-                >
-                  {candidateZoneIds.map((zid) => (
-                    <Pressable
-                      key={zid}
-                      onPress={() => setPickedZoneId(zid)}
-                    >
-                      <Chip
-                        label={zid}
-                        active={zid === effectiveZoneId}
-                      />
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : null}
-            {loading && passes.length === 0 ? (
-              <View
-                style={{
-                  flex: 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <ActivityIndicator color={colors.accent} />
-              </View>
-            ) : (
-              <FlatList
-                data={passes}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <PassRow
-                    pass={item}
-                    zoneId={effectiveZoneId}
-                    isAdmin={isAdmin}
-                    onChanged={() => void load()}
-                  />
-                )}
-                contentContainerStyle={{
-                  paddingHorizontal: 20,
-                  paddingBottom: 120,
-                }}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={loading}
-                    onRefresh={() => void load()}
-                    tintColor={colors.accent}
-                  />
-                }
-                ListEmptyComponent={
-                  <Card>
+                    <Ticket size={18} color={colors.accent} />
                     <Text
-                      style={{ color: colors.textMuted, textAlign: "center" }}
+                      style={{
+                        color: colors.text,
+                        fontWeight: "700",
+                        fontSize: 15,
+                      }}
                     >
-                      No guest passes yet for this zone.
+                      Create guest pass
                     </Text>
-                  </Card>
-                }
+                  </View>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    A new Event ID is accepted immediately. Share it with your
+                    guest for arrival.
+                  </Text>
+                  <TextInput
+                    placeholder="Event ID (required, e.g. EVT-2026-GALA)"
+                    placeholderTextColor={colors.textDim}
+                    value={eventId}
+                    onChangeText={setEventId}
+                    autoCapitalize="none"
+                    style={inputStyle()}
+                  />
+                  <TextInput
+                    placeholder="Guest name (optional)"
+                    placeholderTextColor={colors.textDim}
+                    value={guestName}
+                    onChangeText={setGuestName}
+                    style={inputStyle()}
+                  />
+                  <TextInput
+                    placeholder="Notes (optional)"
+                    placeholderTextColor={colors.textDim}
+                    value={notes}
+                    onChangeText={setNotes}
+                    style={inputStyle()}
+                  />
+                  <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                    Expires
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {QUICK_EXPIRY.map((w) => (
+                      <Pressable
+                        key={w.hours}
+                        onPress={() => setExpiresAt(isoFromNow(w.hours))}
+                      >
+                        <Chip label={w.label} />
+                      </Pressable>
+                    ))}
+                  </View>
+                  <TextInput
+                    placeholder="Expires at (ISO)"
+                    placeholderTextColor={colors.textDim}
+                    value={expiresAt}
+                    onChangeText={setExpiresAt}
+                    autoCapitalize="none"
+                    style={inputStyle()}
+                  />
+                  <Button
+                    label="Create guest pass"
+                    onPress={() => void onCreate()}
+                    loading={submitting}
+                    fullWidth
+                  />
+                </Card>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <PassRow
+                pass={item}
+                zoneId={effectiveZoneId}
+                isAdmin={isAdmin}
+                onChanged={() => void load()}
               />
             )}
-          </>
+            contentContainerStyle={{
+              paddingHorizontal: 20,
+              paddingBottom: 120,
+            }}
+            refreshControl={
+              <RefreshControl
+                refreshing={loading}
+                onRefresh={() => void load()}
+                tintColor={colors.accent}
+              />
+            }
+            ListEmptyComponent={
+              <Card>
+                <Text
+                  style={{ color: colors.textMuted, textAlign: "center" }}
+                >
+                  No guest passes yet for this zone.
+                </Text>
+              </Card>
+            }
+          />
         )}
       </SafeAreaView>
     </GradientBackground>
