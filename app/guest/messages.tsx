@@ -5,7 +5,7 @@
  * messages. PERMISSION rows from the access workflow are shown read-only.
  * Guests can only SEND the CHAT type. Runs on the stored guest token.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -24,8 +24,17 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import {
+  GuestChatBubble,
+  guestChatBubbleCluster,
+  guestChatClusterRootId,
+  guestChatDayLabel,
+} from "@/components/messages/GuestChatBubble";
+import { useInboxClusterWidths } from "@/components/messages/InboxMessageCard";
+import { useGuestRealtime } from "@/hooks/useGuestRealtime";
+import {
   fetchGuestMe,
   fetchGuestPeers,
+  isOwnGuestChatMessage,
   listGuestThreadMessages,
   sendGuestMessage,
   type GuestMessage,
@@ -48,6 +57,7 @@ export default function GuestMessagesScreen() {
   const zoneFromParam = String(params.zone ?? "").trim();
 
   const [checking, setChecking] = useState(true);
+  const [guestToken, setGuestToken] = useState<string | null>(null);
   const [zones, setZones] = useState<string[]>([]);
   const [zoneId, setZoneId] = useState(zoneFromParam);
   const [allowedTypes, setAllowedTypes] = useState<string[]>(["CHAT"]);
@@ -60,7 +70,25 @@ export default function GuestMessagesScreen() {
   const [msgError, setMsgError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const listRef = useRef<FlatList<GuestMessage>>(null);
+  const [guestDisplayName, setGuestDisplayName] = useState("");
+  const { clusterWidths, reportClusterWidth } = useInboxClusterWidths();
+
+  const peerPresenceSeed = useMemo(() => {
+    const map: Record<number, boolean> = {};
+    for (const p of peers) {
+      const id = Number(p.owner_id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      if (typeof p.online === "boolean") map[id] = p.online;
+    }
+    return map;
+  }, [peers]);
+
+  const { isPeerOnline, lastMessage: guestWsMessage } = useGuestRealtime({
+    token: guestToken,
+    zoneIds: zones.length ? zones : zoneId ? [zoneId] : [],
+    enabled: !checking && !!guestToken,
+    seedPresence: peerPresenceSeed,
+  });
 
   const leaveGuest = useCallback(async () => {
     await clearStoredGuestSession();
@@ -77,6 +105,7 @@ export default function GuestMessagesScreen() {
           router.replace(memberToken ? "/(tabs)" : "/(auth)/welcome");
           return;
         }
+        setGuestToken(session.access_token);
         const sessZones = session.zone_ids?.length
           ? session.zone_ids
           : [session.zone_id].filter(Boolean);
@@ -86,6 +115,9 @@ export default function GuestMessagesScreen() {
             ? session.allowed_message_types
             : ["CHAT"],
         );
+        if (session.display_name?.trim()) {
+          setGuestDisplayName(session.display_name.trim());
+        }
         setZoneId(
           (prev) =>
             prev || zoneFromParam || session.zone_id || sessZones[0] || "",
@@ -101,7 +133,7 @@ export default function GuestMessagesScreen() {
   useEffect(() => {
     if (checking) return;
     let active = true;
-    void (async () => {
+    const applyMe = async () => {
       const me = await fetchGuestMe();
       if (!active) return;
       if (me.unauthorized) {
@@ -109,6 +141,9 @@ export default function GuestMessagesScreen() {
         return;
       }
       if (me.data) {
+        if (me.data.display_name.trim()) {
+          setGuestDisplayName(me.data.display_name.trim());
+        }
         setAllowedTypes(
           me.data.allowed_message_types.length
             ? me.data.allowed_message_types
@@ -123,9 +158,12 @@ export default function GuestMessagesScreen() {
           );
         }
       }
-    })();
+    };
+    void applyMe();
+    const heartbeat = setInterval(() => void applyMe(), 20000);
     return () => {
       active = false;
+      clearInterval(heartbeat);
     };
   }, [checking, leaveGuest]);
 
@@ -196,6 +234,18 @@ export default function GuestMessagesScreen() {
     const h = setInterval(() => void loadThread(), POLL_MS);
     return () => clearInterval(h);
   }, [peerId, loadThread]);
+
+  useEffect(() => {
+    if (!guestWsMessage) return;
+    try {
+      const parsed = JSON.parse(guestWsMessage) as { type?: string };
+      if (parsed.type === "guest_zone_message" || parsed.type === "NEW_MESSAGE") {
+        void loadThread();
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [guestWsMessage, loadThread]);
 
   const onSend = useCallback(async () => {
     const z = zoneId.trim();
@@ -335,13 +385,9 @@ export default function GuestMessagesScreen() {
                 </View>
               ) : (
                 <FlatList
-                  ref={listRef}
                   data={messages}
                   keyExtractor={(m) => m.id}
-                  contentContainerStyle={{ paddingVertical: 8, gap: 8 }}
-                  onContentSizeChange={() =>
-                    listRef.current?.scrollToEnd({ animated: true })
-                  }
+                  contentContainerStyle={{ paddingVertical: 8 }}
                   ListEmptyComponent={
                     loadingThread ? (
                       <ActivityIndicator color={colors.accent} />
@@ -359,46 +405,41 @@ export default function GuestMessagesScreen() {
                       </Text>
                     )
                   }
-                  renderItem={({ item }) => {
-                    const isPermission =
-                      String(item.type).toUpperCase() === "PERMISSION";
+                  renderItem={({ item, index }) => {
+                    const prev = messages[index - 1];
+                    const next = messages[index + 1];
+                    const isMine = isOwnGuestChatMessage(item);
+                    const cluster = guestChatBubbleCluster(prev, item, next);
+                    const clusterId = guestChatClusterRootId(messages, index);
+                    const dayLabel = guestChatDayLabel(prev, item);
+                    const peerName =
+                      selectedPeer?.display_name?.trim() ||
+                      item.from_owner_id ||
+                      "Host";
+                    const peerOwnerId = (
+                      item.from_owner_id ??
+                      peerId
+                    ).trim();
                     return (
-                      <View
-                        style={{
-                          borderWidth: 1,
-                          borderColor: isPermission
-                            ? colors.warning
-                            : colors.border,
-                          backgroundColor: isPermission
-                            ? "rgba(245,180,80,0.08)"
-                            : colors.bgCard,
-                          borderRadius: 12,
-                          paddingHorizontal: 12,
-                          paddingVertical: 8,
-                        }}
-                      >
-                        <Text
-                          style={{
-                            color: colors.textDim,
-                            fontSize: 10,
-                            letterSpacing: 0.6,
-                            textTransform: "uppercase",
-                            marginBottom: 2,
-                          }}
-                        >
-                          {item.type}
-                          {isPermission ? " · read-only" : ""}
-                          {item.created_at ? ` · ${item.created_at}` : ""}
-                        </Text>
-                        <Text
-                          style={{
-                            color: isPermission ? colors.warning : colors.text,
-                            fontSize: 14,
-                          }}
-                        >
-                          {item.text ?? "—"}
-                        </Text>
-                      </View>
+                      <GuestChatBubble
+                        item={item}
+                        userName={isMine ? "ME" : peerName}
+                        avatarName={isMine ? guestDisplayName : peerName}
+                        zoneLabel={item.zone_id || zoneId || "—"}
+                        dayLabel={dayLabel}
+                        cluster={cluster}
+                        online={isMine || isPeerOnline(peerOwnerId)}
+                        clusterMinWidth={
+                          cluster === "single"
+                            ? undefined
+                            : clusterWidths[clusterId]
+                        }
+                        onBubbleWidth={
+                          cluster === "single"
+                            ? undefined
+                            : (width) => reportClusterWidth(clusterId, width)
+                        }
+                      />
                     );
                   }}
                 />

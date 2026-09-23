@@ -101,7 +101,9 @@ export function parseInboxSocketRefetchSignal(raw: string): boolean {
       t === "unexpected_guest" ||
       t === "guest_is_here" ||
       t === "BLOCKS_CHANGED" ||
-      t === "GUEST_REQUEST_CHANGED"
+      t === "GUEST_REQUEST_CHANGED" ||
+      t === "guest_zone_message" ||
+      t === "GUEST_PRESENCE"
     );
   } catch {
     return false;
@@ -203,6 +205,33 @@ export function parseSessionRevokedSocketEvent(
       released_hids,
       reason: typeof data.reason === "string" ? data.reason : undefined,
     };
+  } catch {
+    return null;
+  }
+}
+
+export type GuestPresenceSocketEvent = {
+  guestId: string;
+  online: boolean;
+};
+
+export function parseGuestPresenceSocketEvent(
+  raw: string,
+): GuestPresenceSocketEvent | null {
+  try {
+    const parsed = JSON.parse(raw) as { type?: unknown; data?: unknown };
+    if (parsed.type !== "GUEST_PRESENCE") return null;
+    const data =
+      parsed.data != null &&
+      typeof parsed.data === "object" &&
+      !Array.isArray(parsed.data)
+        ? (parsed.data as Record<string, unknown>)
+        : {};
+    const rawId = data.guest_id ?? data.guestId;
+    const guestId = typeof rawId === "string" ? rawId.trim() : "";
+    if (!guestId) return null;
+    if (typeof data.online !== "boolean") return null;
+    return { guestId, online: data.online };
   } catch {
     return null;
   }

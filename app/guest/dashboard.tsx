@@ -149,7 +149,7 @@ export default function GuestDashboardScreen() {
   useEffect(() => {
     if (checking) return;
     let active = true;
-    void (async () => {
+    const applyMe = async () => {
       const me = await fetchGuestMe();
       if (!active) return;
       if (me.unauthorized) {
@@ -167,9 +167,12 @@ export default function GuestDashboardScreen() {
           );
         }
       }
-    })();
+    };
+    void applyMe();
+    const heartbeat = setInterval(() => void applyMe(), 20000);
     return () => {
       active = false;
+      clearInterval(heartbeat);
     };
   }, [checking, leaveGuest]);
 

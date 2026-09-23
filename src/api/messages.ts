@@ -39,6 +39,8 @@ export type Message = {
   raw_payload: Record<string, unknown> | null;
   guest_sender_id?: string;
   guest_id?: string | null;
+  /** True when the guest sender was recently active on a guest API. */
+  guest_online?: boolean;
   permission_visibility?: string | null;
   read_by_owner_ids?: number[] | null;
   is_read_by_viewer?: boolean | null;
@@ -491,6 +493,7 @@ export function normalizeMessage(raw: unknown): Message | null {
       ? { guest_sender_id: guestSenderIdRaw }
       : {}),
     ...(contractGuestId !== undefined ? { guest_id: contractGuestId } : {}),
+    ...(typeof row.guest_online === "boolean" ? { guest_online: row.guest_online } : {}),
     ...(permissionVisibility !== undefined
       ? { permission_visibility: permissionVisibility }
       : {}),
@@ -630,7 +633,18 @@ export function messageFromGeoPropagation(
 }
 
 export function formatMessageSenderLabel(message: Message): string {
-  return message.guest_sender_id != null ? "Guest" : String(message.sender_id);
+  if (message.guest_sender_id != null) {
+    const rp = message.raw_payload;
+    if (rp && typeof rp === "object") {
+      const name =
+        (typeof rp.guest_name === "string" && rp.guest_name.trim()) ||
+        (typeof rp.broadcast_name === "string" && rp.broadcast_name.trim()) ||
+        "";
+      if (name) return name;
+    }
+    return "Guest";
+  }
+  return String(message.sender_id);
 }
 
 export async function listMessages(params: ListMessagesParams) {

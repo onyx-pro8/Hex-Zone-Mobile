@@ -25,7 +25,7 @@ Dark **UAX-inspired** UI: black backgrounds, neon magenta accents, rounded cards
 | Members | Linked account roster |
 | Messages | Inbox with category filters — **push notifications** instead of WebSocket |
 | Access | Member invite QR, guest access QR, pending arrivals approve/reject |
-| Guest passes | List + accept/reject/revoke |
+| Guest passes | Create (auto-accepted) + list + revoke |
 | Devices | Registered device list (auto-enrolled on login) |
 | Settings | Profile, push status, logout |
 

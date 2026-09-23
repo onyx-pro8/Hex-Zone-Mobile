@@ -12,11 +12,23 @@ import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { MessageInboxFilterBar } from "@/components/messages/MessageInboxFilterBar";
-import { InboxMessageCard } from "@/components/messages/InboxMessageCard";
+import {
+  formatInboxDayLabel,
+  InboxMessageCard,
+  inboxBubbleCluster,
+  inboxClusterRootId,
+  inboxDayKey,
+  useInboxClusterWidths,
+} from "@/components/messages/InboxMessageCard";
 import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useAuth } from "@/context/AuthContext";
 import { getMembers } from "@/api/members";
-import { messageAvatarLabel, messageBroadcastLabel } from "@/lib/messageBroadcast";
+import {
+  guestInboxPresenceId,
+  isGuestInboxSenderOnline,
+  messageAvatarLabel,
+  messageBroadcastLabel,
+} from "@/lib/messageBroadcast";
 import { resolveBroadcastName } from "@/lib/appSettings";
 import { applyMessageInboxFilters } from "@/lib/messageInboxFilters";
 import { sortInboxAccessMessages } from "@/api/messages";
@@ -34,7 +46,7 @@ export default function AccessHistoryScreen() {
   const router = useRouter();
   const tabBarInset = useFloatingTabBarInset();
   const { user } = useAuth();
-  const { isOnline } = useMemberPresence();
+  const { isOnline, isGuestOnline } = useMemberPresence();
   const selfRealName =
     (user?.name ?? "").trim() ||
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
@@ -52,6 +64,7 @@ export default function AccessHistoryScreen() {
   const { zoneNames } = useZoneNameLookup();
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
   const [ownerAvatars, setOwnerAvatars] = useState<OwnerAvatarMap>({});
+  const { clusterWidths, reportClusterWidth } = useInboxClusterWidths();
   const [zoneFilter, setZoneFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -177,7 +190,7 @@ export default function AccessHistoryScreen() {
             initialNumToRender={8}
             maxToRenderPerBatch={8}
             windowSize={7}
-            removeClippedSubviews
+            removeClippedSubviews={false}
             onEndReached={onEndReached}
             onEndReachedThreshold={0.4}
             refreshControl={
@@ -223,7 +236,15 @@ export default function AccessHistoryScreen() {
                 </Card>
               )
             }
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
+              const prev = sorted[index - 1];
+              const next = sorted[index + 1];
+              const dayLabel =
+                !prev || inboxDayKey(prev.created_at) !== inboxDayKey(item.created_at)
+                  ? formatInboxDayLabel(item.created_at)
+                  : null;
+              const cluster = inboxBubbleCluster(prev, item, next);
+              const clusterId = inboxClusterRootId(sorted, index);
               const broadcast = messageBroadcastLabel(item, {
                 selfOwnerId: ownerId,
                 selfBroadcastName,
@@ -254,9 +275,25 @@ export default function AccessHistoryScreen() {
                   avatarName={avatarName}
                   avatarEmail={isSelf ? user?.email : null}
                   avatarUrl={avatarUrl}
-                  online={senderId != null ? isOnline(senderId) : false}
+                  online={
+                    guestInboxPresenceId(item)
+                      ? isGuestInboxSenderOnline(item, isGuestOnline)
+                      : senderId != null
+                        ? isOnline(senderId)
+                        : false
+                  }
                   selfOwnerId={ownerId}
                   zoneNames={zoneNames}
+                  dayLabel={dayLabel}
+                  cluster={cluster}
+                  clusterMinWidth={
+                    cluster === "single" ? undefined : clusterWidths[clusterId]
+                  }
+                  onBubbleWidth={
+                    cluster === "single"
+                      ? undefined
+                      : (width) => reportClusterWidth(clusterId, width)
+                  }
                 />
               );
             }}

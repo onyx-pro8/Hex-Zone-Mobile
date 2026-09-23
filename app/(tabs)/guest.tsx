@@ -32,7 +32,7 @@ export default function GuestHubScreen() {
     {
       key: "passes",
       title: "Guest passes",
-      subtitle: "Pre-registered arrivals & event IDs",
+      subtitle: "Create an Event ID — accepted immediately",
       icon: <Ticket size={22} color={colors.accent} />,
       href: "/(tabs)/guest-passes",
     },

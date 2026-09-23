@@ -17,6 +17,7 @@ import { ImagePlus, Send, Users, X } from "lucide-react-native";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
+import { FormSelect } from "@/components/ui/FormSelect";
 import { MessageImageGallery } from "@/components/messages/MessageImageGallery";
 import { useAuth } from "@/context/AuthContext";
 import { useMessagesFeed } from "@/hooks/useMessagesFeed";
@@ -31,7 +32,7 @@ import {
   type ComposeZoneOption,
   type PrivateSearchMember,
 } from "@/api/messageFeature";
-import { listGuestRequests } from "@/api/guest";
+import { listGuestRequests, type GuestRequest } from "@/api/guest";
 import { presentLocalMessageNotification } from "@/lib/notifications";
 import { toastSmartHomeWebhookDelivery } from "@/lib/smartHomeToast";
 import {
@@ -68,8 +69,92 @@ import {
 } from "@/lib/servicePaTopics";
 import { colors, shadow } from "@/theme/colors";
 
+type GuestComposeOption = {
+  id: string;
+  name: string;
+  status: GuestRequest["approval_status"];
+  expectation?: GuestRequest["expectation"];
+};
+
 function memberBroadcastName(member: PrivateSearchMember): string {
   return (member.broadcast_name || "").trim() || member.display_name;
+}
+
+function receiverInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+function guestStatusLabel(status: GuestRequest["approval_status"]): string {
+  if (status === "ARRIVED") return "Arrived";
+  if (status === "APPROVED") return "Approved";
+  if (status === "PENDING") return "Pending";
+  if (status === "REJECTED") return "Rejected";
+  return status;
+}
+
+function ReceiverPreviewRow({
+  name,
+  meta,
+}: {
+  name: string;
+  meta?: string;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border,
+      }}
+    >
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.bgSurface,
+        }}
+      >
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: 11,
+            fontWeight: "800",
+          }}
+        >
+          {receiverInitials(name)}
+        </Text>
+      </View>
+      <Text
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          color: colors.text,
+          fontSize: 14,
+          fontWeight: "600",
+        }}
+      >
+        {name}
+      </Text>
+      {meta ? (
+        <Text
+          numberOfLines={1}
+          style={{ flexShrink: 0, color: colors.textMuted, fontSize: 12 }}
+        >
+          {meta}
+        </Text>
+      ) : null}
+    </View>
+  );
 }
 
 /** Distance subtitle only — never fall back to email. */
@@ -169,9 +254,7 @@ export function ComposeMessageSheet({
   const [zoneRecipientsLoading, setZoneRecipientsLoading] = useState(false);
   const [loadingComposeZones, setLoadingComposeZones] = useState(false);
   const [receiversModalOpen, setReceiversModalOpen] = useState(false);
-  const [guestOptions, setGuestOptions] = useState<
-    { id: string; label: string }[]
-  >([]);
+  const [guestOptions, setGuestOptions] = useState<GuestComposeOption[]>([]);
   const [loadingComposeMeta, setLoadingComposeMeta] = useState(false);
   const composeScrollRef = useRef<ScrollView>(null);
 
@@ -201,6 +284,36 @@ export function ComposeMessageSheet({
         }))
         .filter((group) => group.options.length > 0),
     [groupedTypeOptions],
+  );
+
+  const guestSelectOptions = useMemo(
+    () => [
+      { value: "", label: "Pick a guest" },
+      ...guestOptions.map((g) => ({
+        value: g.id,
+        label: g.name,
+        description: `${g.expectation === "unexpected" ? "Unexpected" : "Expected"} · ${guestStatusLabel(g.status)}`,
+      })),
+    ],
+    [guestOptions],
+  );
+
+  const privateMemberChoices =
+    selectedZoneRecordId != null ? zoneRecipients : privateSearchResults;
+  const memberSelectOptions = useMemo(
+    () => [
+      { value: "", label: "Pick a member" },
+      ...privateMemberChoices.map((m) => {
+        const name = memberBroadcastName(m);
+        const distance = memberDistanceLabel(m);
+        return {
+          value: String(m.id),
+          label: name,
+          description: distance || undefined,
+        };
+      }),
+    ],
+    [privateMemberChoices],
   );
 
   useEffect(() => {
@@ -238,8 +351,17 @@ export function ComposeMessageSheet({
             .filter((g) => g.approval_status !== "REJECTED")
             .map((g) => ({
               id: g.guest_id,
-              label: `${g.guest_name?.trim() || "Guest"} — ${g.guest_id.slice(0, 10)}…`,
-            })),
+              name: g.guest_name?.trim() || "Guest",
+              status: g.approval_status,
+              expectation: g.expectation,
+            }))
+            .sort((a, b) => {
+              const rank = (s: GuestRequest["approval_status"]) =>
+                s === "APPROVED" || s === "ARRIVED" ? 0 : 1;
+              const byStatus = rank(a.status) - rank(b.status);
+              if (byStatus !== 0) return byStatus;
+              return a.name.localeCompare(b.name);
+            }),
         );
       })
       .finally(() => {
@@ -731,10 +853,11 @@ export function ComposeMessageSheet({
         afterSuccessfulSend(composeType);
       } else if (accessGuest) {
         const result = await sendMessage({
-          receiver_id: composeReceiverId,
+          guest_id: composeReceiverId.trim(),
           type: composeType,
           message: text,
           zone_id: composeZoneId ?? undefined,
+          broadcast_name: selfBroadcastName,
           images: imageUrls.length ? imageUrls : undefined,
         });
         if (result.error) throw new Error(result.error);
@@ -842,30 +965,13 @@ export function ComposeMessageSheet({
                               No receivers in this zone.
                             </Text>
                           ) : (
-                            group.members.map((m) => {
-                              const distance = memberDistanceLabel(m);
-                              return (
-                                <View
-                                  key={`${group.zoneRecordId}-${m.id}`}
-                                  style={receiversModalStyles.row}
-                                >
-                                  <Text
-                                    style={receiversModalStyles.name}
-                                    numberOfLines={1}
-                                  >
-                                    {memberBroadcastName(m)}
-                                  </Text>
-                                  {distance ? (
-                                    <Text
-                                      style={receiversModalStyles.meta}
-                                      numberOfLines={1}
-                                    >
-                                      {distance}
-                                    </Text>
-                                  ) : null}
-                                </View>
-                              );
-                            })
+                            group.members.map((m) => (
+                              <ReceiverPreviewRow
+                                key={`${group.zoneRecordId}-${m.id}`}
+                                name={memberBroadcastName(m)}
+                                meta={memberDistanceLabel(m) || undefined}
+                              />
+                            ))
                           )}
                         </View>
                       ))}
@@ -881,24 +987,13 @@ export function ComposeMessageSheet({
                     keyboardShouldPersistTaps="handled"
                     nestedScrollEnabled
                   >
-                    {zoneRecipients.map((m) => {
-                      const distance = memberDistanceLabel(m);
-                      return (
-                        <View key={m.id} style={receiversModalStyles.row}>
-                          <Text style={receiversModalStyles.name} numberOfLines={1}>
-                            {memberBroadcastName(m)}
-                          </Text>
-                          {distance ? (
-                            <Text
-                              style={receiversModalStyles.meta}
-                              numberOfLines={1}
-                            >
-                              {distance}
-                            </Text>
-                          ) : null}
-                        </View>
-                      );
-                    })}
+                    {zoneRecipients.map((m) => (
+                      <ReceiverPreviewRow
+                        key={m.id}
+                        name={memberBroadcastName(m)}
+                        meta={memberDistanceLabel(m) || undefined}
+                      />
+                    ))}
                   </ScrollView>
                 )}
               </View>
@@ -1067,25 +1162,32 @@ export function ComposeMessageSheet({
 
             {isAccessGuestChannelType(composeType) ? (
               <View style={{ marginTop: 12, gap: 8 }}>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  Guest (zone {composeZoneId ?? "—"})
-                </Text>
                 {loadingComposeMeta ? (
                   <ActivityIndicator color={colors.accent} />
                 ) : guestOptions.length === 0 ? (
-                  <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                    No active guest requests in this zone.
-                  </Text>
+                  <>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: "600",
+                        letterSpacing: 1.5,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Send to guest
+                    </Text>
+                    <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                      No active guests in this zone yet.
+                    </Text>
+                  </>
                 ) : (
-                  guestOptions.map((g) => (
-                    <Pressable key={g.id} onPress={() => setComposeReceiverId(g.id)}>
-                      <Chip
-                        label={g.label}
-                        active={composeReceiverId === g.id}
-                        style={{ marginBottom: 6 }}
-                      />
-                    </Pressable>
-                  ))
+                  <FormSelect
+                    label="Send to guest"
+                    value={composeReceiverId}
+                    options={guestSelectOptions}
+                    onChange={setComposeReceiverId}
+                  />
                 )}
               </View>
             ) : null}
@@ -1105,7 +1207,7 @@ export function ComposeMessageSheet({
                 ) : (
                   <>
                     <TextInput
-                      placeholder="Name or email"
+                      placeholder="Search by name or email"
                       placeholderTextColor={colors.textDim}
                       value={privateSearchQuery}
                       onChangeText={(text) => {
@@ -1124,41 +1226,28 @@ export function ComposeMessageSheet({
                       ? zoneRecipientsLoading
                       : privateSearchLoading) ? (
                       <ActivityIndicator color={colors.accent} />
-                    ) : null}
-                    {(selectedZoneRecordId != null
-                      ? zoneRecipients
-                      : privateSearchResults
-                    ).map((m) => {
-                      const distance = memberDistanceLabel(m);
-                      const name = memberBroadcastName(m);
-                      return (
-                      <Pressable
-                        key={m.id}
-                        onPress={() => {
-                          setComposeReceiverId(String(m.id));
-                          setPrivateSearchQuery(name);
+                    ) : privateMemberChoices.length === 0 ? (
+                      privateSearchQuery.trim().length >= 2 ? (
+                        <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                          No members matched.
+                        </Text>
+                      ) : null
+                    ) : (
+                      <FormSelect
+                        label="Send to member"
+                        value={composeReceiverId}
+                        options={memberSelectOptions}
+                        onChange={(id) => {
+                          setComposeReceiverId(id);
+                          const picked = privateMemberChoices.find(
+                            (m) => String(m.id) === id,
+                          );
+                          if (picked) {
+                            setPrivateSearchQuery(memberBroadcastName(picked));
+                          }
                         }}
-                      >
-                        <Chip
-                          label={distance ? `${name} — ${distance}` : name}
-                          active={composeReceiverId === String(m.id)}
-                          style={{ marginBottom: 6 }}
-                        />
-                      </Pressable>
-                      );
-                    })}
-                    {privateSearchQuery.trim().length >= 2 &&
-                    !(selectedZoneRecordId != null
-                      ? zoneRecipientsLoading
-                      : privateSearchLoading) &&
-                    (selectedZoneRecordId != null
-                      ? zoneRecipients
-                      : privateSearchResults
-                    ).length === 0 ? (
-                      <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                        No members matched.
-                      </Text>
-                    ) : null}
+                      />
+                    )}
                   </>
                 )}
               </View>
@@ -1364,26 +1453,5 @@ const receiversModalStyles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: "uppercase",
     marginBottom: 4,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  name: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  meta: {
-    flexShrink: 0,
-    color: colors.textMuted,
-    fontSize: 12,
   },
 });

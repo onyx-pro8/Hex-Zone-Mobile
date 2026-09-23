@@ -14,7 +14,15 @@ import { GradientBackground } from "@/components/ui/GradientBackground";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { MessageInboxFilterBar } from "@/components/messages/MessageInboxFilterBar";
-import { InboxMessageCard } from "@/components/messages/InboxMessageCard";
+import {
+  formatInboxDayLabel,
+  InboxMessageCard,
+  inboxBubbleCluster,
+  inboxClusterRootId,
+  inboxDayKey,
+  useInboxClusterWidths,
+  type InboxBubbleCluster,
+} from "@/components/messages/InboxMessageCard";
 import { WellnessAckInline } from "@/components/messages/WellnessAckInline";
 import { useMessagesFeed } from "@/hooks/useMessagesFeed";
 import { useEnsureFilteredInboxRows } from "@/hooks/useEnsureFilteredInboxRows";
@@ -35,7 +43,12 @@ import {
   messageTypesForCategories,
 } from "@/lib/messageInboxFilters";
 import { resolveBroadcastName } from "@/lib/appSettings";
-import { messageAvatarLabel, messageBroadcastLabel } from "@/lib/messageBroadcast";
+import {
+  guestInboxPresenceId,
+  isGuestInboxSenderOnline,
+  messageAvatarLabel,
+  messageBroadcastLabel,
+} from "@/lib/messageBroadcast";
 import type { ZoneNameLookup } from "@/lib/messageZoneLabel";
 import { wellnessResponseTrackingEnabled } from "@/lib/messageWorkflow";
 import { colors } from "@/theme/colors";
@@ -55,6 +68,10 @@ function MessageRow({
   senderOnline = false,
   zoneNames,
   highlighted = false,
+  dayLabel = null,
+  cluster = "single",
+  clusterMinWidth,
+  onBubbleWidth,
 }: {
   item: Message;
   selfOwnerId: number | null;
@@ -67,6 +84,10 @@ function MessageRow({
   senderOnline?: boolean;
   zoneNames?: ZoneNameLookup;
   highlighted?: boolean;
+  dayLabel?: string | null;
+  cluster?: InboxBubbleCluster;
+  clusterMinWidth?: number;
+  onBubbleWidth?: (width: number) => void;
 }) {
   const router = useRouter();
 
@@ -118,6 +139,10 @@ function MessageRow({
       selfOwnerId={selfOwnerId}
       zoneNames={zoneNames}
       highlighted={highlighted}
+      dayLabel={dayLabel}
+      cluster={cluster}
+      clusterMinWidth={clusterMinWidth}
+      onBubbleWidth={onBubbleWidth}
       footerExtra={
         <>
           {item.type === "WELLNESS_CHECK" &&
@@ -168,7 +193,7 @@ function MessageRow({
 
 export default function MessagesScreen() {
   const { user } = useAuth();
-  const { isOnline } = useMemberPresence();
+  const { isOnline, isGuestOnline, seedGuestPresence } = useMemberPresence();
   const router = useRouter();
   const searchParams = useLocalSearchParams<{
     type?: string;
@@ -201,6 +226,16 @@ export default function MessagesScreen() {
   );
   const [ownerNames, setOwnerNames] = useState<OwnerNameMap>({});
   const [ownerAvatars, setOwnerAvatars] = useState<OwnerAvatarMap>({});
+  const { clusterWidths, reportClusterWidth } = useInboxClusterWidths();
+
+  useEffect(() => {
+    for (const item of messages) {
+      const gid = guestInboxPresenceId(item);
+      if (gid && item.guest_online === true) {
+        seedGuestPresence(gid, true);
+      }
+    }
+  }, [messages, seedGuestPresence]);
 
   useEffect(() => {
     const typeParam =
@@ -340,7 +375,16 @@ export default function MessagesScreen() {
           <FlatList
             data={filtered}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
+            renderItem={({ item, index }) => {
+              const prev = filtered[index - 1];
+              const next = filtered[index + 1];
+              const dayLabel =
+                !prev || inboxDayKey(prev.created_at) !== inboxDayKey(item.created_at)
+                  ? formatInboxDayLabel(item.created_at)
+                  : null;
+              const cluster = inboxBubbleCluster(prev, item, next);
+              const clusterId = inboxClusterRootId(filtered, index);
+              return (
               <MessageRow
                 item={item}
                 selfOwnerId={ownerId}
@@ -351,14 +395,27 @@ export default function MessagesScreen() {
                 ownerNames={ownerNames}
                 ownerAvatars={ownerAvatars}
                 senderOnline={
-                  typeof item.sender_id === "number" && item.sender_id > 0
-                    ? isOnline(item.sender_id)
-                    : false
+                  guestInboxPresenceId(item)
+                    ? isGuestInboxSenderOnline(item, isGuestOnline)
+                    : typeof item.sender_id === "number" && item.sender_id > 0
+                      ? isOnline(item.sender_id)
+                      : false
                 }
                 zoneNames={zoneNames}
                 highlighted={highlightMessageId === item.id}
+                dayLabel={dayLabel}
+                cluster={cluster}
+                clusterMinWidth={
+                  cluster === "single" ? undefined : clusterWidths[clusterId]
+                }
+                onBubbleWidth={
+                  cluster === "single"
+                    ? undefined
+                    : (width) => reportClusterWidth(clusterId, width)
+                }
               />
-            )}
+              );
+            }}
             contentContainerStyle={{
               paddingHorizontal: 20,
               paddingBottom: 130,

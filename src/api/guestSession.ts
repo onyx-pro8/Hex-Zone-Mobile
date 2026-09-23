@@ -189,6 +189,8 @@ export async function fetchGuestMe(): Promise<GuestApiResult<GuestMe>> {
 export type GuestPeer = {
   owner_id: string;
   display_name?: string;
+  /** True when this member has a live device WebSocket session. */
+  online?: boolean;
 };
 
 export async function fetchGuestPeers(
@@ -242,7 +244,12 @@ export async function fetchGuestPeers(
             "name",
             "label",
           ]);
-          return { owner_id, ...(display_name ? { display_name } : {}) };
+          const online = row.online === true;
+          return {
+            owner_id,
+            ...(display_name ? { display_name } : {}),
+            ...(typeof row.online === "boolean" ? { online } : {}),
+          };
         })
         .filter((p): p is GuestPeer => p != null);
     },
@@ -260,9 +267,20 @@ export type GuestMessage = {
   text?: string;
   from_owner_id?: string;
   to_owner_id?: string;
+  from_kind?: "guest" | "owner" | "zone_broadcast";
   created_at?: string;
   permission_visibility?: string | null;
+  latitude?: number;
+  longitude?: number;
 };
+
+export function isOwnGuestChatMessage(item: GuestMessage): boolean {
+  const t = String(item.type ?? "").toUpperCase();
+  if (t === "PERMISSION") return false;
+  if (item.from_kind === "guest") return true;
+  if (item.from_kind === "owner" || item.from_kind === "zone_broadcast") return false;
+  return t === "CHAT" && !item.from_owner_id;
+}
 
 function readNestedOwnerId(value: unknown): string | undefined {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -282,12 +300,28 @@ function parseGuestMessage(raw: unknown): GuestMessage | null {
     readString(row, ["id", "message_id", "messageId"]) ??
     (typeof row.id === "number" ? String(row.id) : "");
   if (!id) return null;
+  let from_kind: GuestMessage["from_kind"];
+  const from = row.from;
+  if (from && typeof from === "object" && !Array.isArray(from)) {
+    const kind = (from as Record<string, unknown>).kind;
+    if (kind === "guest" || kind === "owner" || kind === "zone_broadcast") {
+      from_kind = kind;
+    }
+  }
   const fromOwnerId =
-    readIdString(row, ["from_owner_id", "fromOwnerId", "sender_id"]) ??
-    readNestedOwnerId(row.from);
+    from_kind === "guest"
+      ? undefined
+      : readIdString(row, ["from_owner_id", "fromOwnerId", "sender_id"]) ??
+        readNestedOwnerId(row.from);
   const toOwnerId =
     readIdString(row, ["to_owner_id", "toOwnerId", "receiver_id"]) ??
     readNestedOwnerId(row.to);
+  const latRaw = row.latitude ?? row.lat;
+  const lngRaw = row.longitude ?? row.lng ?? row.lon;
+  const latitude =
+    typeof latRaw === "number" && Number.isFinite(latRaw) ? latRaw : undefined;
+  const longitude =
+    typeof lngRaw === "number" && Number.isFinite(lngRaw) ? lngRaw : undefined;
   return {
     id,
     zone_id: readString(row, ["zone_id", "zoneId"]) ?? "",
@@ -297,12 +331,15 @@ function parseGuestMessage(raw: unknown): GuestMessage | null {
       : {}),
     ...(fromOwnerId ? { from_owner_id: fromOwnerId } : {}),
     ...(toOwnerId ? { to_owner_id: toOwnerId } : {}),
+    ...(from_kind ? { from_kind } : {}),
     ...(readString(row, ["created_at", "createdAt"])
       ? { created_at: readString(row, ["created_at", "createdAt"]) }
       : {}),
     ...(typeof row.permission_visibility === "string"
       ? { permission_visibility: row.permission_visibility }
       : {}),
+    ...(latitude != null ? { latitude } : {}),
+    ...(longitude != null ? { longitude } : {}),
   };
 }
 
@@ -342,12 +379,11 @@ export async function listGuestThreadMessages(params: {
         .map((m) => parseGuestMessage(m))
         .filter((m): m is GuestMessage => m != null)
         .sort((a, b) => {
-          // Oldest → newest so the chat reads top-to-bottom (the screen scrolls
-          // to the end). Fall back to id when timestamps are equal/missing.
+          // Newest → oldest (latest at top), matching member inbox boards.
           const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
           const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-          if (ta !== tb) return ta - tb;
-          return a.id.localeCompare(b.id);
+          if (ta !== tb) return tb - ta;
+          return b.id.localeCompare(a.id);
         });
     },
   });

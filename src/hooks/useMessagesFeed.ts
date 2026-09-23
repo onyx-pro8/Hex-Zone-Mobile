@@ -283,7 +283,9 @@ export function useMessagesFeed(options?: {
         parsed.type === "PERMISSION_MESSAGE" ||
         parsed.type === "unexpected_guest" ||
         parsed.type === "guest_is_here" ||
-        parsed.type === "GUEST_REQUEST_CHANGED"
+        parsed.type === "GUEST_REQUEST_CHANGED" ||
+        parsed.type === "guest_zone_message" ||
+        parsed.type === "GUEST_PRESENCE"
       ) {
         scheduleInboxRefetchFromSocket();
       }
