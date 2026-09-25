@@ -54,6 +54,7 @@ import {
   type MessageType,
 } from "@/lib/messageTypes";
 import { resolveBroadcastName } from "@/lib/appSettings";
+import { isSystemAdministrator } from "@/lib/accountLimits";
 import { MAX_MESSAGE_IMAGES } from "@/lib/messageImages";
 import {
   isEmergencyMessageType,
@@ -227,6 +228,11 @@ export function ComposeMessageSheet({
     (user?.name ?? "").trim() ||
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
   const selfBroadcastName = resolveBroadcastName(selfRealName || user?.name);
+  const isSystemAdmin = isSystemAdministrator({
+    accountType: user?.accountType,
+    legacyAccountType: user?.account_type,
+    role: user?.role,
+  });
 
   const [composeType, setComposeType] = useState<MessageType>("PA");
   const [composeReceiverId, setComposeReceiverId] = useState("");
@@ -272,7 +278,8 @@ export function ComposeMessageSheet({
   const selectedZoneRecordId =
     composeZoneSelection === "all" ? null : composeZoneSelection;
   const showComposeZonePicker =
-    usesComposeZoneTargeting(composeType) && composeZones.length > 1;
+    usesComposeZoneTargeting(composeType) &&
+    (composeZones.length > 1 || (isSystemAdmin && composeZones.length > 0));
 
   const groupedTypeOptions = useMemo(() => groupMessageTypesForUI(), []);
   const composeTypeOptions = useMemo(
@@ -813,7 +820,7 @@ export function ComposeMessageSheet({
           composeType,
           user?.mapCenter ?? user?.map_center ?? null,
         );
-        if ("error" in resolved) throw new Error(resolved.error);
+        if ("error" in resolved && !isSystemAdmin) throw new Error(resolved.error);
         const hid = await getOrCreateDeviceHid();
         const msgPayload: Record<string, unknown> = isServicePaMessageType(composeType)
           ? buildServicePaMsgPayload(composeServicePaFields, text, {
@@ -832,7 +839,7 @@ export function ComposeMessageSheet({
           type: composeType,
           hid,
           msg: msgPayload,
-          position: resolved.position,
+          ...("error" in resolved ? {} : { position: resolved.position }),
           ...(isPrivateMessageType(composeType)
             ? { receiver_owner_id: parsedReceiverId }
             : {}),
@@ -895,7 +902,7 @@ export function ComposeMessageSheet({
     draft, composeImages, composeType, composeReceiverId, composeZoneId,
     refresh, user?.mapCenter, user?.map_center, selfBroadcastName, ownerId,
     applyGeoPropagationToInbox, composeServicePaFields, confirmEmergencySend,
-    sending, afterSuccessfulSend, selectedZoneRecordId,
+    sending, afterSuccessfulSend, selectedZoneRecordId, isSystemAdmin,
   ]);
 
   return (
@@ -927,7 +934,7 @@ export function ComposeMessageSheet({
                 </View>
                 <Text style={receiversModalStyles.subtitle}>
                   {composeZoneSelection === "all"
-                    ? `All overlapping zones (${composeZones.length})`
+                    ? `${isSystemAdmin ? "All zones" : "All overlapping zones"} (${composeZones.length})`
                     : composeZones.find(
                         (z) => z.zone_record_id === composeZoneSelection,
                       )?.label ?? "Selected zone"}
@@ -1080,13 +1087,16 @@ export function ComposeMessageSheet({
                   <ActivityIndicator color={colors.accent} />
                 ) : composeZones.length === 0 ? (
                   <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                    No overlapping zones at this message type's send location.
+                    {isSystemAdmin
+                      ? "No zones on the platform."
+                      : "No overlapping zones at this message type's send location."}
                   </Text>
                 ) : showComposeZonePicker ? (
                   <>
                     <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                      You are inside more than one zone. Choose one zone or keep
-                      all zones.
+                      {isSystemAdmin
+                        ? "Choose any zone, or send to every zone. You do not need to be inside a zone."
+                        : "You are inside more than one zone. Choose one zone or keep all zones."}
                     </Text>
                     <ScrollView
                       horizontal
