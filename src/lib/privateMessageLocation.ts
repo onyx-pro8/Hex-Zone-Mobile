@@ -2,7 +2,8 @@ export type PrivateLocationStatus =
   | "inside_zone"
   | "outside_zone"
   | "no_coordinates"
-  | "not_in_network";
+  | "not_in_network"
+  | "admin_all_zones";
 
 const MESSAGE_POSITION_REQUIRED =
   "No location available. Allow location access, or set your address on your account so we can use it as a fallback.";

@@ -39,6 +39,7 @@ import {
   validateSignupPassword,
 } from "@/api/auth";
 import { generateZoneId } from "@/lib/h3";
+import { accountTypeLabel, normalizeAccountType } from "@/lib/accountLimits";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
@@ -91,6 +92,16 @@ export default function JoinScreen() {
   const [paramsSettled, setParamsSettled] = useState(false);
 
   const isNewNetworkAdmin = preview?.invite_kind === "new_network_admin";
+  const invitedAccountType = preview?.account_type
+    ? normalizeAccountType(preview.account_type)
+    : "EXCLUSIVE";
+  const isFamilyMemberInvite =
+    !isNewNetworkAdmin &&
+    preview?.invite_kind === "member" &&
+    invitedAccountType === "PRIVATE_PLUS";
+  const invitedAccountLabel = isNewNetworkAdmin
+    ? "Individual"
+    : accountTypeLabel(invitedAccountType);
   const membersAtCapacity =
     !isNewNetworkAdmin && Boolean(preview?.members_at_capacity);
   const [capacityBlocked, setCapacityBlocked] = useState(false);
@@ -170,7 +181,7 @@ export default function JoinScreen() {
       return true;
     }
     if (current === 3) {
-      if (!address.trim()) {
+      if (!isFamilyMemberInvite && !address.trim()) {
         toast.error("Address is required.");
         return false;
       }
@@ -204,7 +215,7 @@ export default function JoinScreen() {
         last_name: lastName.trim(),
         email: email.trim(),
         password,
-        address: address.trim(),
+        ...(isFamilyMemberInvite ? {} : { address: address.trim() }),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
         ...(isNewNetworkAdmin ? { zone_id: zoneId.trim() } : {}),
       });
@@ -318,9 +329,13 @@ export default function JoinScreen() {
       : step === 2
         ? "How should we address you in the zone?"
         : step === 3
-          ? "Optional phone and your home address."
+          ? isFamilyMemberInvite
+            ? "Optional phone. Home address is the family account address."
+            : "Optional phone and your home address."
           : step === 4
-            ? "Invitees register as Individual user accounts."
+            ? isFamilyMemberInvite
+              ? "You join as a Family user on the administrator's account."
+              : "Invitees register as Individual user accounts."
             : isNewNetworkAdmin
               ? "Confirm your invite code and choose a network ID."
               : "Confirm your invite code and join the host network.";
@@ -469,13 +484,37 @@ export default function JoinScreen() {
                     onChangeText={setPhone}
                     leftIcon={<Phone size={18} color={colors.textMuted} />}
                   />
-                  <AddressAutocompleteInput
-                    label="Address"
-                    placeholder="Search for a street or place…"
-                    value={address}
-                    onChange={(addr) => setAddress(addr)}
-                    leftIcon={<MapPin size={18} color={colors.textMuted} />}
-                  />
+                  {isFamilyMemberInvite ? (
+                    <Card style={{ gap: 6 }}>
+                      <Text style={labelStyle}>Address</Text>
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontSize: 14,
+                          fontWeight: "600",
+                        }}
+                      >
+                        Same as family administrator
+                      </Text>
+                      <Text
+                        style={{
+                          color: colors.textDim,
+                          fontSize: 12,
+                          lineHeight: 18,
+                        }}
+                      >
+                        Family members share the administrator's home address.
+                      </Text>
+                    </Card>
+                  ) : (
+                    <AddressAutocompleteInput
+                      label="Address"
+                      placeholder="Search for a street or place…"
+                      value={address}
+                      onChange={(addr) => setAddress(addr)}
+                      leftIcon={<MapPin size={18} color={colors.textMuted} />}
+                    />
+                  )}
                 </>
               ) : null}
 
@@ -489,7 +528,7 @@ export default function JoinScreen() {
                       fontWeight: "700",
                     }}
                   >
-                    Individual
+                    {invitedAccountLabel}
                   </Text>
                   <Text style={labelStyle}>Role</Text>
                   <Text
@@ -508,9 +547,11 @@ export default function JoinScreen() {
                       lineHeight: 18,
                     }}
                   >
-                    {isNewNetworkAdmin
-                      ? "Up to 3 secondary zones · No member invites · No smart-home hubs"
-                      : "Up to 2 secondary zones · No member invites · No smart-home hubs"}
+                    {isFamilyMemberInvite
+                      ? "Joins the family account · Home address is shared with the administrator"
+                      : isNewNetworkAdmin
+                        ? "Up to 3 secondary zones · No member invites · No smart-home hubs"
+                        : "Up to 2 secondary zones · No member invites · No smart-home hubs"}
                   </Text>
                   {preview?.zone_id && !isNewNetworkAdmin ? (
                     <Text
@@ -565,8 +606,8 @@ export default function JoinScreen() {
                         : isNewNetworkAdmin
                           ? "You will create an Individual (user-role) account for a new network."
                           : preview?.zone_id
-                            ? `Your account joins zone ${preview.zone_id} as an Individual (user-role) member.`
-                            : "Your account joins the inviter's zone as an Individual (user-role) member."}
+                            ? `Your account joins zone ${preview.zone_id} as a ${invitedAccountLabel} (user-role) member.`
+                            : `Your account joins the inviter's zone as a ${invitedAccountLabel} (user-role) member.`}
                     </Text>
                   </Card>
 

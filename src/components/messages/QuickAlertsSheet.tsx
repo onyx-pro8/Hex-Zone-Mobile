@@ -25,6 +25,7 @@ import {
   resolveMessagePropagationPositionForType,
 } from "@/lib/messagePosition";
 import { getOrCreateDeviceHid } from "@/lib/storage";
+import { isSystemAdministrator } from "@/lib/accountLimits";
 import { toMessageTypeLabel, type MessageType } from "@/lib/messageTypes";
 import {
   isEmergencyMessageType,
@@ -232,6 +233,11 @@ export function QuickAlertsSheet({
     (user?.name ?? "").trim() ||
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
   const selfBroadcastName = resolveBroadcastName(selfRealName || user?.name);
+  const isSystemAdmin = isSystemAdministrator({
+    accountType: user?.accountType,
+    legacyAccountType: user?.account_type,
+    role: user?.role,
+  });
 
   useEffect(() => {
     if (!visible) {
@@ -256,18 +262,20 @@ export function QuickAlertsSheet({
           type as MessageType,
           user?.mapCenter ?? user?.map_center ?? null,
         );
-        if ("error" in resolved) throw new Error(resolved.error);
+        if ("error" in resolved && !isSystemAdmin) throw new Error(resolved.error);
         const hid = await getOrCreateDeviceHid();
         const result = await propagateMessageFeatureMessage({
           type: type as MessageType,
           hid,
           msg: { description: presetText, broadcast_name: selfBroadcastName },
-          position: resolved.position,
+          ...("error" in resolved ? {} : { position: resolved.position }),
         });
         if (result.error) throw new Error(result.error);
         toastSmartHomeWebhookDelivery(result.data);
         setStatus(
-          `${toMessageTypeLabel(type as MessageType)} sent · ${messagePositionSourceLabel(resolved.source)}`,
+          "error" in resolved
+            ? `${toMessageTypeLabel(type as MessageType)} sent to all zones.`
+            : `${toMessageTypeLabel(type as MessageType)} sent · ${messagePositionSourceLabel(resolved.source)}`,
         );
         onSent?.();
         onClose();
@@ -290,6 +298,7 @@ export function QuickAlertsSheet({
       user?.mapCenter,
       user?.map_center,
       selfBroadcastName,
+      isSystemAdmin,
       onClose,
       onSent,
     ],
