@@ -5,7 +5,7 @@
  * (App Links / Universal Links). Custom-scheme `safezonepatrol:///access?…` still works.
  * Mirrors the web flow in `Hex-Zone-Client/src/pages/GuestAccess.tsx`:
  *   1. Form → POST /api/access/permission (anonymous)
- *   2. EXPECTED      → immediately approved (came from a guest schedule)
+ *   2. EXPECTED      → immediately approved (valid Event ID guest pass)
  *   3. UNEXPECTED    → poll GET /api/access/session/{guest_id} until APPROVED/REJECTED
  *   4. APPROVED + exchange_code → POST /api/access/guest-session → guest token
  */

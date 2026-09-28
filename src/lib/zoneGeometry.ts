@@ -7,8 +7,8 @@ export const ZONE_TYPE_LABELS: Record<ZoneType, string> = {
   proximity: "Proximity",
   dynamic: "Dynamic",
   communal_id: "Communal ID",
-  government_local_code: "Government code",
-  object: "Object",
+  government_local_code: "City Code",
+  object: "Monument",
 };
 
 /** Short, type-aware summary for the saved-zones list (radius, cells, etc). */
@@ -48,11 +48,11 @@ export function summarizeZone(zone: SavedZone): string {
     const r = Number(cfg.radius_meters);
     const name = typeof cfg.object_name === "string" ? cfg.object_name : "";
     if (name && Number.isFinite(r))
-      return `${tierLabel}Object · ${name} · ${Math.round(r)} m`;
-    if (name) return `${tierLabel}Object · ${name}`;
+      return `${tierLabel}Monument · ${name} · ${Math.round(r)} m`;
+    if (name) return `${tierLabel}Monument · ${name}`;
     return Number.isFinite(r)
-      ? `${tierLabel}Object · ${Math.round(r)} m`
-      : `${tierLabel}Object`;
+      ? `${tierLabel}Monument · ${Math.round(r)} m`
+      : `${tierLabel}Monument`;
   }
   if (t === "communal_id") {
     const id = typeof cfg.communal_id === "string" ? cfg.communal_id : "";
@@ -65,7 +65,7 @@ export function summarizeZone(zone: SavedZone): string {
         : typeof cfg.postal_code === "string"
           ? (cfg.postal_code as string)
           : "";
-    return ref ? `${tierLabel}Gov · ${ref}` : `${tierLabel}Government code`;
+    return ref ? `${tierLabel}City Code · ${ref}` : `${tierLabel}City Code`;
   }
   return `${tierLabel}Geofence`;
 }

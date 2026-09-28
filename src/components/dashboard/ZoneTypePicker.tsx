@@ -24,10 +24,10 @@ const OPTIONS: {
   { type: "communal_id", label: "Communal", icon: (p) => <Users {...p} /> },
   {
     type: "government_local_code",
-    label: "Government",
+    label: "City Code",
     icon: (p) => <Landmark {...p} />,
   },
-  { type: "object", label: "Object", icon: (p) => <Building2 {...p} /> },
+  { type: "object", label: "Monument", icon: (p) => <Building2 {...p} /> },
 ];
 
 type Props = {

@@ -57,6 +57,7 @@ import {
   savedZoneRecordId,
   shapeFocusPoint,
   summarizeZone,
+  ZONE_TYPE_LABELS,
   zoneOwnerLabel,
   zoneRecordToLayer,
   type MapZoneLayer,
@@ -284,9 +285,9 @@ export default function DashboardScreen() {
       case "communal_id":
         return "Communal ID";
       case "government_local_code":
-        return "Government local code";
+        return "City Code";
       case "object":
-        return "Object zoning";
+        return "Monument";
     }
   }, [builder.zoneType, builder.geofenceTool]);
 
@@ -406,9 +407,15 @@ export default function DashboardScreen() {
       return `Tap hex cells · ${builder.selectedH3Cells.length} selected · res ${builder.h3Resolution}`;
     }
     if (builder.zoneType === "proximity") {
-      return builder.proximityCenter
-        ? `Radius ${builder.proximityRadius} m · adjust slider on the right.`
-        : "Pin on map or use My location to place the source.";
+      if (!builder.proximityCenter) {
+        return "Pin on map or use My location to place the source.";
+      }
+      if (builder.proximitySource === "current_location") {
+        return builder.proximityLocating
+          ? "Locating GPS…"
+          : `Following GPS · radius ${builder.proximityRadius} m`;
+      }
+      return `Radius ${builder.proximityRadius} m · adjust slider on the right.`;
     }
     if (builder.zoneType === "communal_id") {
       return "Open Details to validate or generate a Communal ID.";
@@ -435,6 +442,7 @@ export default function DashboardScreen() {
         focusLayerId={focusLayerId}
         focusShape={focusShape}
         locationRequestNonce={builder.locationRequestNonce}
+        locationWatchActive={builder.locationWatchActive}
         zoomControlTop={mapChromeTop}
         onMapClick={builder.handleMapClick}
         onH3Toggle={builder.toggleH3Cell}
@@ -577,7 +585,7 @@ export default function DashboardScreen() {
               {(communalZonesPicker?.layers ?? []).map((layer, index, all) => {
                 const summary =
                   summarizeZone(layer.raw) ||
-                  layer.zoneType.replace(/_/g, " ");
+                  ZONE_TYPE_LABELS[layer.zoneType];
                 const owner = zoneOwnerLabel(layer.raw);
                 const isLast = index === all.length - 1;
                 return (
@@ -821,11 +829,15 @@ export default function DashboardScreen() {
             </MapIconButton>
             <MapIconButton
               label={
-                builder.proximityLocating ? "Locating…" : "My location"
+                builder.proximityLocating && !builder.proximityCenter
+                  ? "Locating…"
+                  : builder.proximitySource === "current_location"
+                    ? "Following GPS"
+                    : "My location"
               }
               onPress={() => void builder.requestCurrentLocation()}
               accent={builder.proximitySource === "current_location"}
-              disabled={builder.proximityLocating}
+              disabled={builder.proximityLocating && !builder.proximityCenter}
             >
               <LocateFixed
                 size={18}

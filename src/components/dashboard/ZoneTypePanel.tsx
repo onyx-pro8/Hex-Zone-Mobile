@@ -134,7 +134,13 @@ export function ZoneTypePanel({
             onPress={() => builder.setProximitySource("map_pin")}
           />
           <ToolButton
-            label={builder.proximityLocating ? "Locating…" : "My location"}
+            label={
+              builder.proximityLocating && !builder.proximityCenter
+                ? "Locating…"
+                : builder.proximitySource === "current_location"
+                  ? "Following GPS"
+                  : "My location"
+            }
             icon={
               <LocateFixed
                 size={14}
@@ -159,6 +165,9 @@ export function ZoneTypePanel({
         />
         {builder.proximityCenter ? (
           <Text style={hintStyle}>
+            {builder.proximitySource === "current_location"
+              ? "Circle follows your GPS as you move. "
+              : ""}
             Center {builder.proximityCenter[0].toFixed(5)},{" "}
             {builder.proximityCenter[1].toFixed(5)}
           </Text>
@@ -425,7 +434,7 @@ export function ZoneTypePanel({
     return (
       <View style={{ gap: 12 }}>
         <AddressAutocompleteInput
-          label="Search object"
+          label="Search monument"
           placeholder="Building, café, landmark…"
           value={builder.objectQuery}
           onChange={(addr, coords) => {
@@ -447,13 +456,13 @@ export function ZoneTypePanel({
           }}
         />
         <Input
-          label="Object ID"
+          label="Monument ID"
           placeholder="OSM reference or custom ID"
           value={builder.objectReferenceId}
           onChangeText={builder.setObjectReferenceId}
         />
         <CompactSlider
-          label={`Object radius (${builder.objectRadius} m)`}
+          label={`Monument radius (${builder.objectRadius} m)`}
           value={builder.objectRadius}
           min={5}
           max={2000}

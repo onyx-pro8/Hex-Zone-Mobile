@@ -466,25 +466,51 @@ export function buildDashboardMapHtml(zoomControlTop = 96): string {
 
       window.__applyMapState = applyState;
 
+      var deviceLocationWatchId = null;
+
+      function postDeviceLocation(pos) {
+        post({
+          type: 'location',
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy
+        });
+      }
+
+      function postDeviceLocationError(err) {
+        var msg = (err && err.message) ? err.message : 'Location permission denied or unavailable.';
+        post({ type: 'locationError', message: msg });
+      }
+
+      window.__stopDeviceLocationWatch = function () {
+        if (deviceLocationWatchId != null && navigator.geolocation) {
+          navigator.geolocation.clearWatch(deviceLocationWatchId);
+        }
+        deviceLocationWatchId = null;
+      };
+
       window.__requestDeviceLocation = function () {
         if (!navigator.geolocation) {
           post({ type: 'locationError', message: 'Geolocation is not available in this WebView.' });
           return;
         }
         navigator.geolocation.getCurrentPosition(
-          function (pos) {
-            post({
-              type: 'location',
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy
-            });
-          },
-          function (err) {
-            var msg = (err && err.message) ? err.message : 'Location permission denied or unavailable.';
-            post({ type: 'locationError', message: msg });
-          },
+          postDeviceLocation,
+          postDeviceLocationError,
           { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
+        );
+      };
+
+      window.__startDeviceLocationWatch = function () {
+        if (!navigator.geolocation) {
+          post({ type: 'locationError', message: 'Geolocation is not available in this WebView.' });
+          return;
+        }
+        window.__stopDeviceLocationWatch();
+        deviceLocationWatchId = navigator.geolocation.watchPosition(
+          postDeviceLocation,
+          postDeviceLocationError,
+          { enableHighAccuracy: true, timeout: 20000, maximumAge: 1000 }
         );
       };
 

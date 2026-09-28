@@ -16,6 +16,7 @@ import {
   listZoneShapes,
   savedZoneRecordId,
   summarizeZone,
+  ZONE_TYPE_LABELS,
   zoneOwnerLabel,
   type MapZoneLayer,
   type ZoneShapeItem,
@@ -283,7 +284,7 @@ export function ZonesPageHeader({
                         ) : null}
                       </Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
-                        {summary || layer.zoneType.replace("_", " ")}
+                        {summary || ZONE_TYPE_LABELS[layer.zoneType]}
                       </Text>
                       {owner ? (
                         <Text style={styles.rowOwner} numberOfLines={1}>
