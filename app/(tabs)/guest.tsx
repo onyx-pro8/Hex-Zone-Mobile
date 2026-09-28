@@ -1,42 +1,15 @@
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CalendarRange, ChevronRight, Ticket } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
+import { GuestHubLinks } from "@/components/guest/GuestHubLinks";
 import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { colors } from "@/theme/colors";
 
-type GuestEntry = {
-  key: "schedules" | "passes";
-  title: string;
-  subtitle: string;
-  icon: React.ReactNode;
-  href: "/(tabs)/guest-schedules" | "/(tabs)/guest-passes";
-};
-
 export default function GuestHubScreen() {
-  const router = useRouter();
   const { effectiveZoneId, zonesLoading } = useEffectiveZoneId();
   const zoneId = effectiveZoneId;
-
-  const entries: GuestEntry[] = [
-    {
-      key: "schedules",
-      title: "Guest schedules",
-      subtitle: "Request expected guest windows (admin approves)",
-      icon: <CalendarRange size={22} color={colors.accent} />,
-      href: "/(tabs)/guest-schedules",
-    },
-    {
-      key: "passes",
-      title: "Guest passes",
-      subtitle: "Create an Event ID — accepted immediately",
-      icon: <Ticket size={22} color={colors.accent} />,
-      href: "/(tabs)/guest-passes",
-    },
-  ];
 
   return (
     <GradientBackground>
@@ -44,11 +17,11 @@ export default function GuestHubScreen() {
         <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
           <AppHeader
             title="Guest"
-            subtitle="Manage your expected visitors"
+            subtitle="Create an Event ID pass for guest access"
           />
 
           {!zoneId ? (
-            <View style={{ paddingHorizontal: 20 }}>
+            <View style={{ paddingHorizontal: 20, marginBottom: 8 }}>
               <Card>
                 {zonesLoading ? (
                   <View
@@ -73,44 +46,8 @@ export default function GuestHubScreen() {
             </View>
           ) : null}
 
-          <View style={{ paddingHorizontal: 20, gap: 12, marginTop: 8 }}>
-            {entries.map((entry) => (
-              <Pressable
-                key={entry.key}
-                onPress={() => router.push(entry.href)}
-              >
-                <Card
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 14,
-                  }}
-                >
-                  {entry.icon}
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        color: colors.text,
-                        fontWeight: "700",
-                        fontSize: 15,
-                      }}
-                    >
-                      {entry.title}
-                    </Text>
-                    <Text
-                      style={{
-                        color: colors.textMuted,
-                        fontSize: 12,
-                        marginTop: 2,
-                      }}
-                    >
-                      {entry.subtitle}
-                    </Text>
-                  </View>
-                  <ChevronRight size={18} color={colors.textDim} />
-                </Card>
-              </Pressable>
-            ))}
+          <View style={{ paddingHorizontal: 20 }}>
+            <GuestHubLinks includeAdminTools={false} />
           </View>
         </ScrollView>
       </SafeAreaView>

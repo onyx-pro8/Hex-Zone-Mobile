@@ -55,6 +55,8 @@ type DashboardMapProps = {
   focusShape?: MapFocusShape | null;
   /** Increment to request device GPS via the map WebView (no expo-location native module). */
   locationRequestNonce?: number;
+  /** When true, stream GPS updates from the map WebView (proximity follow). */
+  locationWatchActive?: boolean;
   onMapClick?: (lat: number, lng: number) => void;
   onH3Toggle?: (cell: string) => void;
   onH3LoadError?: () => void;
@@ -85,6 +87,7 @@ export function DashboardMap({
   focusLayerId = null,
   focusShape = null,
   locationRequestNonce = 0,
+  locationWatchActive = false,
   onMapClick,
   onH3Toggle,
   onH3LoadError,
@@ -98,6 +101,7 @@ export function DashboardMap({
   const webRef = useRef<WebView>(null);
   const readyRef = useRef(false);
   const pendingLocationNonceRef = useRef(0);
+  const pendingLocationWatchRef = useRef(false);
   const html = useMemo(
     () => buildDashboardMapHtml(zoomControlTop),
     [zoomControlTop],
@@ -106,6 +110,18 @@ export function DashboardMap({
   const injectDeviceLocationRequest = useCallback(() => {
     webRef.current?.injectJavaScript(
       "window.__requestDeviceLocation && window.__requestDeviceLocation(); true;",
+    );
+  }, []);
+
+  const injectDeviceLocationWatchStart = useCallback(() => {
+    webRef.current?.injectJavaScript(
+      "window.__startDeviceLocationWatch && window.__startDeviceLocationWatch(); true;",
+    );
+  }, []);
+
+  const injectDeviceLocationWatchStop = useCallback(() => {
+    webRef.current?.injectJavaScript(
+      "window.__stopDeviceLocationWatch && window.__stopDeviceLocationWatch(); true;",
     );
   }, []);
 
@@ -166,6 +182,20 @@ export function DashboardMap({
     if (readyRef.current) injectDeviceLocationRequest();
   }, [injectDeviceLocationRequest, locationRequestNonce]);
 
+  useEffect(() => {
+    pendingLocationWatchRef.current = locationWatchActive;
+    if (!readyRef.current) return;
+    if (locationWatchActive) injectDeviceLocationWatchStart();
+    else injectDeviceLocationWatchStop();
+    return () => {
+      injectDeviceLocationWatchStop();
+    };
+  }, [
+    injectDeviceLocationWatchStart,
+    injectDeviceLocationWatchStop,
+    locationWatchActive,
+  ]);
+
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
       try {
@@ -175,6 +205,9 @@ export function DashboardMap({
           pushState(mapState);
           if (pendingLocationNonceRef.current > 0) {
             injectDeviceLocationRequest();
+          }
+          if (pendingLocationWatchRef.current) {
+            injectDeviceLocationWatchStart();
           }
           onReady?.();
           return;
@@ -221,6 +254,7 @@ export function DashboardMap({
       onH3Toggle,
       onMapClick,
       injectDeviceLocationRequest,
+      injectDeviceLocationWatchStart,
       onReady,
       pushState,
     ],

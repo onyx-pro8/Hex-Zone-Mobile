@@ -52,6 +52,12 @@ function inputStyle() {
   } as const;
 }
 
+function isPassExpired(pass: GuestPass): boolean {
+  if (pass.is_expired) return true;
+  const t = new Date(pass.expires_at).getTime();
+  return Number.isFinite(t) && t < Date.now();
+}
+
 function PassRow({
   pass,
   zoneId,
@@ -63,8 +69,11 @@ function PassRow({
   isAdmin: boolean;
   onChanged: () => void;
 }) {
-  const tone =
-    pass.status === "ACCEPTED"
+  const expired = isPassExpired(pass);
+  const used = Boolean(pass.used_by_guest_id);
+  const tone = expired
+    ? "danger"
+    : pass.status === "ACCEPTED"
       ? "success"
       : pass.status === "PENDING"
         ? "warning"
@@ -93,10 +102,17 @@ function PassRow({
           <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 4 }}>
             Expires {new Date(pass.expires_at).toLocaleString()}
           </Text>
+          {used ? (
+            <Text style={{ color: colors.warning, fontSize: 11, marginTop: 4 }}>
+              Already used
+            </Text>
+          ) : null}
         </View>
-        <Chip label={pass.status} tone={tone} />
+        <View style={{ alignItems: "flex-end", gap: 4 }}>
+          <Chip label={expired ? "EXPIRED" : pass.status} tone={tone} />
+        </View>
       </View>
-      {isAdmin && pass.status === "ACCEPTED" ? (
+      {isAdmin && pass.status === "ACCEPTED" && !expired ? (
         <Button
           label="Revoke"
           size="sm"
@@ -132,6 +148,11 @@ export default function GuestPassesScreen() {
     setLoading(true);
     try {
       const result = await listGuestPasses(effectiveZoneId);
+      if (result.error) {
+        toast.error(result.error, { title: "Could not load guest passes" });
+        setPasses([]);
+        return;
+      }
       setPasses(result.data ?? []);
     } finally {
       setLoading(false);

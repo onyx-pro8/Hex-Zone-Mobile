@@ -7,10 +7,7 @@ import {
   type MessageScope,
   type MessageType,
 } from "@/lib/messageTypes";
-import {
-  isPermissionZonePendingBroadcastVisibility,
-  normalizePermissionVisibilityToken,
-} from "@/lib/permissionVisibility";
+import { normalizePermissionVisibilityToken } from "@/lib/permissionVisibility";
 import {
   extractServicePaFields,
   formatTopicPath,
@@ -234,21 +231,11 @@ function extractPermissionVisibility(
   return pick(row) ?? pick(msgRecord) ?? pick(rowStructuredPayload);
 }
 
+/** Newest first so day headers stay in order (Today, then older dates). */
 export function sortInboxAccessMessages(list: Message[]): Message[] {
-  return [...list].sort((a, b) => {
-    const pa =
-      a.type === "PERMISSION" &&
-      isPermissionZonePendingBroadcastVisibility(a.permission_visibility)
-        ? 1
-        : 0;
-    const pb =
-      b.type === "PERMISSION" &&
-      isPermissionZonePendingBroadcastVisibility(b.permission_visibility)
-        ? 1
-        : 0;
-    if (pa !== pb) return pb - pa;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  return [...list].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
 }
 
 function coerceMessageBodyText(

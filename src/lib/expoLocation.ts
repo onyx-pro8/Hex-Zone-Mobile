@@ -147,6 +147,46 @@ export async function readDeviceLocation(
   }
 }
 
+export type DeviceLocationWatchHandle = {
+  remove: () => void;
+};
+
+/**
+ * Continuous GPS updates for proximity-to-source while the user is walking.
+ * Returns null when expo-location is unavailable or permission is missing.
+ */
+export async function watchDeviceLocation(
+  onLocation: (coords: DeviceCoords) => void,
+): Promise<DeviceLocationWatchHandle | null> {
+  const Location = await loadExpoLocation();
+  if (!Location) return null;
+
+  try {
+    const existing = await Location.getForegroundPermissionsAsync();
+    if (existing.status !== "granted") return null;
+
+    const sub = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 1000,
+        distanceInterval: 5,
+      },
+      (pos) => {
+        onLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          ...(pos.coords.accuracy != null
+            ? { accuracy: pos.coords.accuracy }
+            : {}),
+        });
+      },
+    );
+    return sub;
+  } catch {
+    return null;
+  }
+}
+
 async function raceWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,

@@ -131,6 +131,13 @@ export function useMessagesFeed(options?: {
     [ownerId, prependInboxMessage, fallbackZoneId],
   );
 
+  const rememberInboxIds = useCallback((batch: Message[]) => {
+    for (const row of batch) {
+      seenInboxIdsRef.current.add(row.id);
+    }
+  }, []);
+
+  /** Notify only for ids that were not already in the loaded feed (live/poll). */
   const trackNewRowsForNotify = useCallback(
     (batch: Message[]) => {
       if (ownerId == null) return;
@@ -219,13 +226,13 @@ export function useMessagesFeed(options?: {
       if (batch.length === 0) return;
       const blocks = blockRulesRef.current;
       const visible = filterMessagesForBlocks(batch, blocks);
-      trackNewRowsForNotify(batch);
+      rememberInboxIds(batch);
       setMessages((prev) => mergeUniqueById(prev, visible));
     } finally {
       loadMoreInFlightRef.current = false;
       setLoadingMore(false);
     }
-  }, [ownerId, token, hasMore, loading, pageSize, trackNewRowsForNotify]);
+  }, [ownerId, token, hasMore, loading, pageSize, rememberInboxIds]);
 
   const scheduleInboxRefetchFromSocket = useCallback(() => {
     if (refetchDebounceRef.current) clearTimeout(refetchDebounceRef.current);

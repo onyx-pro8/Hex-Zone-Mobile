@@ -4,6 +4,7 @@ import { toast } from "@/lib/toast";
 import {
   loadExpoLocation,
   readDeviceLocation,
+  watchDeviceLocation,
   LOCATION_UNAVAILABLE_MESSAGE,
 } from "@/lib/expoLocation";
 import { getMembers } from "@/api/members";
@@ -79,6 +80,17 @@ export const DEFAULT_GOVERNMENT_FIELDS: GovernmentFields = {
 };
 
 export type ProximitySourceMode = "current_location" | "map_pin";
+
+function metersBetween(a: LatLng, b: LatLng): number {
+  const earthR = 6371000;
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthR * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
 
 export type ZoneBuilderState = ReturnType<typeof useZoneBuilder>;
 
@@ -223,7 +235,14 @@ export function useZoneBuilder(
     useState<ProximitySourceMode>("map_pin");
   const [proximityLocating, setProximityLocating] = useState(false);
   const [locationRequestNonce, setLocationRequestNonce] = useState(0);
+  const [locationWatchActive, setLocationWatchActive] = useState(false);
   const locationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expoLocationWatchRef = useRef<{ remove: () => void } | null>(null);
+  const stopProximityGpsWatchRef = useRef<() => void>(() => {});
+  const requestCurrentLocationRef = useRef<() => Promise<void>>(async () => {});
+  const lastProximityGpsRef = useRef<LatLng | null>(null);
+  const proximityHasFixRef = useRef(false);
+  const gpsCameraFollowRef = useRef(true);
   const [fitDraftToken, setFitDraftToken] = useState(0);
   /** "map" = pan only (initial GPS). "proximity" = lock proximity source. */
   const locationIntentRef = useRef<"map" | "proximity">("map");
@@ -457,6 +476,9 @@ export function useZoneBuilder(
   }, [zoneType, dynamicTarget, dynamicMin, dynamicMax]);
 
   const resetDrafts = useCallback(() => {
+    stopProximityGpsWatchRef.current();
+    locationIntentRef.current = "map";
+    setProximitySource("map_pin");
     setDraftRing([]);
     setPolygonRedoStack([]);
     setDraftCircle(null);
@@ -592,9 +614,11 @@ export function useZoneBuilder(
           Number.isFinite(radius) && radius > 0 ? radius : 150,
         );
         const sourceRaw = String(cfg.source_type ?? "").toLowerCase();
-        setProximitySource(
-          sourceRaw === "current_location" ? "current_location" : "map_pin",
-        );
+        const gpsSource = sourceRaw === "current_location";
+        setProximitySource(gpsSource ? "current_location" : "map_pin");
+        if (gpsSource) {
+          void requestCurrentLocationRef.current();
+        }
         tool = "proximity";
       } else if (type === "dynamic") {
         const target = Number(cfg.target_user_count);
@@ -783,6 +807,7 @@ export function useZoneBuilder(
 
   const markMapUserAdjusted = useCallback(() => {
     allowInitialGpsRef.current = false;
+    gpsCameraFollowRef.current = false;
   }, []);
 
   const applyDeviceLocation = useCallback(
@@ -795,21 +820,40 @@ export function useZoneBuilder(
         return;
       }
       allowInitialGpsRef.current = false;
-      setMapCenter(here);
-      void setStoredMapCenter({ latitude: lat, longitude: lng });
       if (!lockProximity) {
+        setMapCenter(here);
+        void setStoredMapCenter({ latitude: lat, longitude: lng });
         setProximityLocating(false);
         return;
       }
+
+      const last = lastProximityGpsRef.current;
+      if (proximityHasFixRef.current && last) {
+        const movedMeters = metersBetween(last, here);
+        if (movedMeters < 4) {
+          setProximityLocating(false);
+          return;
+        }
+      }
+
+      lastProximityGpsRef.current = here;
       setProximityCenter(here);
       setProximitySource("current_location");
-      setFitDraftToken((t) => t + 1);
+      const firstLock = !proximityHasFixRef.current;
+      if (firstLock) {
+        proximityHasFixRef.current = true;
+        setMapCenter(here);
+        void setStoredMapCenter({ latitude: lat, longitude: lng });
+        setFitDraftToken((t) => t + 1);
+        const acc =
+          typeof accuracy === "number" && Number.isFinite(accuracy)
+            ? ` · ±${Math.round(accuracy)} m`
+            : "";
+        setStatus(`Following GPS${acc}`);
+      } else if (gpsCameraFollowRef.current) {
+        setMapCenter(here);
+      }
       setProximityLocating(false);
-      const acc =
-        typeof accuracy === "number" && Number.isFinite(accuracy)
-          ? ` · ±${Math.round(accuracy)} m`
-          : "";
-      setStatus(`Locked onto your location${acc}`);
       setError(null);
     },
     [clearLocationTimeout],
@@ -820,15 +864,29 @@ export function useZoneBuilder(
       clearLocationTimeout();
       setProximityLocating(false);
       if (locationIntentRef.current !== "proximity") return;
+      if (proximityHasFixRef.current) return;
       notifyError(message || LOCATION_UNAVAILABLE_MESSAGE);
       setStatus(null);
     },
     [clearLocationTimeout, notifyError],
   );
 
+  const stopProximityGpsWatch = useCallback(() => {
+    if (expoLocationWatchRef.current) {
+      expoLocationWatchRef.current.remove();
+      expoLocationWatchRef.current = null;
+    }
+    setLocationWatchActive(false);
+    proximityHasFixRef.current = false;
+    lastProximityGpsRef.current = null;
+    clearLocationTimeout();
+  }, [clearLocationTimeout]);
+  stopProximityGpsWatchRef.current = stopProximityGpsWatch;
+
   const requestMapWebViewLocation = useCallback(
-    async (opts?: { silent?: boolean }) => {
+    async (opts?: { silent?: boolean; watch?: boolean }) => {
       const silent = opts?.silent === true;
+      const watch = opts?.watch === true;
       if (Platform.OS === "android") {
         try {
           const granted = await PermissionsAndroid.request(
@@ -861,9 +919,14 @@ export function useZoneBuilder(
         clearLocationTimeout();
         locationTimeoutRef.current = setTimeout(() => {
           setProximityLocating(false);
+          if (proximityHasFixRef.current) return;
           notifyError(LOCATION_UNAVAILABLE_MESSAGE);
           setStatus(null);
         }, 22000);
+      }
+      if (watch) {
+        setLocationWatchActive(true);
+        return;
       }
       setLocationRequestNonce((n) => n + 1);
     },
@@ -871,14 +934,24 @@ export function useZoneBuilder(
   );
 
   const requestCurrentLocation = useCallback(async () => {
+    stopProximityGpsWatch();
     locationIntentRef.current = "proximity";
     allowInitialGpsRef.current = false;
+    gpsCameraFollowRef.current = true;
+    proximityHasFixRef.current = false;
+    lastProximityGpsRef.current = null;
+    setProximitySource("current_location");
     setProximityLocating(true);
     setError(null);
-    setStatus("Requesting GPS…");
+    setStatus("Following GPS…");
+
+    const startWebViewWatch = async () => {
+      await requestMapWebViewLocation({ watch: true });
+    };
+
     const Location = await loadExpoLocation();
     if (!Location) {
-      await requestMapWebViewLocation();
+      await startWebViewWatch();
       return;
     }
     try {
@@ -892,11 +965,8 @@ export function useZoneBuilder(
         setStatus(null);
         return;
       }
-      // Bounded fresh fix with an automatic last-known-position fallback so
-      // we never hang and we avoid the raw "Current location is unavailable"
-      // native error when a fresh fix simply isn't ready yet.
       const result = await readDeviceLocation({
-        timeoutMs: 12000,
+        timeoutMs: 8000,
         requestPermission: false,
       });
       if (result) {
@@ -905,23 +975,58 @@ export function useZoneBuilder(
           result.coords.longitude,
           result.coords.accuracy,
         );
-        if (result.source === "lastKnown") {
-          setStatus("Using last known location — tap the map to fine-tune.");
+      }
+      const sub = await watchDeviceLocation((coords) => {
+        applyDeviceLocation(
+          coords.latitude,
+          coords.longitude,
+          coords.accuracy,
+        );
+      });
+      if (sub) {
+        expoLocationWatchRef.current = sub;
+        if (!result) {
+          clearLocationTimeout();
+          locationTimeoutRef.current = setTimeout(() => {
+            setProximityLocating(false);
+            if (proximityHasFixRef.current) return;
+            notifyError(LOCATION_UNAVAILABLE_MESSAGE);
+            setStatus(null);
+          }, 22000);
         }
         return;
       }
-      // No native fix at all → try the in-map WebView geolocation as a last
-      // resort (works on dev clients without the ExpoLocation native module).
-      await requestMapWebViewLocation();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Could not get location.";
-      if (/Cannot find native module|ExpoLocation/i.test(msg)) {
-        await requestMapWebViewLocation();
-      } else {
-        await requestMapWebViewLocation();
-      }
+      await startWebViewWatch();
+    } catch {
+      await startWebViewWatch();
     }
-  }, [applyDeviceLocation, notifyError, requestMapWebViewLocation, setError]);
+  }, [
+    applyDeviceLocation,
+    clearLocationTimeout,
+    notifyError,
+    requestMapWebViewLocation,
+    setError,
+    stopProximityGpsWatch,
+  ]);
+  requestCurrentLocationRef.current = requestCurrentLocation;
+
+  const chooseProximitySource = useCallback(
+    (mode: ProximitySourceMode) => {
+      if (mode === "map_pin") {
+        stopProximityGpsWatch();
+        locationIntentRef.current = "map";
+        setProximitySource("map_pin");
+        setProximityLocating(false);
+        return;
+      }
+      void requestCurrentLocation();
+    },
+    [requestCurrentLocation, stopProximityGpsWatch],
+  );
+
+  useEffect(() => {
+    return () => stopProximityGpsWatchRef.current();
+  }, []);
 
   /** Open the Zones map on the device GPS instead of the New York fallback. */
   useEffect(() => {
@@ -1003,6 +1108,8 @@ export function useZoneBuilder(
         return;
       }
       if (zoneType === "proximity") {
+        stopProximityGpsWatchRef.current();
+        locationIntentRef.current = "map";
         setProximityCenter(pt);
         setProximitySource("map_pin");
         return;
@@ -1788,9 +1895,10 @@ export function useZoneBuilder(
     proximityRadius,
     setProximityRadius,
     proximitySource,
-    setProximitySource,
+    setProximitySource: chooseProximitySource,
     proximityLocating,
     locationRequestNonce,
+    locationWatchActive,
     requestCurrentLocation,
     applyDeviceLocation,
     handleDeviceLocationError,

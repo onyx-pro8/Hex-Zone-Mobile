@@ -89,14 +89,14 @@ export const ZONE_DRAW_TOOLS: {
   },
   {
     id: "government_local_code",
-    label: "Government",
+    label: "City Code",
     zoneType: "government_local_code",
     icon: (p) => <Landmark {...p} />,
     accent: colorForZoneType("government_local_code"),
   },
   {
     id: "object",
-    label: "Object",
+    label: "Monument",
     zoneType: "object",
     icon: (p) => <Building2 {...p} />,
     accent: colorForZoneType("object"),
