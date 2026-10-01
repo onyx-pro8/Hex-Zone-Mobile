@@ -215,6 +215,8 @@ export type StoredGuestSession = {
   zone_ids: string[];
   allowed_message_types: string[];
   network_geo_messaging?: boolean;
+  /** True while a network-access request is still pending and chat is admin-only. */
+  pending_approval?: boolean;
   saved_at: number;
 };
 

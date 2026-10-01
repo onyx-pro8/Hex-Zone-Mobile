@@ -157,6 +157,13 @@ export default function GuestDashboardScreen() {
         return;
       }
       if (me.data) {
+        if (String(me.data.approval_status ?? "").toUpperCase() === "PENDING") {
+          const zone = me.data.zone_ids[0] || "";
+          router.replace(
+            zone ? `/guest/messages?zone=${encodeURIComponent(zone)}` : "/guest/messages",
+          );
+          return;
+        }
         if (me.data.display_name) setDisplayName(me.data.display_name);
         if (me.data.zone_ids.length) {
           setZones(me.data.zone_ids);
@@ -174,7 +181,7 @@ export default function GuestDashboardScreen() {
       active = false;
       clearInterval(heartbeat);
     };
-  }, [checking, leaveGuest]);
+  }, [checking, leaveGuest, router]);
 
   // Load the read-only map for the primary zone.
   useEffect(() => {
@@ -307,8 +314,9 @@ export default function GuestDashboardScreen() {
               ))}
             </View>
             <Text style={{ color: colors.textDim, fontSize: 12 }}>
-              You have read-only guest access. You can view the zone map and
-              chat with the zone hosts.
+              {hasMapGeometry
+                ? "You have read-only guest access. You can view the zone map and chat with the zone hosts."
+                : "No drawable zones are published for this network yet. Chat with network hosts is still available."}
             </Text>
           </Card>
 

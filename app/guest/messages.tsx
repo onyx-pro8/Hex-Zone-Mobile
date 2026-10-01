@@ -5,7 +5,7 @@
  * messages. PERMISSION rows from the access workflow are shown read-only.
  * Guests can only SEND the CHAT type. Runs on the stored guest token.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RefreshCw, Send } from "lucide-react-native";
+import { LogOut, RefreshCw, Send, ShieldAlert } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -40,15 +40,27 @@ import {
   type GuestMessage,
   type GuestPeer,
 } from "@/api/guestSession";
+import {
+  exchangeGuestSession,
+  pollGuestAccessSession,
+} from "@/api/guestPublic";
 import { useAuth } from "@/context/AuthContext";
 import {
   clearStoredGuestSession,
   getStoredGuestSession,
+  setStoredGuestSession,
 } from "@/lib/storage";
 import { colors } from "@/theme/colors";
 
 const POLL_MS = 4000;
+const APPROVAL_POLL_MS = 2000;
 const THREAD_LIMIT = 80;
+
+function messageLooksApproved(item: GuestMessage): boolean {
+  if (String(item.type ?? "").toUpperCase() !== "PERMISSION") return false;
+  const text = String(item.text ?? "").toLowerCase();
+  return text.includes("approved") || text.includes("access granted");
+}
 
 export default function GuestMessagesScreen() {
   const router = useRouter();
@@ -71,6 +83,8 @@ export default function GuestMessagesScreen() {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [guestDisplayName, setGuestDisplayName] = useState("");
+  const [approvalStatus, setApprovalStatus] = useState<string | null>(null);
+  const promotingRef = useRef(false);
   const { clusterWidths, reportClusterWidth } = useInboxClusterWidths();
 
   const peerPresenceSeed = useMemo(() => {
@@ -95,6 +109,85 @@ export default function GuestMessagesScreen() {
     router.replace(memberToken ? "/(tabs)" : "/(auth)/welcome");
   }, [memberToken, router]);
 
+  const promoteToApprovedGuest = useCallback(async (opts?: { force?: boolean }) => {
+    if (promotingRef.current) return;
+    const session = await getStoredGuestSession();
+    // Only leave chat when we were still waiting — already-approved guests must stay on messages.
+    if (!session?.pending_approval && approvalStatus !== "PENDING") {
+      if (opts?.force) setApprovalStatus("APPROVED");
+      return;
+    }
+    promotingRef.current = true;
+    try {
+      if (!session?.access_token) return;
+      const guestId = session.guest_id?.trim() || "";
+      const zone =
+        zoneId.trim() ||
+        session.zone_id?.trim() ||
+        session.zone_ids?.[0]?.trim() ||
+        "";
+      if (!guestId || !zone) {
+        if (!opts?.force) return;
+        setApprovalStatus("APPROVED");
+        await setStoredGuestSession({ ...session, pending_approval: false });
+        router.replace("/guest/dashboard");
+        return;
+      }
+
+      const poll = await pollGuestAccessSession(guestId, zone);
+      if (poll.status === "REJECTED") {
+        setApprovalStatus("REJECTED");
+        return;
+      }
+      if (poll.status !== "APPROVED" && !opts?.force) return;
+
+      if (poll.status === "APPROVED" && poll.exchange_code?.trim()) {
+        const ex = await exchangeGuestSession({
+          guest_id: guestId,
+          zone_id: zone,
+          exchange_code: poll.exchange_code.trim(),
+        });
+        if (ex.data?.access_token) {
+          const allowed = ex.data.guest.allowed_message_types?.length
+            ? ex.data.guest.allowed_message_types
+            : ["CHAT"];
+          const zoneIds = ex.data.guest.zone_ids?.length
+            ? ex.data.guest.zone_ids
+            : [zone];
+          await setStoredGuestSession({
+            access_token: ex.data.access_token,
+            guest_id: ex.data.guest.guest_id,
+            display_name: ex.data.guest.display_name || session.display_name,
+            zone_id: zoneIds[0] || zone,
+            zone_ids: zoneIds,
+            allowed_message_types: allowed,
+            pending_approval: false,
+            saved_at: Date.now(),
+          });
+          setGuestToken(ex.data.access_token);
+          setApprovalStatus("APPROVED");
+          setAllowedTypes(allowed);
+          setZones(zoneIds);
+          setZoneId(zoneIds[0] || zone);
+          if (ex.data.guest.display_name?.trim()) {
+            setGuestDisplayName(ex.data.guest.display_name.trim());
+          }
+          router.replace("/guest/dashboard");
+          return;
+        }
+      }
+
+      if (poll.status === "APPROVED" || opts?.force) {
+        setApprovalStatus("APPROVED");
+        await setStoredGuestSession({ ...session, pending_approval: false });
+        router.replace("/guest/dashboard");
+      }
+    } finally {
+      const still = await getStoredGuestSession();
+      if (still?.pending_approval) promotingRef.current = false;
+    }
+  }, [router, zoneId, approvalStatus]);
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -117,6 +210,11 @@ export default function GuestMessagesScreen() {
         );
         if (session.display_name?.trim()) {
           setGuestDisplayName(session.display_name.trim());
+        }
+        if (session.pending_approval) {
+          setApprovalStatus("PENDING");
+        } else {
+          setApprovalStatus("APPROVED");
         }
         setZoneId(
           (prev) =>
@@ -141,6 +239,18 @@ export default function GuestMessagesScreen() {
         return;
       }
       if (me.data) {
+        const approval = String(me.data.approval_status ?? "").toUpperCase();
+        if (approval === "PENDING" || approval === "REJECTED") {
+          setApprovalStatus(approval);
+        }
+        if (approval === "APPROVED") {
+          const session = await getStoredGuestSession();
+          if (session?.pending_approval || approvalStatus === "PENDING") {
+            void promoteToApprovedGuest({ force: true });
+            return;
+          }
+          setApprovalStatus("APPROVED");
+        }
         if (me.data.display_name.trim()) {
           setGuestDisplayName(me.data.display_name.trim());
         }
@@ -160,12 +270,46 @@ export default function GuestMessagesScreen() {
       }
     };
     void applyMe();
-    const heartbeat = setInterval(() => void applyMe(), 20000);
+    const heartbeat = setInterval(
+      () => void applyMe(),
+      approvalStatus === "PENDING" ? APPROVAL_POLL_MS : 20000,
+    );
     return () => {
       active = false;
       clearInterval(heartbeat);
     };
-  }, [checking, leaveGuest]);
+  }, [checking, leaveGuest, approvalStatus, promoteToApprovedGuest]);
+
+  useEffect(() => {
+    if (checking || approvalStatus !== "PENDING") return;
+    let active = true;
+    const tick = async () => {
+      const session = await getStoredGuestSession();
+      if (!active || !session) return;
+      const guestId = session.guest_id?.trim() || "";
+      const zone =
+        zoneId.trim() ||
+        session.zone_id?.trim() ||
+        session.zone_ids?.[0]?.trim() ||
+        "";
+      if (!guestId || !zone) return;
+      const poll = await pollGuestAccessSession(guestId, zone);
+      if (!active) return;
+      if (poll.status === "APPROVED") {
+        void promoteToApprovedGuest();
+        return;
+      }
+      if (poll.status === "REJECTED") {
+        setApprovalStatus("REJECTED");
+      }
+    };
+    void tick();
+    const handle = setInterval(() => void tick(), APPROVAL_POLL_MS);
+    return () => {
+      active = false;
+      clearInterval(handle);
+    };
+  }, [checking, approvalStatus, zoneId, promoteToApprovedGuest]);
 
   const guestCanChat = useMemo(() => {
     if (!allowedTypes.length) return true;
@@ -192,6 +336,11 @@ export default function GuestMessagesScreen() {
       return;
     }
     setPeers(res.data ?? []);
+    setPeerId((prev) => {
+      if (prev && (res.data ?? []).some((p) => p.owner_id === prev)) return prev;
+      const first = (res.data ?? [])[0]?.owner_id ?? "";
+      return first;
+    });
   }, [zoneId, leaveGuest]);
 
   useEffect(() => {
@@ -223,7 +372,13 @@ export default function GuestMessagesScreen() {
       return;
     }
     setMessages(res.data ?? []);
-  }, [zoneId, peerId, leaveGuest]);
+    if (
+      approvalStatus === "PENDING" &&
+      (res.data ?? []).some((m) => messageLooksApproved(m))
+    ) {
+      void promoteToApprovedGuest();
+    }
+  }, [zoneId, peerId, leaveGuest, approvalStatus, promoteToApprovedGuest]);
 
   useEffect(() => {
     void loadThread();
@@ -298,14 +453,82 @@ export default function GuestMessagesScreen() {
       >
         <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
           <ScreenHeader
-            title="Guest chat"
-            subtitle="Message network members"
-            showBack
-            onBack={() => router.replace("/guest/dashboard")}
+            title={
+              approvalStatus === "PENDING"
+                ? "Waiting for approval"
+                : "Guest chat"
+            }
+            subtitle={
+              approvalStatus === "PENDING"
+                ? "Message the network administrator while you wait"
+                : "Message network members"
+            }
+            showBack={approvalStatus !== "PENDING"}
+            onBack={
+              approvalStatus === "PENDING"
+                ? undefined
+                : () => router.replace("/guest/dashboard")
+            }
+            right={
+              approvalStatus === "PENDING" ? (
+                <Pressable
+                  onPress={() => void leaveGuest()}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    opacity: pressed ? 0.7 : 1,
+                    paddingVertical: 6,
+                    paddingHorizontal: 8,
+                  })}
+                >
+                  <LogOut size={16} color={colors.textMuted} />
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 13,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Leave
+                  </Text>
+                </Pressable>
+              ) : undefined
+            }
           />
 
           <View style={{ paddingHorizontal: 20, gap: 10, flex: 1 }}>
-            {zones.length > 1 ? (
+            {approvalStatus === "PENDING" ? (
+              <View
+                style={{
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: "rgba(224,153,42,0.45)",
+                  backgroundColor: "rgba(251,239,216,0.9)",
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <ShieldAlert size={14} color={colors.warning} />
+                <Text
+                  style={{
+                    color: colors.warning,
+                    fontSize: 12,
+                    lineHeight: 16,
+                    flex: 1,
+                    fontWeight: "600",
+                  }}
+                >
+                  Waiting for approval — you can message the network administrator
+                </Text>
+              </View>
+            ) : null}
+
+            {zones.length > 1 && approvalStatus !== "PENDING" ? (
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {zones.map((z) => (
                   <Pressable
@@ -322,6 +545,7 @@ export default function GuestMessagesScreen() {
               </View>
             ) : null}
 
+            {approvalStatus === "PENDING" ? null : (
             <Card style={{ gap: 8 }}>
               <View
                 style={{
@@ -375,19 +599,23 @@ export default function GuestMessagesScreen() {
                 </View>
               )}
             </Card>
+            )}
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minHeight: 160 }}>
               {!peerId ? (
                 <View style={{ paddingTop: 24, alignItems: "center" }}>
                   <Text style={{ color: colors.textDim, fontSize: 13 }}>
-                    Select a member to start chatting.
+                    {approvalStatus === "PENDING"
+                      ? "Connecting to the network administrator…"
+                      : "Select a member to start chatting."}
                   </Text>
                 </View>
               ) : (
                 <FlatList
                   data={messages}
                   keyExtractor={(m) => m.id}
-                  contentContainerStyle={{ paddingVertical: 8 }}
+                  style={{ flex: 1 }}
+                  contentContainerStyle={{ paddingVertical: 8, flexGrow: 1 }}
                   ListEmptyComponent={
                     loadingThread ? (
                       <ActivityIndicator color={colors.accent} />
@@ -457,7 +685,7 @@ export default function GuestMessagesScreen() {
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 8,
-                  paddingVertical: 10,
+                  paddingBottom: 10,
                 }}
               >
                 <TextInput

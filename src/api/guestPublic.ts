@@ -206,6 +206,7 @@ export type AnonymousGuestPermissionResult =
       zoneId?: string;
       exchange_code?: string;
       exchange_expires_at?: string;
+      chat_access_token?: string;
     }
   | { ok: false; errorCode?: string; message: string };
 
@@ -246,6 +247,7 @@ export async function submitAnonymousGuestPermission(
       "exchange_expires_at",
       "exchangeExpiresAt",
     ]);
+    const chat_access_token = readString(row, ["chat_access_token", "chatAccessToken"]);
     const exchangeFields =
       exchange_code && exchange_code.trim()
         ? {
@@ -255,6 +257,7 @@ export async function submitAnonymousGuestPermission(
               : {}),
           }
         : {};
+    const chatFields = chat_access_token ? { chat_access_token } : {};
 
     if (st === "EXPECTED") {
       return {
@@ -264,6 +267,7 @@ export async function submitAnonymousGuestPermission(
         ...(guestId ? { guestId } : {}),
         ...(zoneId ? { zoneId } : {}),
         ...exchangeFields,
+        ...chatFields,
       };
     }
     return {
@@ -273,6 +277,7 @@ export async function submitAnonymousGuestPermission(
       ...(guestId ? { guestId } : {}),
       ...(zoneId ? { zoneId } : {}),
       ...exchangeFields,
+      ...chatFields,
     };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Request failed";
@@ -295,6 +300,8 @@ export type GuestAccessSessionPollResult = {
   message?: string;
   exchange_code?: string;
   exchange_expires_at?: string;
+  /** Guest JWT for the existing chat screen while a network request is still pending. */
+  chat_access_token?: string;
   error: string | null;
 };
 
@@ -354,9 +361,11 @@ export async function pollGuestAccessSession(
       };
     }
     if (st === "PENDING" || st === "REVIEW" || st === "WAITING") {
+      const chat_access_token = readString(row, ["chat_access_token", "chatAccessToken"]);
       return {
         status: "PENDING",
         ...(message ? { message } : {}),
+        ...(chat_access_token ? { chat_access_token } : {}),
         error: null,
       };
     }

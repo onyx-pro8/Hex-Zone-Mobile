@@ -8,6 +8,7 @@ import {
   formatBubbleTime,
   formatInboxDayLabel,
   inboxDayKey,
+  CHAT_BUBBLE_MAX_WIDTH,
   type InboxBubbleCluster,
 } from "@/components/messages/InboxMessageCard";
 import { colors } from "@/theme/colors";
@@ -295,7 +296,7 @@ export function GuestChatBubble({
           onLayout={onBubbleLayout}
           style={{
             alignSelf: "flex-start",
-            maxWidth: "80%",
+            maxWidth: CHAT_BUBBLE_MAX_WIDTH,
             ...(inCluster && clusterMinWidth ? { minWidth: clusterMinWidth } : null),
             borderWidth: 1,
             borderTopWidth: 1,
@@ -412,9 +413,6 @@ export function GuestChatBubble({
               />
               {isPermission ? (
                 <Chip label="read-only" tone="warning" size="sm" />
-              ) : null}
-              {item.zone_id ? (
-                <Chip label={item.zone_id} tone="muted" size="sm" />
               ) : null}
               <Chip label={locationLabel} tone="muted" size="sm" />
             </View>
