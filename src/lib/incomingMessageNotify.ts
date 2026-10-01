@@ -67,6 +67,14 @@ function shouldNotifyInboxMessage(
 ): boolean {
   if (!Number.isFinite(viewerOwnerId) || viewerOwnerId <= 0) return false;
   if (message.guest_sender_id) return true;
+  // Guest-authored Access CHAT may only carry guest_id + logical sender 0.
+  if (
+    String(message.type).toUpperCase() === "CHAT" &&
+    Boolean(String(message.guest_id ?? "").trim()) &&
+    (message.sender_id == null || message.sender_id === GUEST_LOGICAL_SENDER_ID)
+  ) {
+    return true;
+  }
   if (isPermissionZonePendingBroadcastVisibility(message.permission_visibility)) {
     return true;
   }

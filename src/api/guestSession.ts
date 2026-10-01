@@ -158,6 +158,7 @@ export type GuestMe = {
   display_name: string;
   zone_ids: string[];
   allowed_message_types: string[];
+  approval_status?: "PENDING" | "APPROVED" | "REJECTED";
 };
 
 export async function fetchGuestMe(): Promise<GuestApiResult<GuestMe>> {
@@ -172,11 +173,17 @@ export async function fetchGuestMe(): Promise<GuestApiResult<GuestMe>> {
       const allowed = readStringArray(
         row.allowed_message_types ?? row.allowedMessageTypes,
       ).map((s) => s.toUpperCase());
+      const approvalRaw = readString(row, ["approval_status", "approvalStatus"])?.toUpperCase();
+      const approval_status =
+        approvalRaw === "PENDING" || approvalRaw === "APPROVED" || approvalRaw === "REJECTED"
+          ? approvalRaw
+          : undefined;
       return {
         guest_id: readString(row, ["guest_id", "guestId"]) ?? "",
         display_name: readString(row, ["display_name", "displayName"]) ?? "",
         zone_ids: readStringArray(row.zone_ids ?? row.zoneIds),
         allowed_message_types: allowed.length ? allowed : ["CHAT"],
+        ...(approval_status ? { approval_status } : {}),
       };
     },
   });

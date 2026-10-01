@@ -70,6 +70,9 @@ export type InboxMessageCardProps = {
 
 export type InboxBubbleCluster = "single" | "start" | "middle" | "end";
 
+/** Shared bubble cap — guest chat and member inbox must match. */
+export const CHAT_BUBBLE_MAX_WIDTH = "80%" as const;
+
 const CLUSTER_WINDOW_MS = 5 * 60 * 1000;
 
 export function inboxSenderKey(item: Pick<Message, "sender_id" | "guest_sender_id" | "guest_id" | "id">): string {
@@ -554,7 +557,7 @@ export function InboxMessageCard({
           onLayout={onBubbleLayout}
           style={{
             alignSelf: "flex-start",
-            maxWidth: "80%",
+            maxWidth: CHAT_BUBBLE_MAX_WIDTH,
             ...(inCluster && clusterMinWidth ? { minWidth: clusterMinWidth } : null),
             borderWidth: 1,
             borderTopWidth: 1,

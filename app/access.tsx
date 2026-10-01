@@ -201,6 +201,33 @@ export default function GuestAccessScreen() {
     [],
   );
 
+  const openedPendingChat = useRef(false);
+  const guestNameRef = useRef(guestName);
+  guestNameRef.current = guestName;
+
+  const openPendingNetworkChat = useCallback(
+    async (token: string, guestId: string, zoneId: string) => {
+      if (openedPendingChat.current) return;
+      const accessToken = token.trim();
+      const gid = guestId.trim();
+      const zone = zoneId.trim();
+      if (!accessToken || !gid || !zone) return;
+      openedPendingChat.current = true;
+      await setStoredGuestSession({
+        access_token: accessToken,
+        guest_id: gid,
+        display_name: guestNameRef.current.trim() || "Guest",
+        zone_id: zone,
+        zone_ids: [zone],
+        allowed_message_types: ["CHAT"],
+        pending_approval: true,
+        saved_at: Date.now(),
+      });
+      router.replace(`/guest/messages?zone=${encodeURIComponent(zone)}`);
+    },
+    [router],
+  );
+
   /* Poll session while waiting for approval (and while awaiting exchange_code). */
   useEffect(() => {
     const stopPolling = () => {
@@ -284,6 +311,10 @@ export default function GuestAccessScreen() {
         });
         return;
       }
+      if (res.status === "PENDING" && res.chat_access_token) {
+        void openPendingNetworkChat(res.chat_access_token, guestId, pollZoneId);
+        return;
+      }
       if (res.message) {
         setPhase((current) => {
           if (current.id === "waiting") {
@@ -303,7 +334,7 @@ export default function GuestAccessScreen() {
       cancelled = true;
       stopPolling();
     };
-  }, [phase]);
+  }, [phase, openPendingNetworkChat]);
 
   /* Once we have an exchange_code, auto-run the exchange and route to home. */
   useEffect(() => {
@@ -410,6 +441,9 @@ export default function GuestAccessScreen() {
         pollZoneId,
         serverMessage: result.message || "Waiting for approval…",
       });
+      if (result.chat_access_token) {
+        void openPendingNetworkChat(result.chat_access_token, guestId, pollZoneId);
+      }
     } finally {
       setSubmitting(false);
     }
