@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
 import { OnboardingNav } from "@/components/auth/OnboardingNav";
+import { CommunalIdSignupField } from "@/components/auth/CommunalIdSignupField";
 import { useAuth } from "@/context/AuthContext";
 import {
   joinWithQrToken,
@@ -84,6 +85,8 @@ export default function JoinScreen() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [zoneId, setZoneId] = useState(() => generateZoneId());
+  const [communalId, setCommunalId] = useState("");
+  const [communalValidated, setCommunalValidated] = useState(false);
   const [preview, setPreview] = useState<QrInvitePreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -191,6 +194,16 @@ export default function JoinScreen() {
       toast.error("Enter or generate a network ID for your new network.");
       return false;
     }
+    if (
+      current === 5 &&
+      isNewNetworkAdmin &&
+      (!communalId.trim() || !communalValidated)
+    ) {
+      toast.error(
+        "Select and validate a Communal ID. Its zones become your primary zone.",
+      );
+      return false;
+    }
     return true;
   };
 
@@ -217,7 +230,12 @@ export default function JoinScreen() {
         password,
         ...(isFamilyMemberInvite ? {} : { address: address.trim() }),
         ...(phone.trim() ? { phone: phone.trim() } : {}),
-        ...(isNewNetworkAdmin ? { zone_id: zoneId.trim() } : {}),
+        ...(isNewNetworkAdmin
+          ? {
+              zone_id: zoneId.trim(),
+              communal_id: communalId.trim().toUpperCase(),
+            }
+          : {}),
       });
       if (join.error || !join.data) {
         const msg = join.error ?? "Could not complete invite join.";
@@ -550,7 +568,7 @@ export default function JoinScreen() {
                     {isFamilyMemberInvite
                       ? "Joins the family account · Home address is shared with the administrator"
                       : isNewNetworkAdmin
-                        ? "Up to 3 secondary zones · No member invites · No smart-home hubs"
+                        ? "Communal ID primary · Up to 2 secondary zones · No member invites · No smart-home hubs"
                         : "Up to 2 secondary zones · No member invites · No smart-home hubs"}
                   </Text>
                   {preview?.zone_id && !isNewNetworkAdmin ? (
@@ -655,7 +673,22 @@ export default function JoinScreen() {
                   </View>
 
                   {isNewNetworkAdmin ? (
-                    <View style={{ gap: 8 }}>
+                    <View style={{ gap: 12 }}>
+                      <View
+                        style={{
+                          padding: 14,
+                          borderRadius: 14,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: colors.bgCard,
+                        }}
+                      >
+                        <CommunalIdSignupField
+                          value={communalId}
+                          onChange={setCommunalId}
+                          onValidated={(valid) => setCommunalValidated(valid)}
+                        />
+                      </View>
                       <View
                         style={{
                           flexDirection: "row",

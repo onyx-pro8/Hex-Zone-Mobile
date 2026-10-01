@@ -16,6 +16,7 @@ import {
   parseMessageSocketPayload,
 } from "@/lib/messageSocket";
 import {
+  notifyGuestArrivalSocketEvent,
   notifyIncomingGeoPropagation,
   notifyIncomingInboxMessage,
 } from "@/lib/incomingMessageNotify";
@@ -294,6 +295,12 @@ export function useMessagesFeed(options?: {
         parsed.type === "guest_zone_message" ||
         parsed.type === "GUEST_PRESENCE"
       ) {
+        if (
+          parsed.type === "unexpected_guest" ||
+          parsed.type === "guest_is_here"
+        ) {
+          void notifyGuestArrivalSocketEvent(lastMessage);
+        }
         scheduleInboxRefetchFromSocket();
       }
     } catch {

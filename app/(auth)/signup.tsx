@@ -26,6 +26,7 @@ import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInp
 import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
 import { OnboardingNav } from "@/components/auth/OnboardingNav";
+import { CommunalIdSignupField } from "@/components/auth/CommunalIdSignupField";
 import { useAuth } from "@/context/AuthContext";
 import {
   checkEmailAvailable,
@@ -120,6 +121,8 @@ export default function SignupScreen() {
   const [zoneId, setZoneId] = useState(() => generateZoneId());
   const [useExistingZone, setUseExistingZone] = useState(false);
   const [existingZoneId, setExistingZoneId] = useState("");
+  const [communalId, setCommunalId] = useState("");
+  const [communalValidated, setCommunalValidated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkingCredentials, setCheckingCredentials] = useState(false);
   const [registrationCode, setRegistrationCode] = useState("FREE");
@@ -262,6 +265,14 @@ export default function SignupScreen() {
       toast.error("User registration requires a valid account owner ID.");
       return;
     }
+    if (isIndividual) {
+      if (!communalId.trim() || !communalValidated) {
+        toast.error(
+          "Select and validate a Communal ID. Its zones become your primary zone.",
+        );
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -278,13 +289,16 @@ export default function SignupScreen() {
         address,
         phone: phone.trim() || undefined,
         zoneId: selectedZoneId,
+        ...(isIndividual
+          ? { communalId: communalId.trim().toUpperCase() }
+          : {}),
         registrationCode: code,
       });
       router.replace("/(auth)/login");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       toast.error(
-        /422|exclusive|individual|account owner|zone|already registered|409/i.test(
+        /422|exclusive|individual|account owner|zone|communal|already registered|409/i.test(
           msg,
         )
           ? msg
@@ -650,9 +664,9 @@ export default function SignupScreen() {
                         lineHeight: 16,
                       }}
                     >
-                      Individual accounts are always user role. They can create
-                      up to 3 secondary zones, cannot invite members, and do not
-                      support smart-home hubs.
+                      Individual accounts are always user role. Select a Communal
+                      ID for your primary zone, then create up to 2 secondary
+                      zones. They cannot invite members or use smart-home hubs.
                     </Text>
                   </View>
                 )}
@@ -796,6 +810,24 @@ export default function SignupScreen() {
                         : "Issued by the server when you reach this step. Required for administrator self-registration."}
                   </Text>
                 </View>
+
+                {isIndividual ? (
+                  <View
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                    }}
+                  >
+                    <CommunalIdSignupField
+                      value={communalId}
+                      onChange={setCommunalId}
+                      onValidated={(valid) => setCommunalValidated(valid)}
+                    />
+                  </View>
+                ) : null}
 
                 <View
                   style={{

@@ -18,6 +18,8 @@ const AUTH_FREE_PATHS = [
   "/register",
   "/owners/login",
   "/owners/register",
+  "/zones/communal-ids/public",
+  "/zones/validate-reference/public",
 ];
 
 function isAuthFreeRequest(url: string | undefined): boolean {
