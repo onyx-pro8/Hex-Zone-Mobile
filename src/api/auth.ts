@@ -50,6 +50,8 @@ export type RegisterPayload = {
   registrationType: RegistrationType;
   accountOwnerId?: number;
   zoneId?: string;
+  /** Required for Individual (EXCLUSIVE) signup — public Communal ID. */
+  communalId?: string;
   phone?: string;
   address?: string;
   registrationCode?: string;
@@ -68,6 +70,7 @@ type LegacyRegisterPayload = {
   last_name: string;
   account_type: string;
   zone_id?: string;
+  communal_id?: string;
   role?: UserRole;
   account_owner_id?: number;
   phone?: string;
@@ -83,6 +86,7 @@ function mapLegacyRegisterPayload(p: RegisterPayload): LegacyRegisterPayload {
   const [first, ...rest] = p.name.trim().split(/\s+/);
   const last = rest.join(" ");
   const code = p.registrationCode?.trim();
+  const communal = p.communalId?.trim();
   return {
     email: p.email,
     password: p.password,
@@ -90,6 +94,7 @@ function mapLegacyRegisterPayload(p: RegisterPayload): LegacyRegisterPayload {
     last_name: last,
     account_type: toLegacyAccountType(p.accountType),
     zone_id: p.zoneId,
+    ...(communal ? { communal_id: communal.toUpperCase() } : {}),
     role: p.registrationType === "USER" ? "user" : "administrator",
     account_owner_id: p.accountOwnerId,
     phone: p.phone,
@@ -143,12 +148,17 @@ export async function loginRequest(payload: LoginPayload) {
 export async function registerRequest(payload: RegisterPayload) {
   // Individual (EXCLUSIVE) is always user-role. Solo accounts omit accountOwnerId;
   // invited members keep accountOwnerId to link under their administrator.
+  const communal =
+    payload.accountType === "EXCLUSIVE"
+      ? payload.communalId?.trim().toUpperCase()
+      : undefined;
   const normalized: RegisterPayload =
     payload.accountType === "EXCLUSIVE"
       ? {
           ...payload,
           registrationType: "USER",
           registrationCode: payload.registrationCode?.trim() || "FREE",
+          ...(communal ? { communalId: communal } : {}),
         }
       : payload;
 
