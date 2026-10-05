@@ -22,7 +22,10 @@ import {
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
-import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
+import {
+  AddressAutocompleteInput,
+  AddressSuggestionDock,
+} from "@/components/ui/AddressAutocompleteInput";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
@@ -370,12 +373,14 @@ export default function JoinScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+          <AddressSuggestionDock>
           <ScrollView
+            style={{ flex: 1 }}
             contentContainerStyle={{
               flexGrow: 1,
               paddingBottom: 24,
             }}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
           >
             <ScreenHeader
               title={
@@ -771,6 +776,7 @@ export default function JoinScreen() {
               </Pressable>
             </View>
           </ScrollView>
+          </AddressSuggestionDock>
 
           <View
             style={{
