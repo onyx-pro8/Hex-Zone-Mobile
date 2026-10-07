@@ -22,6 +22,8 @@ export type MessageFeaturePayload = {
   co?: string;
   receiver_owner_id?: number;
   zone_record_id?: number;
+  /** Multi-select zone targeting (system admin / overlapping zones). */
+  zone_record_ids?: number[];
 };
 
 export type MessageFeatureBlock = {

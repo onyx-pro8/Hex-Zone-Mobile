@@ -49,6 +49,8 @@ export type RegisterPayload = {
   accountType: AccountType;
   registrationType: RegistrationType;
   accountOwnerId?: number;
+  /** Administrator email when several administrators share the Network ID. */
+  administratorEmail?: string;
   zoneId?: string;
   /** Required for Individual (EXCLUSIVE) signup — public Communal ID. */
   communalId?: string;
@@ -73,6 +75,7 @@ type LegacyRegisterPayload = {
   communal_id?: string;
   role?: UserRole;
   account_owner_id?: number;
+  administrator_email?: string;
   phone?: string;
   address?: string;
   registration_code?: string;
@@ -97,6 +100,9 @@ function mapLegacyRegisterPayload(p: RegisterPayload): LegacyRegisterPayload {
     ...(communal ? { communal_id: communal.toUpperCase() } : {}),
     role: p.registrationType === "USER" ? "user" : "administrator",
     account_owner_id: p.accountOwnerId,
+    ...(p.administratorEmail?.trim()
+      ? { administrator_email: p.administratorEmail.trim() }
+      : {}),
     phone: p.phone,
     address: p.address,
     ...(code ? { registration_code: code } : {}),
@@ -145,9 +151,25 @@ export async function loginRequest(payload: LoginPayload) {
   };
 }
 
+export type JoinableNetwork = {
+  network_id: string;
+  account_type?: string;
+  label?: string;
+  administrator_count?: number;
+};
+
+/** Networks whose administrator uses the same account type. Public; no login required. */
+export async function listJoinableNetworks(accountType: string) {
+  return request<JoinableNetwork[]>({
+    method: "GET",
+    url: "/owners/networks/public",
+    params: { account_type: accountType },
+  });
+}
+
 export async function registerRequest(payload: RegisterPayload) {
-  // Individual (EXCLUSIVE) is always user-role. Solo accounts omit accountOwnerId;
-  // invited members keep accountOwnerId to link under their administrator.
+  // Individual (EXCLUSIVE) is always user-role. Invited members omit accountOwnerId
+  // and are linked by Network ID (zoneId); administratorEmail disambiguates.
   const communal =
     payload.accountType === "EXCLUSIVE"
       ? payload.communalId?.trim().toUpperCase()

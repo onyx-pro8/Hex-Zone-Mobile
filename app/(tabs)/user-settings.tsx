@@ -366,7 +366,10 @@ export default function UserSettingsScreen() {
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 110 }}
+          keyboardShouldPersistTaps="always"
+        >
           <ScreenHeader
             title="User settings"
             subtitle="Profile, address & broadcast name"

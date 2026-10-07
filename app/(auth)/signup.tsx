@@ -22,11 +22,15 @@ import {
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
-import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
+import {
+  AddressAutocompleteInput,
+  AddressSuggestionDock,
+} from "@/components/ui/AddressAutocompleteInput";
 import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
 import { OnboardingNav } from "@/components/auth/OnboardingNav";
 import { CommunalIdSignupField } from "@/components/auth/CommunalIdSignupField";
+import { NetworkSignupPicker } from "@/components/auth/NetworkSignupPicker";
 import { useAuth } from "@/context/AuthContext";
 import {
   checkEmailAvailable,
@@ -115,7 +119,8 @@ export default function SignupScreen() {
   const [accountType, setAccountType] = useState<AccountType>("EXCLUSIVE");
   const [registrationType, setRegistrationType] =
     useState<RegistrationType>("USER");
-  const [accountOwnerId, setAccountOwnerId] = useState("");
+  const [administratorEmail, setAdministratorEmail] = useState("");
+  const [needsAdministratorEmail, setNeedsAdministratorEmail] = useState(false);
   const [address, setAddress] = useState("350 Fifth Avenue, New York");
   const [addressCoords, setAddressCoords] = useState<LatLng | null>(null);
   const [zoneId, setZoneId] = useState(() => generateZoneId());
@@ -162,20 +167,28 @@ export default function SignupScreen() {
     if (accountType === "EXCLUSIVE") {
       setRegistrationCode("FREE");
       setRegistrationType("USER");
-      setAccountOwnerId("");
+      setRegCodeLoading(false);
+      return;
+    }
+    if (registrationType === "USER") {
+      setRegistrationCode("");
       setRegCodeLoading(false);
       return;
     }
     void loadRegistrationCode();
-  }, [loadRegistrationCode, inviteToken, accountType]);
+  }, [loadRegistrationCode, inviteToken, accountType, registrationType]);
 
   const center = useMemo<LatLng>(
     () =>
       addressCoords ?? addressToMockCoords(address) ?? AUTH_MAP_DEFAULT_CENTER,
     [address, addressCoords],
   );
-  const selectedZoneId =
-    useExistingZone && existingZoneId ? existingZoneId : zoneId;
+  const joiningNetwork = !isIndividual && registrationType === "USER";
+  const selectedZoneId = joiningNetwork
+    ? existingZoneId.trim()
+    : useExistingZone && existingZoneId.trim()
+      ? existingZoneId.trim()
+      : zoneId;
 
   const goPrevious = () => {
     setStep((current) => Math.max(1, current - 1));
@@ -220,17 +233,6 @@ export default function SignupScreen() {
       return true;
     }
     if (current === 4) {
-      const effectiveRegistrationType: RegistrationType = isIndividual
-        ? "USER"
-        : registrationType;
-      if (
-        !isIndividual &&
-        effectiveRegistrationType === "USER" &&
-        !accountOwnerId.trim()
-      ) {
-        toast.error("User registration requires a valid account owner ID.");
-        return false;
-      }
       return true;
     }
     return true;
@@ -247,7 +249,7 @@ export default function SignupScreen() {
       ? "USER"
       : registrationType;
     const code = isIndividual ? "FREE" : registrationCode.trim();
-    if (!isIndividual && !code) {
+    if (!isIndividual && !joiningNetwork && !code) {
       toast.error(
         "Registration code is missing. Wait for the server to issue one, or tap Retry.",
       );
@@ -257,12 +259,14 @@ export default function SignupScreen() {
       toast.error("Name, email and password are required.");
       return;
     }
-    if (
-      !isIndividual &&
-      effectiveRegistrationType === "USER" &&
-      !accountOwnerId.trim()
-    ) {
-      toast.error("User registration requires a valid account owner ID.");
+    if (joiningNetwork && !selectedZoneId) {
+      toast.error("Enter the Network ID of the account you are joining.");
+      return;
+    }
+    if (joiningNetwork && needsAdministratorEmail && !administratorEmail.trim()) {
+      toast.error(
+        "Several administrators share this Network ID. Enter the administrator email.",
+      );
       return;
     }
     if (isIndividual) {
@@ -282,28 +286,30 @@ export default function SignupScreen() {
         password,
         accountType,
         registrationType: effectiveRegistrationType,
-        accountOwnerId:
-          !isIndividual && effectiveRegistrationType === "USER"
-            ? Number(accountOwnerId.trim()) || undefined
-            : undefined,
+        ...(joiningNetwork && needsAdministratorEmail && administratorEmail.trim()
+          ? { administratorEmail: administratorEmail.trim() }
+          : {}),
         address,
         phone: phone.trim() || undefined,
         zoneId: selectedZoneId,
         ...(isIndividual
           ? { communalId: communalId.trim().toUpperCase() }
           : {}),
-        registrationCode: code,
+        ...(joiningNetwork ? {} : { registrationCode: code }),
       });
       router.replace("/(auth)/login");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       toast.error(
-        /422|exclusive|individual|account owner|zone|communal|already registered|409/i.test(
+        /422|exclusive|individual|account owner|zone|communal|network|administrator|already registered|409/i.test(
           msg,
         )
           ? msg
           : "Could not create account. Please review your details and try again.",
       );
+      if (/administrator email/i.test(msg)) {
+        setNeedsAdministratorEmail(true);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -344,15 +350,17 @@ export default function SignupScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <AddressSuggestionDock>
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={{
             flexGrow: 1,
             paddingBottom: 24,
           }}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           keyboardDismissMode="on-drag"
         >
-          {step === 3 ? (
+          {step === 3 && keyboardInset === 0 ? (
             <AuthMapPanel
               center={center}
               addressLabel={address}
@@ -507,9 +515,9 @@ export default function SignupScreen() {
                         key={option.value}
                         onPress={() => {
                           setAccountType(option.value);
+                          setExistingZoneId("");
                           if (option.value === "EXCLUSIVE") {
                             setRegistrationType("USER");
-                            setAccountOwnerId("");
                             setRegistrationCode(
                               inviteToken ? inviteToken : "FREE",
                             );
@@ -614,25 +622,17 @@ export default function SignupScreen() {
                       )}
                     </View>
                     {registrationType === "USER" ? (
-                      <View style={{ marginTop: 12 }}>
-                        <Input
-                          label="Account owner ID"
-                          placeholder="101"
-                          keyboardType="numeric"
-                          value={accountOwnerId}
-                          onChangeText={setAccountOwnerId}
-                        />
-                        <Text
-                          style={{
-                            color: colors.textDim,
-                            fontSize: 11,
-                            marginTop: 6,
-                          }}
-                        >
-                          Linked users must use the admin account owner ID and
-                          matching account type/zone scope.
-                        </Text>
-                      </View>
+                      <Text
+                        style={{
+                          color: colors.textDim,
+                          fontSize: 11,
+                          marginTop: 12,
+                          lineHeight: 16,
+                        }}
+                      >
+                        Enter the network name on the next step. Your plan follows
+                        that network, so you do not need an account owner ID.
+                      </Text>
                     ) : null}
                   </View>
                 ) : (
@@ -675,6 +675,7 @@ export default function SignupScreen() {
 
             {step === 5 ? (
               <>
+                {joiningNetwork ? null : (
                 <View
                   style={{
                     padding: 14,
@@ -810,6 +811,7 @@ export default function SignupScreen() {
                         : "Issued by the server when you reach this step. Required for administrator self-registration."}
                   </Text>
                 </View>
+                )}
 
                 {isIndividual ? (
                   <View
@@ -839,59 +841,93 @@ export default function SignupScreen() {
                   }}
                 >
                   <Text style={labelStyle}>Network ID</Text>
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <Pressable
-                      onPress={() => setUseExistingZone(false)}
+                  {joiningNetwork ? (
+                    <Text
                       style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 8,
-                        backgroundColor: !useExistingZone
-                          ? colors.accent
-                          : colors.bgSurface,
-                        alignItems: "center",
+                        color: colors.textDim,
+                        fontSize: 11,
+                        marginTop: -2,
+                        marginBottom: 8,
+                        lineHeight: 16,
                       }}
                     >
-                      <Text
-                        style={{
-                          color: !useExistingZone ? "#fff" : colors.textMuted,
-                          fontSize: 12,
-                          fontWeight: "700",
-                        }}
-                      >
-                        Generate New
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setUseExistingZone(true)}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        borderRadius: 8,
-                        backgroundColor: useExistingZone
-                          ? colors.accent
-                          : colors.bgSurface,
-                        alignItems: "center",
+                      Networks for the account type you selected.
+                    </Text>
+                  ) : null}
+                  {joiningNetwork ? (
+                    <NetworkSignupPicker
+                      accountType={accountType}
+                      value={existingZoneId}
+                      onChange={(networkId) => {
+                        setExistingZoneId(networkId);
+                        setNeedsAdministratorEmail(false);
+                        setAdministratorEmail("");
                       }}
-                    >
-                      <Text
+                    />
+                  ) : (
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      <Pressable
+                        onPress={() => setUseExistingZone(false)}
                         style={{
-                          color: useExistingZone ? "#fff" : colors.textMuted,
-                          fontSize: 12,
-                          fontWeight: "700",
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 8,
+                          backgroundColor: !useExistingZone
+                            ? colors.accent
+                            : colors.bgSurface,
+                          alignItems: "center",
                         }}
                       >
-                        Enter Existing
-                      </Text>
-                    </Pressable>
-                  </View>
+                        <Text
+                          style={{
+                            color: !useExistingZone ? "#fff" : colors.textMuted,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          Generate New
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setUseExistingZone(true)}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 10,
+                          borderRadius: 8,
+                          backgroundColor: useExistingZone
+                            ? colors.accent
+                            : colors.bgSurface,
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: useExistingZone ? "#fff" : colors.textMuted,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          Enter Existing
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                  {joiningNetwork ? null : (
                   <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
                     <TextInput
-                      editable={useExistingZone}
-                      value={useExistingZone ? existingZoneId : zoneId}
-                      onChangeText={(v) =>
-                        useExistingZone ? setExistingZoneId(v) : undefined
+                      editable={joiningNetwork || useExistingZone}
+                      value={
+                        joiningNetwork || useExistingZone
+                          ? existingZoneId
+                          : zoneId
                       }
+                      onChangeText={(v) => {
+                        if (joiningNetwork || useExistingZone) {
+                          setExistingZoneId(v);
+                          setNeedsAdministratorEmail(false);
+                          setAdministratorEmail("");
+                        }
+                      }}
                       placeholder="Network-XXXXXXXX"
                       placeholderTextColor={colors.textDim}
                       autoCapitalize="characters"
@@ -903,13 +939,16 @@ export default function SignupScreen() {
                         borderRadius: 10,
                         paddingHorizontal: 12,
                         paddingVertical: 10,
-                        color: useExistingZone ? colors.text : colors.accent,
+                        color:
+                          joiningNetwork || useExistingZone
+                            ? colors.text
+                            : colors.accent,
                         fontFamily:
                           Platform.OS === "ios" ? "Menlo" : "monospace",
                         fontSize: 13,
                       }}
                     />
-                    {!useExistingZone ? (
+                    {!joiningNetwork && !useExistingZone ? (
                       <Pressable
                         onPress={() => setZoneId(generateZoneId())}
                         style={{
@@ -926,6 +965,31 @@ export default function SignupScreen() {
                       </Pressable>
                     ) : null}
                   </View>
+                  )}
+                  {joiningNetwork && needsAdministratorEmail ? (
+                    <View style={{ marginTop: 12 }}>
+                      <Input
+                        label="Administrator email"
+                        placeholder="admin@example.com"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        value={administratorEmail}
+                        onChangeText={setAdministratorEmail}
+                      />
+                      <Text
+                        style={{
+                          color: colors.textDim,
+                          fontSize: 11,
+                          marginTop: 6,
+                          lineHeight: 16,
+                        }}
+                      >
+                        More than one administrator uses this network. Enter
+                        their email so we can link the right account.
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
               </>
             ) : null}
@@ -959,6 +1023,7 @@ export default function SignupScreen() {
             ) : null}
           </View>
         </ScrollView>
+        </AddressSuggestionDock>
 
         <View
           style={{
