@@ -663,7 +663,7 @@ export default function GuestAccessScreen() {
                     }}
                   >
                     {phase.chatQueueWaiting
-                      ? "Another guest is chatting with the administrator. You will be able to chat when it is your turn."
+                      ? "Please wait — you can chat after the administrator messages you, or after earlier guests are approved or rejected."
                       : phase.serverMessage}
                   </Text>
                   {phase.pollMessage &&

@@ -85,7 +85,7 @@ function mapGuestAccessErrorCode(code?: string, fallback?: string): string {
     return "Access denied for this zone. Please choose an authorized zone.";
   }
   if (c === "GUEST_CHAT_QUEUE_WAITING") {
-    return "Another guest is chatting with the administrator. Please wait your turn.";
+    return "Wait for the administrator to message you first, or for earlier guests to be approved or rejected.";
   }
   if (c === "PERMISSION_MANUAL_DISABLED") {
     return "Permission events are automatic from the guest access workflow.";
