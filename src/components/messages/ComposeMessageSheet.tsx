@@ -68,6 +68,10 @@ import {
   validateServicePaCompose,
   type ServicePaComposeFields,
 } from "@/lib/servicePaTopics";
+import {
+  defaultChatComposeGuestId,
+  filterChatComposeGuests,
+} from "@/lib/chatGuestCompose";
 import { colors, shadow } from "@/theme/colors";
 
 type GuestComposeOption = {
@@ -75,6 +79,7 @@ type GuestComposeOption = {
   name: string;
   status: GuestRequest["approval_status"];
   expectation?: GuestRequest["expectation"];
+  created_at?: string;
 };
 
 /** `"all"` = every matched zone; otherwise an explicit multi-select of zone record ids. */
@@ -401,21 +406,15 @@ export function ComposeMessageSheet({
         if (!active) return;
         const guestRows = guestsRes.data ?? [];
         setGuestOptions(
-          guestRows
-            .filter((g) => g.approval_status !== "REJECTED")
-            .map((g) => ({
+          filterChatComposeGuests(
+            guestRows.map((g) => ({
               id: g.guest_id,
               name: g.guest_name?.trim() || "Guest",
               status: g.approval_status,
               expectation: g.expectation,
-            }))
-            .sort((a, b) => {
-              const rank = (s: GuestRequest["approval_status"]) =>
-                s === "APPROVED" || s === "ARRIVED" ? 0 : 1;
-              const byStatus = rank(a.status) - rank(b.status);
-              if (byStatus !== 0) return byStatus;
-              return a.name.localeCompare(b.name);
-            }),
+              created_at: g.created_at,
+            })),
+          ),
         );
       })
       .finally(() => {
@@ -423,6 +422,18 @@ export function ComposeMessageSheet({
       });
     return () => { active = false; };
   }, [visible, composeZoneId]);
+
+  useEffect(() => {
+    if (!visible || !isAccessGuestChannelType(composeType)) return;
+    if (
+      composeReceiverId &&
+      guestOptions.some((g) => g.id === composeReceiverId)
+    ) {
+      return;
+    }
+    const next = defaultChatComposeGuestId(guestOptions);
+    if (next) setComposeReceiverId(next);
+  }, [visible, composeType, guestOptions, composeReceiverId]);
 
   useEffect(() => {
     if (!visible || !isPrivateMessageType(composeType) || selectedZoneRecordIds != null) {
@@ -623,11 +634,13 @@ export function ComposeMessageSheet({
   ]);
 
   useEffect(() => {
-    setComposeReceiverId("");
     setComposeStatus("");
     setPrivateSearchQuery("");
     setPrivateSearchResults([]);
     setReceiversModalOpen(false);
+    if (!isAccessGuestChannelType(composeType)) {
+      setComposeReceiverId("");
+    }
   }, [composeType]);
 
   useEffect(() => {
@@ -1243,16 +1256,21 @@ export function ComposeMessageSheet({
                       Send to guest
                     </Text>
                     <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                      No active guests in this zone yet.
+                      No pending or approved guests for CHAT yet.
                     </Text>
                   </>
                 ) : (
-                  <FormSelect
-                    label="Send to guest"
-                    value={composeReceiverId}
-                    options={guestSelectOptions}
-                    onChange={setComposeReceiverId}
-                  />
+                  <>
+                    <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                      Pending guests (oldest first) and approved guests. Full guest list stays in Guest Management.
+                    </Text>
+                    <FormSelect
+                      label="Send to guest"
+                      value={composeReceiverId}
+                      options={guestSelectOptions}
+                      onChange={setComposeReceiverId}
+                    />
+                  </>
                 )}
               </View>
             ) : null}
