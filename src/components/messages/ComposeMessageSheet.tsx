@@ -77,6 +77,49 @@ type GuestComposeOption = {
   expectation?: GuestRequest["expectation"];
 };
 
+/** `"all"` = every matched zone; otherwise an explicit multi-select of zone record ids. */
+type ComposeZoneSelection = "all" | number[];
+
+function toggleComposeZoneSelection(
+  current: ComposeZoneSelection,
+  zoneRecordId: number,
+  totalZoneCount: number,
+): ComposeZoneSelection {
+  if (current === "all") return [zoneRecordId];
+  if (current.includes(zoneRecordId)) {
+    const next = current.filter((id) => id !== zoneRecordId);
+    return next.length === 0 ? "all" : next;
+  }
+  const next = [...current, zoneRecordId];
+  if (totalZoneCount > 0 && next.length >= totalZoneCount) return "all";
+  return next;
+}
+
+function composeZoneSelectionLabel(
+  selection: ComposeZoneSelection,
+  zones: ComposeZoneOption[],
+  allLabel: string,
+): string {
+  if (selection === "all") {
+    return `${allLabel} (${zones.length})`;
+  }
+  if (selection.length === 1) {
+    return (
+      zones.find((z) => z.zone_record_id === selection[0])?.label ??
+      "Selected zone"
+    );
+  }
+  return `${selection.length} zones selected`;
+}
+
+function zoneTargetPayload(
+  selection: ComposeZoneSelection,
+): { zone_record_id: number } | { zone_record_ids: number[] } | Record<string, never> {
+  if (selection === "all") return {};
+  if (selection.length === 1) return { zone_record_id: selection[0] };
+  return { zone_record_ids: selection };
+}
+
 function memberBroadcastName(member: PrivateSearchMember): string {
   return (member.broadcast_name || "").trim() || member.display_name;
 }
@@ -252,7 +295,8 @@ export function ComposeMessageSheet({
   const [privateLocationStatus, setPrivateLocationStatus] =
     useState<PrivateLocationStatus | null>(null);
   const [composeZones, setComposeZones] = useState<ComposeZoneOption[]>([]);
-  const [composeZoneSelection, setComposeZoneSelection] = useState<"all" | number>("all");
+  const [composeZoneSelection, setComposeZoneSelection] =
+    useState<ComposeZoneSelection>("all");
   const [zoneRecipients, setZoneRecipients] = useState<PrivateSearchMember[]>([]);
   const [zoneRecipientGroups, setZoneRecipientGroups] = useState<
     { zoneRecordId: number; label: string; members: PrivateSearchMember[] }[]
@@ -275,11 +319,14 @@ export function ComposeMessageSheet({
     [zoneId],
   );
 
-  const selectedZoneRecordId =
+  const selectedZoneRecordIds =
     composeZoneSelection === "all" ? null : composeZoneSelection;
   const showComposeZonePicker =
     usesComposeZoneTargeting(composeType) &&
     (composeZones.length > 1 || (isSystemAdmin && composeZones.length > 0));
+  const showGroupedReceivers =
+    composeZoneSelection === "all" ||
+    (Array.isArray(composeZoneSelection) && composeZoneSelection.length > 1);
 
   const groupedTypeOptions = useMemo(() => groupMessageTypesForUI(), []);
   const composeTypeOptions = useMemo(
@@ -306,7 +353,7 @@ export function ComposeMessageSheet({
   );
 
   const privateMemberChoices =
-    selectedZoneRecordId != null ? zoneRecipients : privateSearchResults;
+    selectedZoneRecordIds != null ? zoneRecipients : privateSearchResults;
   const memberSelectOptions = useMemo(
     () => [
       { value: "", label: "Pick a member" },
@@ -378,8 +425,8 @@ export function ComposeMessageSheet({
   }, [visible, composeZoneId]);
 
   useEffect(() => {
-    if (!visible || !isPrivateMessageType(composeType) || selectedZoneRecordId != null) {
-      if (!isPrivateMessageType(composeType) && selectedZoneRecordId == null) {
+    if (!visible || !isPrivateMessageType(composeType) || selectedZoneRecordIds != null) {
+      if (!isPrivateMessageType(composeType) && selectedZoneRecordIds == null) {
         setSenderZoneIds([]);
         setPrivateLocationStatus(null);
         setPrivateSearchResults([]);
@@ -413,7 +460,7 @@ export function ComposeMessageSheet({
     visible,
     composeType,
     privateSearchQuery,
-    selectedZoneRecordId,
+    selectedZoneRecordIds,
     user?.mapCenter,
     user?.map_center,
   ]);
@@ -467,15 +514,15 @@ export function ComposeMessageSheet({
       setZoneRecipientsLoading(false);
       return;
     }
-    // Private keeps its own search when no single zone is selected.
-    if (isPrivateMessageType(composeType) && selectedZoneRecordId == null) {
+    // Private keeps its own search when no zone multi-select is active.
+    if (isPrivateMessageType(composeType) && selectedZoneRecordIds == null) {
       setZoneRecipients([]);
       setZoneRecipientGroups([]);
       setZoneRecipientsLoading(false);
       return;
     }
     // For "All zones", wait until overlapping zones are known, then preview each.
-    if (selectedZoneRecordId == null) {
+    if (selectedZoneRecordIds == null) {
       if (loadingComposeZones) return;
       if (composeZones.length === 0) {
         setZoneRecipients([]);
@@ -486,16 +533,17 @@ export function ComposeMessageSheet({
     }
 
     const zoneTargets =
-      selectedZoneRecordId != null
-        ? [
-            composeZones.find((z) => z.zone_record_id === selectedZoneRecordId) ?? {
-              zone_record_id: selectedZoneRecordId,
-              zone_id: "",
-              name: null,
-              label: "Selected zone",
-              tier: "secondary",
-            },
-          ]
+      selectedZoneRecordIds != null
+        ? selectedZoneRecordIds.map(
+            (zoneRecordId) =>
+              composeZones.find((z) => z.zone_record_id === zoneRecordId) ?? {
+                zone_record_id: zoneRecordId,
+                zone_id: "",
+                name: null,
+                label: "Selected zone",
+                tier: "secondary",
+              },
+          )
         : composeZones;
 
     let active = true;
@@ -566,7 +614,7 @@ export function ComposeMessageSheet({
   }, [
     visible,
     composeType,
-    selectedZoneRecordId,
+    selectedZoneRecordIds,
     composeZones,
     loadingComposeZones,
     privateSearchQuery,
@@ -843,9 +891,7 @@ export function ComposeMessageSheet({
           ...(isPrivateMessageType(composeType)
             ? { receiver_owner_id: parsedReceiverId }
             : {}),
-          ...(selectedZoneRecordId != null
-            ? { zone_record_id: selectedZoneRecordId }
-            : {}),
+          ...zoneTargetPayload(composeZoneSelection),
         });
         if (result.error) throw new Error(result.error);
         const body = result.data;
@@ -902,7 +948,7 @@ export function ComposeMessageSheet({
     draft, composeImages, composeType, composeReceiverId, composeZoneId,
     refresh, user?.mapCenter, user?.map_center, selfBroadcastName, ownerId,
     applyGeoPropagationToInbox, composeServicePaFields, confirmEmergencySend,
-    sending, afterSuccessfulSend, selectedZoneRecordId, isSystemAdmin,
+    sending, afterSuccessfulSend, composeZoneSelection, isSystemAdmin,
   ]);
 
   return (
@@ -933,18 +979,18 @@ export function ComposeMessageSheet({
                   </Pressable>
                 </View>
                 <Text style={receiversModalStyles.subtitle}>
-                  {composeZoneSelection === "all"
-                    ? `${isSystemAdmin ? "All zones" : "All overlapping zones"} (${composeZones.length})`
-                    : composeZones.find(
-                        (z) => z.zone_record_id === composeZoneSelection,
-                      )?.label ?? "Selected zone"}
+                  {composeZoneSelectionLabel(
+                    composeZoneSelection,
+                    composeZones,
+                    isSystemAdmin ? "All zones" : "All overlapping zones",
+                  )}
                 </Text>
                 {zoneRecipientsLoading ? (
                   <ActivityIndicator
                     color={colors.accent}
                     style={{ marginVertical: 16 }}
                   />
-                ) : composeZoneSelection === "all" ? (
+                ) : showGroupedReceivers ? (
                   zoneRecipientGroups.length === 0 ||
                   zoneRecipientGroups.every((g) => g.members.length === 0) ? (
                     <Text style={receiversModalStyles.empty}>
@@ -1095,8 +1141,8 @@ export function ComposeMessageSheet({
                   <>
                     <Text style={{ color: colors.textDim, fontSize: 12 }}>
                       {isSystemAdmin
-                        ? "Choose any zone, or send to every zone. You do not need to be inside a zone."
-                        : "You are inside more than one zone. Choose one zone or keep all zones."}
+                        ? "Select one or more zones, or send to every zone. You do not need to be inside a zone."
+                        : "You are inside more than one zone. Select one or more, or keep all zones."}
                     </Text>
                     <ScrollView
                       horizontal
@@ -1118,14 +1164,23 @@ export function ComposeMessageSheet({
                         <Pressable
                           key={zone.zone_record_id}
                           onPress={() => {
-                            setComposeZoneSelection(zone.zone_record_id);
+                            setComposeZoneSelection((prev) =>
+                              toggleComposeZoneSelection(
+                                prev,
+                                zone.zone_record_id,
+                                composeZones.length,
+                              ),
+                            );
                             setComposeReceiverId("");
                           }}
                           style={{ marginRight: 8 }}
                         >
                           <Chip
                             label={zone.label}
-                            active={composeZoneSelection === zone.zone_record_id}
+                            active={
+                              composeZoneSelection !== "all" &&
+                              composeZoneSelection.includes(zone.zone_record_id)
+                            }
                           />
                         </Pressable>
                       ))}
@@ -1205,7 +1260,7 @@ export function ComposeMessageSheet({
             {!isAccessGuestChannelType(composeType) &&
             isPrivateMessageType(composeType) ? (
               <View style={{ marginTop: 12, gap: 8 }}>
-                {(selectedZoneRecordId != null
+                {(selectedZoneRecordIds != null
                   ? zoneRecipientsLoading
                   : privateSearchLoading) &&
                 privateLocationStatus === null ? (
@@ -1232,7 +1287,7 @@ export function ComposeMessageSheet({
                         color: colors.text, fontSize: 15,
                       }}
                     />
-                    {(selectedZoneRecordId != null
+                    {(selectedZoneRecordIds != null
                       ? zoneRecipientsLoading
                       : privateSearchLoading) ? (
                       <ActivityIndicator color={colors.accent} />
