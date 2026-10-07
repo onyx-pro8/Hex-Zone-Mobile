@@ -1,9 +1,8 @@
 /**
- * Guest chat (post-approval). Mirrors web `pages/guest/GuestMessages.tsx`.
+ * Guest chat (pending + approved). Mirrors web `pages/guest/GuestMessages.tsx`.
  *
- * The guest picks any network member or administrator and exchanges CHAT
- * messages. PERMISSION rows from the access workflow are shown read-only.
- * Guests can only SEND the CHAT type. Runs on the stored guest token.
+ * Guests chat with the network administrator only. PERMISSION rows from the
+ * access workflow are shown read-only. Guests can only SEND the CHAT type.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -22,7 +21,6 @@ import { LogOut, RefreshCw, Send, ShieldAlert } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
-import { Chip } from "@/components/ui/Chip";
 import {
   GuestChatBubble,
   guestChatBubbleCluster,
@@ -45,6 +43,7 @@ import {
   pollGuestAccessSession,
 } from "@/api/guestPublic";
 import { useAuth } from "@/context/AuthContext";
+import { isAdminGuestPeer } from "@/lib/chatGuestCompose";
 import {
   clearStoredGuestSession,
   getStoredGuestSession,
@@ -335,11 +334,13 @@ export default function GuestMessagesScreen() {
       setPeers([]);
       return;
     }
-    setPeers(res.data ?? []);
+    const raw = res.data ?? [];
+    const adminPeers = raw.filter((p) => isAdminGuestPeer(p));
+    const nextPeers = adminPeers.length ? adminPeers : raw.slice(0, 1);
+    setPeers(nextPeers);
     setPeerId((prev) => {
-      if (prev && (res.data ?? []).some((p) => p.owner_id === prev)) return prev;
-      const first = (res.data ?? [])[0]?.owner_id ?? "";
-      return first;
+      if (prev && nextPeers.some((p) => p.owner_id === prev)) return prev;
+      return nextPeers[0]?.owner_id ?? "";
     });
   }, [zoneId, leaveGuest]);
 
@@ -461,7 +462,7 @@ export default function GuestMessagesScreen() {
             subtitle={
               approvalStatus === "PENDING"
                 ? "Message the network administrator while you wait"
-                : "Message network members"
+                : "Message the network administrator"
             }
             showBack={approvalStatus !== "PENDING"}
             onBack={
@@ -528,25 +529,7 @@ export default function GuestMessagesScreen() {
               </View>
             ) : null}
 
-            {zones.length > 1 && approvalStatus !== "PENDING" ? (
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                {zones.map((z) => (
-                  <Pressable
-                    key={z}
-                    onPress={() => {
-                      setZoneId(z);
-                      setPeerId("");
-                      setMessages([]);
-                    }}
-                  >
-                    <Chip label={z} active={z === zoneId} />
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            {approvalStatus === "PENDING" ? null : (
-            <Card style={{ gap: 8 }}>
+            <Card style={{ gap: 6 }}>
               <View
                 style={{
                   flexDirection: "row",
@@ -563,7 +546,7 @@ export default function GuestMessagesScreen() {
                     fontWeight: "700",
                   }}
                 >
-                  Members in this network
+                  Network administrator
                 </Text>
                 <Pressable
                   onPress={() => void loadPeers()}
@@ -579,35 +562,22 @@ export default function GuestMessagesScreen() {
                 <Text style={{ color: colors.danger, fontSize: 12 }}>
                   {peersError}
                 </Text>
-              ) : peers.length === 0 ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  No network members are available to chat yet.
+              ) : selectedPeer ? (
+                <Text style={{ color: colors.text, fontSize: 14, fontWeight: "600" }}>
+                  {selectedPeer.display_name || "Administrator"}
                 </Text>
               ) : (
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {peers.map((p) => (
-                    <Pressable
-                      key={p.owner_id}
-                      onPress={() => setPeerId(p.owner_id)}
-                    >
-                      <Chip
-                        label={p.display_name || p.owner_id}
-                        active={p.owner_id === peerId}
-                      />
-                    </Pressable>
-                  ))}
-                </View>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                  Connecting to the network administrator…
+                </Text>
               )}
             </Card>
-            )}
 
             <View style={{ flex: 1, minHeight: 160 }}>
               {!peerId ? (
                 <View style={{ paddingTop: 24, alignItems: "center" }}>
                   <Text style={{ color: colors.textDim, fontSize: 13 }}>
-                    {approvalStatus === "PENDING"
-                      ? "Connecting to the network administrator…"
-                      : "Select a member to start chatting."}
+                    Connecting to the network administrator…
                   </Text>
                 </View>
               ) : (

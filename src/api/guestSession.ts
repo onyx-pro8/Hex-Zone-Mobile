@@ -196,6 +196,8 @@ export async function fetchGuestMe(): Promise<GuestApiResult<GuestMe>> {
 export type GuestPeer = {
   owner_id: string;
   display_name?: string;
+  role?: string;
+  can_receive_chat?: boolean;
   /** True when this member has a live device WebSocket session. */
   online?: boolean;
 };
@@ -251,10 +253,21 @@ export async function fetchGuestPeers(
             "name",
             "label",
           ]);
+          const role = readString(row, ["role"]);
+          const can_receive_chat =
+            typeof row.can_receive_chat === "boolean"
+              ? row.can_receive_chat
+              : typeof row.canReceiveChat === "boolean"
+                ? row.canReceiveChat
+                : undefined;
           const online = row.online === true;
           return {
             owner_id,
             ...(display_name ? { display_name } : {}),
+            ...(role ? { role } : {}),
+            ...(typeof can_receive_chat === "boolean"
+              ? { can_receive_chat }
+              : {}),
             ...(typeof row.online === "boolean" ? { online } : {}),
           };
         })

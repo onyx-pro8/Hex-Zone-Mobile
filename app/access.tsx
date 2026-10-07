@@ -45,6 +45,7 @@ type Phase =
       pollZoneId: string;
       serverMessage: string;
       pollMessage?: string;
+      chatQueueWaiting?: boolean;
     }
   | {
       id: "approved";
@@ -315,11 +316,19 @@ export default function GuestAccessScreen() {
         void openPendingNetworkChat(res.chat_access_token, guestId, pollZoneId);
         return;
       }
+      if (res.status === "PENDING") {
+        setPhase((current) => {
+          if (current.id !== "waiting") return current;
+          return {
+            ...current,
+            chatQueueWaiting: Boolean(res.chat_queue_waiting),
+            ...(res.message ? { pollMessage: res.message } : {}),
+          };
+        });
+        return;
+      }
       if (res.message) {
         setPhase((current) => {
-          if (current.id === "waiting") {
-            return { ...current, pollMessage: res.message };
-          }
           if (current.id === "approved" && !current.exchange_code) {
             return { ...current, pollMessage: res.message };
           }
@@ -440,6 +449,7 @@ export default function GuestAccessScreen() {
         guestId,
         pollZoneId,
         serverMessage: result.message || "Waiting for approval…",
+        chatQueueWaiting: Boolean(result.chat_queue_waiting),
       });
       if (result.chat_access_token) {
         void openPendingNetworkChat(result.chat_access_token, guestId, pollZoneId);
@@ -652,10 +662,13 @@ export default function GuestAccessScreen() {
                       lineHeight: 19,
                     }}
                   >
-                    {phase.serverMessage}
+                    {phase.chatQueueWaiting
+                      ? "Another guest is chatting with the administrator. You will be able to chat when it is your turn."
+                      : phase.serverMessage}
                   </Text>
                   {phase.pollMessage &&
-                  phase.pollMessage !== phase.serverMessage ? (
+                  phase.pollMessage !== phase.serverMessage &&
+                  !phase.chatQueueWaiting ? (
                     <Text style={{ color: colors.textDim, fontSize: 12 }}>
                       {phase.pollMessage}
                     </Text>
@@ -671,7 +684,9 @@ export default function GuestAccessScreen() {
                     <Text
                       style={{ color: colors.textDim, fontSize: 12 }}
                     >
-                      Checking status…
+                      {phase.chatQueueWaiting
+                        ? "Waiting for chat…"
+                        : "Checking status…"}
                     </Text>
                   </View>
                   <Text

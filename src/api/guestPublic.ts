@@ -84,6 +84,9 @@ function mapGuestAccessErrorCode(code?: string, fallback?: string): string {
   if (c === "GUEST_NOT_AUTHORIZED_FOR_ZONE") {
     return "Access denied for this zone. Please choose an authorized zone.";
   }
+  if (c === "GUEST_CHAT_QUEUE_WAITING") {
+    return "Another guest is chatting with the administrator. Please wait your turn.";
+  }
   if (c === "PERMISSION_MANUAL_DISABLED") {
     return "Permission events are automatic from the guest access workflow.";
   }
@@ -207,6 +210,7 @@ export type AnonymousGuestPermissionResult =
       exchange_code?: string;
       exchange_expires_at?: string;
       chat_access_token?: string;
+      chat_queue_waiting?: boolean;
     }
   | { ok: false; errorCode?: string; message: string };
 
@@ -248,6 +252,8 @@ export async function submitAnonymousGuestPermission(
       "exchangeExpiresAt",
     ]);
     const chat_access_token = readString(row, ["chat_access_token", "chatAccessToken"]);
+    const chat_queue_waiting =
+      row.chat_queue_waiting === true || row.chatQueueWaiting === true;
     const exchangeFields =
       exchange_code && exchange_code.trim()
         ? {
@@ -257,7 +263,10 @@ export async function submitAnonymousGuestPermission(
               : {}),
           }
         : {};
-    const chatFields = chat_access_token ? { chat_access_token } : {};
+    const chatFields = {
+      ...(chat_access_token ? { chat_access_token } : {}),
+      ...(chat_queue_waiting ? { chat_queue_waiting: true } : {}),
+    };
 
     if (st === "EXPECTED") {
       return {
@@ -302,6 +311,8 @@ export type GuestAccessSessionPollResult = {
   exchange_expires_at?: string;
   /** Guest JWT for the existing chat screen while a network request is still pending. */
   chat_access_token?: string;
+  /** True when another earlier pending guest currently holds the chat slot. */
+  chat_queue_waiting?: boolean;
   error: string | null;
 };
 
@@ -362,10 +373,13 @@ export async function pollGuestAccessSession(
     }
     if (st === "PENDING" || st === "REVIEW" || st === "WAITING") {
       const chat_access_token = readString(row, ["chat_access_token", "chatAccessToken"]);
+      const chat_queue_waiting =
+        row.chat_queue_waiting === true || row.chatQueueWaiting === true;
       return {
         status: "PENDING",
         ...(message ? { message } : {}),
         ...(chat_access_token ? { chat_access_token } : {}),
+        ...(chat_queue_waiting ? { chat_queue_waiting: true } : {}),
         error: null,
       };
     }
