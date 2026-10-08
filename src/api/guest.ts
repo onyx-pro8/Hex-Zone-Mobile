@@ -73,8 +73,12 @@ function normalizeGuestRequestRow(raw: unknown): GuestRequest | null {
       ? "unexpected"
       : "expected";
 
-  const created =
-    r.created_at ?? r.arrived_at ?? r.time ?? new Date().toISOString();
+  // Do not invent "now" — a fake timestamp breaks oldest-first CHAT FIFO.
+  const createdRaw = r.created_at ?? r.arrived_at ?? r.time;
+  const created_at =
+    createdRaw != null && String(createdRaw).trim()
+      ? String(createdRaw).trim()
+      : "";
 
   return {
     id: id || guestId,
@@ -87,7 +91,7 @@ function normalizeGuestRequestRow(raw: unknown): GuestRequest | null {
     status: statusRaw || approval_status,
     approval_status,
     expectation,
-    created_at: String(created),
+    created_at,
   };
 }
 
