@@ -525,8 +525,8 @@ export function InboxMessageCard({
     <View
       style={[
         {
-          // Pull stacked same-sender bubbles flush (borders nearly touch).
-          marginBottom: cluster === "end" || cluster === "single" ? 4 : -2,
+          // Keep a visible gap between stacked same-sender bubbles.
+          marginBottom: cluster === "end" || cluster === "single" ? 6 : 4,
         },
         style,
       ]}

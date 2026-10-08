@@ -1256,13 +1256,13 @@ export function ComposeMessageSheet({
                       Send to guest
                     </Text>
                     <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                      No pending or approved guests for CHAT yet.
+                      No guests available for CHAT yet.
                     </Text>
                   </>
                 ) : (
                   <>
                     <Text style={{ color: colors.textDim, fontSize: 12 }}>
-                      Pending guests (oldest first) and approved guests. Full guest list stays in Guest Management.
+                      Pending (oldest first), then approved, then rejected. Defaults to the oldest pending guest. Full guest list stays in Guest Management.
                     </Text>
                     <FormSelect
                       label="Send to guest"

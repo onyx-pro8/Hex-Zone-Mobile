@@ -1,4 +1,4 @@
-/** CHAT compose recipient rules: pending (FIFO) + approved only — not full guest management. */
+/** CHAT compose recipient rules: pending → approved → rejected (each oldest→latest). */
 
 export type ChatComposeGuestStatus = "PENDING" | "APPROVED" | "REJECTED" | "ARRIVED";
 
@@ -10,14 +10,34 @@ export type ChatComposeGuest = {
   created_at?: string;
 };
 
-function isPendingChatStatus(status: ChatComposeGuestStatus): boolean {
-  return status === "PENDING" || status === "ARRIVED";
+/** FIFO waiting statuses: true PENDING ahead of ARRIVED. */
+function statusRank(status: ChatComposeGuestStatus): number {
+  switch (status) {
+    case "PENDING":
+      return 0;
+    case "ARRIVED":
+      return 1;
+    case "APPROVED":
+      return 2;
+    case "REJECTED":
+      return 3;
+    default:
+      return 99;
+  }
 }
 
 function createdAtMs(value: string | undefined): number {
   if (!value) return Number.POSITIVE_INFINITY;
   const t = new Date(value).getTime();
   return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+}
+
+function compareChatComposeGuests(a: ChatComposeGuest, b: ChatComposeGuest): number {
+  const byStatus = statusRank(a.status) - statusRank(b.status);
+  if (byStatus !== 0) return byStatus;
+  const byTime = createdAtMs(a.created_at) - createdAtMs(b.created_at);
+  if (byTime !== 0) return byTime;
+  return a.id.localeCompare(b.id);
 }
 
 /** Guests selectable in member CHAT compose (not Guest Management). */
@@ -27,26 +47,19 @@ export function filterChatComposeGuests<T extends ChatComposeGuest>(rows: T[]): 
       (g) =>
         g.status === "PENDING" ||
         g.status === "ARRIVED" ||
-        g.status === "APPROVED",
+        g.status === "APPROVED" ||
+        g.status === "REJECTED",
     )
-    .sort((a, b) => {
-      const aPending = isPendingChatStatus(a.status);
-      const bPending = isPendingChatStatus(b.status);
-      if (aPending !== bPending) return aPending ? -1 : 1;
-      if (aPending && bPending) {
-        const byTime = createdAtMs(a.created_at) - createdAtMs(b.created_at);
-        if (byTime !== 0) return byTime;
-        return a.id.localeCompare(b.id);
-      }
-      return a.name.localeCompare(b.name);
-    });
+    .sort(compareChatComposeGuests);
 }
 
-/** Prefer oldest pending guest; else first approved. */
+/** Prefer oldest PENDING guest; else oldest ARRIVED; else first in sorted list. */
 export function defaultChatComposeGuestId(guests: ChatComposeGuest[]): string {
-  const pending = guests.filter((g) => isPendingChatStatus(g.status));
-  const pick = pending[0] ?? guests[0];
-  return pick?.id ?? "";
+  const pending = guests.filter((g) => g.status === "PENDING");
+  if (pending.length > 0) return pending[0]!.id;
+  const arrived = guests.filter((g) => g.status === "ARRIVED");
+  if (arrived.length > 0) return arrived[0]!.id;
+  return guests[0]?.id ?? "";
 }
 
 export function isAdminGuestPeer(peer: {
