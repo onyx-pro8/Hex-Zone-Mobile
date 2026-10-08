@@ -80,9 +80,20 @@ const labelStyle = {
   marginBottom: 6,
 };
 
+function accountDisplayName(user: {
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+} | null | undefined): string {
+  if (!user) return "";
+  const fromParts = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim();
+  if (fromParts) return fromParts;
+  return (user.name ?? "").trim();
+}
+
 export default function GuestAccessScreen() {
   const router = useRouter();
-  const { token: memberToken } = useAuth();
+  const { token: memberToken, user } = useAuth();
   const params = useLocalSearchParams<{
     gt?: string;
     zid?: string;
@@ -112,10 +123,20 @@ export default function GuestAccessScreen() {
   const [exchangeError, setExchangeError] = useState<string | null>(null);
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const namePrefillDoneRef = useRef(false);
 
   useEffect(() => {
     setEventId(eidFromQuery);
   }, [eidFromQuery]);
+
+  /* Prefill guest name from the signed-in member account when present. */
+  useEffect(() => {
+    if (namePrefillDoneRef.current) return;
+    const fromAccount = accountDisplayName(user);
+    if (!fromAccount) return;
+    namePrefillDoneRef.current = true;
+    setGuestName((current) => (current.trim() ? current : fromAccount));
+  }, [user]);
 
   const captureLocation = useCallback(async () => {
     setLocating(true);
