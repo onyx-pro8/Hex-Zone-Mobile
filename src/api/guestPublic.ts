@@ -211,6 +211,7 @@ export type AnonymousGuestPermissionResult =
       exchange_expires_at?: string;
       chat_access_token?: string;
       chat_queue_waiting?: boolean;
+      call_fullscreen?: boolean;
     }
   | { ok: false; errorCode?: string; message: string };
 
@@ -254,6 +255,8 @@ export async function submitAnonymousGuestPermission(
     const chat_access_token = readString(row, ["chat_access_token", "chatAccessToken"]);
     const chat_queue_waiting =
       row.chat_queue_waiting === true || row.chatQueueWaiting === true;
+    const call_fullscreen =
+      row.call_fullscreen === true || row.callFullscreen === true;
     const exchangeFields =
       exchange_code && exchange_code.trim()
         ? {
@@ -266,6 +269,7 @@ export async function submitAnonymousGuestPermission(
     const chatFields = {
       ...(chat_access_token ? { chat_access_token } : {}),
       ...(chat_queue_waiting ? { chat_queue_waiting: true } : {}),
+      ...(call_fullscreen ? { call_fullscreen: true } : {}),
     };
 
     if (st === "EXPECTED") {
