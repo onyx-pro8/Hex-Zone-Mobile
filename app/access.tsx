@@ -22,7 +22,8 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { CheckCircle, Loader2, MapPin, QrCode, ShieldAlert, X } from "lucide-react-native";
+import { CheckCircle, Loader2, MapPin, Phone, QrCode, ShieldAlert, X } from "lucide-react-native";
+import { useGuestCallOptional } from "@/context/GuestCallContext";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -46,6 +47,7 @@ type Phase =
       serverMessage: string;
       pollMessage?: string;
       chatQueueWaiting?: boolean;
+      callFullscreen?: boolean;
     }
   | {
       id: "approved";
@@ -92,6 +94,7 @@ function accountDisplayName(user: {
 }
 
 export default function GuestAccessScreen() {
+  const guestCall = useGuestCallOptional();
   const router = useRouter();
   const { token: memberToken, user } = useAuth();
   const params = useLocalSearchParams<{
@@ -471,6 +474,7 @@ export default function GuestAccessScreen() {
         pollZoneId,
         serverMessage: result.message || "Waiting for approval…",
         chatQueueWaiting: Boolean(result.chat_queue_waiting),
+        callFullscreen: Boolean(result.call_fullscreen),
       });
       if (result.chat_access_token) {
         void openPendingNetworkChat(result.chat_access_token, guestId, pollZoneId);
@@ -721,6 +725,18 @@ export default function GuestAccessScreen() {
                   >
                     Ref: {phase.guestId}
                   </Text>
+                  <Button
+                    label="Call"
+                    size="sm"
+                    variant="outline"
+                    disabled={Boolean(guestCall?.session)}
+                    onPress={() => {
+                      guestCall?.startGuestCall({
+                        fullscreen: Boolean(phase.callFullscreen),
+                      });
+                    }}
+                    leftIcon={<Phone size={14} color={colors.accent} />}
+                  />
                   <Pressable onPress={reset}>
                     <Text
                       style={{

@@ -8,7 +8,9 @@ import * as SystemUI from "expo-system-ui";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { GuestCallProvider } from "@/context/GuestCallContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { CallOverlay } from "@/components/calls/CallOverlay";
 import { ToastHost } from "@/components/ui/ToastHost";
 import { devLog } from "@/lib/devConsole";
 import { ensureAndroidChannels } from "@/lib/notifications";
@@ -73,9 +75,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <NotificationProvider>
-            <StatusBar style="dark" backgroundColor={colors.bg} />
-            <ProtectedShell />
-            <ToastHost primary />
+            <GuestCallProvider>
+              <StatusBar style="dark" backgroundColor={colors.bg} />
+              <ProtectedShell />
+              <CallOverlay />
+              <ToastHost primary />
+            </GuestCallProvider>
           </NotificationProvider>
         </AuthProvider>
       </SafeAreaProvider>

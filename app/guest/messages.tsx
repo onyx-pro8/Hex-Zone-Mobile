@@ -17,7 +17,8 @@ import {
 } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { LogOut, RefreshCw, Send, ShieldAlert } from "lucide-react-native";
+import { LogOut, Phone, RefreshCw, Send, ShieldAlert } from "lucide-react-native";
+import { Button } from "@/components/ui/Button";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -29,6 +30,7 @@ import {
 } from "@/components/messages/GuestChatBubble";
 import { useInboxClusterWidths } from "@/components/messages/InboxMessageCard";
 import { useGuestRealtime } from "@/hooks/useGuestRealtime";
+import { useGuestCallOptional } from "@/context/GuestCallContext";
 import {
   fetchGuestMe,
   fetchGuestPeers,
@@ -62,6 +64,7 @@ function messageLooksApproved(item: GuestMessage): boolean {
 }
 
 export default function GuestMessagesScreen() {
+  const guestCall = useGuestCallOptional();
   const router = useRouter();
   const { token: memberToken } = useAuth();
   const params = useLocalSearchParams<{ zone?: string }>();
@@ -526,6 +529,16 @@ export default function GuestMessagesScreen() {
                 >
                   Waiting for approval — you can message the network administrator
                 </Text>
+                <Button
+                  label="Call"
+                  size="sm"
+                  variant="outline"
+                  disabled={Boolean(guestCall?.session)}
+                  onPress={() => {
+                    guestCall?.startGuestCall();
+                  }}
+                  leftIcon={<Phone size={14} color={colors.accent} />}
+                />
               </View>
             ) : null}
 

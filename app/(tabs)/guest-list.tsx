@@ -8,7 +8,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Check, RefreshCw, UserCheck, X } from "lucide-react-native";
+import { Check, Phone, RefreshCw, UserCheck, X } from "lucide-react-native";
+import { useGuestCallOptional } from "@/context/GuestCallContext";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -29,6 +30,7 @@ import { colors } from "@/theme/colors";
 
 export default function GuestListScreen() {
   const isAdmin = useIsAdmin();
+  const guestCall = useGuestCallOptional();
   const onBack = useGuestManagementBack();
   const {
     effectiveZoneId,
@@ -237,6 +239,25 @@ export default function GuestListScreen() {
                           variant="danger"
                           onPress={() => void onReject(item.id)}
                           leftIcon={<X size={14} color={colors.danger} />}
+                          style={{ flex: 1 }}
+                        />
+                        <Button
+                          label="Call"
+                          size="sm"
+                          variant="outline"
+                          disabled={Boolean(guestCall?.session)}
+                          onPress={() => {
+                            const ok = guestCall?.startAdminCall({
+                              guestId: item.guest_id,
+                              zoneId: item.zone_id || effectiveZoneId,
+                              guestName: item.guest_name,
+                              fullscreen: false,
+                            });
+                            if (!ok) {
+                              toast.error("Could not start call. Check connection.");
+                            }
+                          }}
+                          leftIcon={<Phone size={14} color={colors.accent} />}
                           style={{ flex: 1 }}
                         />
                       </View>
