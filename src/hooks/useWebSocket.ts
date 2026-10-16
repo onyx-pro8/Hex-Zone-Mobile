@@ -15,17 +15,22 @@ type Snapshot = {
 };
 
 type Listener = (snapshot: Snapshot) => void;
+type MessageListener = (raw: string) => void;
 
 type SharedManager = {
   ws: WebSocket | null;
   status: WebSocketStatus;
   lastMessage: string | null;
   listeners: Set<Listener>;
+  messageListeners: Set<MessageListener>;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempt: number;
   activeUsers: number;
   token: string | null;
   zoneIds: string[];
+  /** Each hook registers its own zones; the socket uses the merged set. */
+  zoneSources: Map<number, string[]>;
+  nextSourceId: number;
   enabled: boolean;
   connectionSeq: number;
 };
@@ -38,11 +43,14 @@ const sharedManager: SharedManager = {
   status: "closed",
   lastMessage: null,
   listeners: new Set(),
+  messageListeners: new Set(),
   reconnectTimer: null,
   reconnectAttempt: 0,
   activeUsers: 0,
   token: null,
   zoneIds: [],
+  zoneSources: new Map(),
+  nextSourceId: 1,
   enabled: true,
   connectionSeq: 0,
 };
@@ -59,6 +67,24 @@ function emitSnapshot() {
   for (const listener of sharedManager.listeners) {
     listener(next);
   }
+}
+
+function emitMessage(raw: string) {
+  for (const listener of sharedManager.messageListeners) {
+    listener(raw);
+  }
+}
+
+/** Every frame — not only the latest. Call signaling needs this. */
+export function subscribeRealtimeMessages(listener: MessageListener): () => void {
+  sharedManager.messageListeners.add(listener);
+  return () => {
+    sharedManager.messageListeners.delete(listener);
+  };
+}
+
+export function realtimeSocketStatus(): WebSocketStatus {
+  return sharedManager.status;
 }
 
 function clearReconnectTimer() {
@@ -167,6 +193,7 @@ function connectSocket() {
     const payload =
       typeof event.data === "string" ? event.data : String(event.data ?? "");
     sharedManager.lastMessage = payload;
+    emitMessage(payload);
     emitSnapshot();
   };
 
@@ -195,13 +222,26 @@ function setToken(token: string | null) {
   }
 }
 
-function setZoneIds(zoneIds: string[]) {
+function publishMergedZones() {
+  const merged = new Set<string>();
+  for (const zones of sharedManager.zoneSources.values()) {
+    for (const id of zones) {
+      const token = String(id || "").trim();
+      if (token) merged.add(token);
+    }
+  }
+  const next = Array.from(merged);
   const same =
-    sharedManager.zoneIds.length === zoneIds.length &&
-    sharedManager.zoneIds.every((id, idx) => id === zoneIds[idx]);
+    sharedManager.zoneIds.length === next.length &&
+    sharedManager.zoneIds.every((id, idx) => id === next[idx]);
   if (same) return;
-  sharedManager.zoneIds = [...zoneIds];
+  sharedManager.zoneIds = next;
   sendSubscribeFrame();
+}
+
+function setZoneIdsForSource(sourceId: number, zoneIds: string[]) {
+  sharedManager.zoneSources.set(sourceId, [...zoneIds]);
+  publishMergedZones();
 }
 
 function setEnabled(enabled: boolean) {
@@ -219,6 +259,11 @@ function setEnabled(enabled: boolean) {
 export function useWebSocket({ token, zoneIds, enabled = true }: UseWebSocketParams) {
   const [state, setState] = useState<Snapshot>(() => snapshot());
   const zoneKey = useMemo(() => JSON.stringify(zoneIds), [zoneIds]);
+  const sourceId = useMemo(() => {
+    const id = sharedManager.nextSourceId;
+    sharedManager.nextSourceId += 1;
+    return id;
+  }, []);
 
   useEffect(() => {
     const listener: Listener = (next) => setState(next);
@@ -226,21 +271,23 @@ export function useWebSocket({ token, zoneIds, enabled = true }: UseWebSocketPar
     sharedManager.activeUsers += 1;
     setEnabled(enabled);
     setToken(token);
-    setZoneIds(zoneIds);
+    setZoneIdsForSource(sourceId, zoneIds);
     if (enabled) connectSocket();
 
     return () => {
       sharedManager.listeners.delete(listener);
+      sharedManager.zoneSources.delete(sourceId);
+      publishMergedZones();
       sharedManager.activeUsers = Math.max(0, sharedManager.activeUsers - 1);
       if (sharedManager.activeUsers === 0) {
         closeSocket();
       }
     };
-  }, [token, enabled]);
+  }, [token, enabled, sourceId]);
 
   useEffect(() => {
-    setZoneIds(zoneIds);
-  }, [zoneKey]);
+    setZoneIdsForSource(sourceId, zoneIds);
+  }, [zoneKey, sourceId]);
 
   const sendMessage = useCallback((payload: unknown) => {
     const ws = sharedManager.ws;

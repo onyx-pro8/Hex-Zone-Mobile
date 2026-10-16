@@ -220,11 +220,33 @@ export type StoredGuestSession = {
   saved_at: number;
 };
 
+type GuestSessionListener = () => void;
+const guestSessionListeners = new Set<GuestSessionListener>();
+
+/** Notify when guest JWT storage changes so call/chat sockets attach immediately. */
+export function subscribeGuestSessionChanged(listener: GuestSessionListener): () => void {
+  guestSessionListeners.add(listener);
+  return () => {
+    guestSessionListeners.delete(listener);
+  };
+}
+
+function emitGuestSessionChanged() {
+  for (const listener of guestSessionListeners) {
+    try {
+      listener();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export async function setStoredGuestSession(
   session: StoredGuestSession,
 ): Promise<void> {
   try {
     await AsyncStorage.setItem(GUEST_SESSION_KEY, JSON.stringify(session));
+    emitGuestSessionChanged();
   } catch {
     /* ignore */
   }
@@ -243,6 +265,7 @@ export async function getStoredGuestSession(): Promise<StoredGuestSession | null
 export async function clearStoredGuestSession(): Promise<void> {
   try {
     await AsyncStorage.removeItem(GUEST_SESSION_KEY);
+    emitGuestSessionChanged();
   } catch {
     /* ignore */
   }

@@ -142,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const skipNextDeviceSyncRef = useRef(false);
   const { lastMessage, status: wsStatus } = useWebSocket({
     token,
-    zoneIds: [],
+    zoneIds: user?.zone_id ? [String(user.zone_id)] : ownerZoneId ? [ownerZoneId] : [],
     enabled: Boolean(token),
   });
 
