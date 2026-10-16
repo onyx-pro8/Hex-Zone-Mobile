@@ -242,20 +242,18 @@ export default function GuestListScreen() {
                           style={{ flex: 1 }}
                         />
                         <Button
-                          label="Call"
+                          label={guestCall?.callRequesting ? "Calling…" : "Call"}
                           size="sm"
                           variant="outline"
-                          disabled={Boolean(guestCall?.session)}
+                          loading={Boolean(guestCall?.callRequesting)}
+                          disabled={Boolean(guestCall?.session) || Boolean(guestCall?.callRequesting)}
                           onPress={() => {
-                            const ok = guestCall?.startAdminCall({
+                            guestCall?.startAdminCall({
                               guestId: item.guest_id,
                               zoneId: item.zone_id || effectiveZoneId,
                               guestName: item.guest_name,
                               fullscreen: false,
                             });
-                            if (!ok) {
-                              toast.error("Could not start call. Check connection.");
-                            }
                           }}
                           leftIcon={<Phone size={14} color={colors.accent} />}
                           style={{ flex: 1 }}

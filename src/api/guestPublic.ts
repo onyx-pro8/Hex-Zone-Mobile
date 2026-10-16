@@ -212,6 +212,7 @@ export type AnonymousGuestPermissionResult =
       chat_access_token?: string;
       chat_queue_waiting?: boolean;
       call_fullscreen?: boolean;
+      admin_avatar_url?: string;
     }
   | { ok: false; errorCode?: string; message: string };
 
@@ -257,6 +258,7 @@ export async function submitAnonymousGuestPermission(
       row.chat_queue_waiting === true || row.chatQueueWaiting === true;
     const call_fullscreen =
       row.call_fullscreen === true || row.callFullscreen === true;
+    const admin_avatar_url = readString(row, ["admin_avatar_url", "adminAvatarUrl"]);
     const exchangeFields =
       exchange_code && exchange_code.trim()
         ? {
@@ -270,6 +272,7 @@ export async function submitAnonymousGuestPermission(
       ...(chat_access_token ? { chat_access_token } : {}),
       ...(chat_queue_waiting ? { chat_queue_waiting: true } : {}),
       ...(call_fullscreen ? { call_fullscreen: true } : {}),
+      ...(admin_avatar_url ? { admin_avatar_url } : {}),
     };
 
     if (st === "EXPECTED") {
@@ -317,6 +320,8 @@ export type GuestAccessSessionPollResult = {
   chat_access_token?: string;
   /** True when another earlier pending guest currently holds the chat slot. */
   chat_queue_waiting?: boolean;
+  /** Escalated access-reject call: guest should show fullscreen outgoing card. */
+  call_fullscreen?: boolean;
   error: string | null;
 };
 
@@ -379,11 +384,14 @@ export async function pollGuestAccessSession(
       const chat_access_token = readString(row, ["chat_access_token", "chatAccessToken"]);
       const chat_queue_waiting =
         row.chat_queue_waiting === true || row.chatQueueWaiting === true;
+      const call_fullscreen =
+        row.call_fullscreen === true || row.callFullscreen === true;
       return {
         status: "PENDING",
         ...(message ? { message } : {}),
         ...(chat_access_token ? { chat_access_token } : {}),
         ...(chat_queue_waiting ? { chat_queue_waiting: true } : {}),
+        ...(call_fullscreen ? { call_fullscreen: true } : {}),
         error: null,
       };
     }

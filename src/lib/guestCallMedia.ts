@@ -1,12 +1,25 @@
 /**
- * Best-effort WebRTC for guest↔admin voice.
- * Uses browser RTCPeerConnection when present; react-native-webrtc when installed.
+ * Guest↔admin voice.
+ * Web uses WebRTC. Android and iOS play through the in-app audio page,
+ * because this dev build has no native WebRTC module. Audio frames ride
+ * the existing call socket to the other phone.
  */
+
+import { Platform } from "react-native";
+import {
+  isCallMicLive,
+  postCallAudio,
+  primeCallAudio,
+  setVoiceFrameHandler,
+  startAndWaitForCallMic,
+} from "@/lib/callAudioBridge";
+import { requestMicPermission } from "@/lib/micPermission";
 
 type SignalPayload =
   | { kind: "offer"; sdp: string }
   | { kind: "answer"; sdp: string }
-  | { kind: "ice"; candidate: RTCIceCandidateInit };
+  | { kind: "ice"; candidate: RTCIceCandidateInit }
+  | { kind: "audio"; b64: string; level?: number };
 
 type PeerBundle = {
   pc: RTCPeerConnection;
@@ -16,20 +29,11 @@ type PeerBundle = {
 let active: PeerBundle | null = null;
 
 function getRtcPeerConnection(): typeof RTCPeerConnection | null {
+  if (Platform.OS !== "web") return null;
   const g = globalThis as typeof globalThis & {
     RTCPeerConnection?: typeof RTCPeerConnection;
   };
   if (typeof g.RTCPeerConnection === "function") return g.RTCPeerConnection;
-  try {
-    // Optional native module for custom Expo/dev clients.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("react-native-webrtc") as {
-      RTCPeerConnection?: typeof RTCPeerConnection;
-    };
-    if (typeof mod.RTCPeerConnection === "function") return mod.RTCPeerConnection;
-  } catch {
-    /* module not installed */
-  }
   return null;
 }
 
@@ -39,36 +43,37 @@ async function getUserMedia(): Promise<MediaStream | null> {
         mediaDevices?: { getUserMedia: (c: MediaStreamConstraints) => Promise<MediaStream> };
       })
     | undefined;
-  if (nav?.mediaDevices?.getUserMedia) {
-    try {
-      return await nav.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch {
-      return null;
-    }
-  }
+  if (!nav?.mediaDevices?.getUserMedia) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("react-native-webrtc") as {
-      mediaDevices?: { getUserMedia: (c: object) => Promise<MediaStream> };
-    };
-    if (mod.mediaDevices?.getUserMedia) {
-      return await mod.mediaDevices.getUserMedia({ audio: true, video: false });
-    }
+    return await nav.mediaDevices.getUserMedia({ audio: true, video: false });
   } catch {
-    /* ignore */
+    return null;
   }
-  return null;
 }
 
 export function guestCallMediaAvailable(): boolean {
-  return getRtcPeerConnection() != null;
+  return Platform.OS !== "web" || getRtcPeerConnection() != null;
 }
 
 export async function startGuestCallMedia(opts: {
   isOfferer: boolean;
   onSignal: (signal: SignalPayload) => void;
 }): Promise<boolean> {
+  if (Platform.OS !== "web") {
+    setVoiceFrameHandler((b64, level) => {
+      opts.onSignal({ kind: "audio", b64, level });
+    });
+    if (!isCallMicLive()) {
+      const mic = await requestMicPermission();
+      if (mic !== "granted") return false;
+      primeCallAudio();
+      void startAndWaitForCallMic(10000);
+    }
+    postCallAudio({ type: "voice-start" });
+    return true;
+  }
   await stopGuestCallMedia();
+
   const RTC = getRtcPeerConnection();
   if (!RTC) return false;
 
@@ -104,6 +109,10 @@ export async function handleGuestCallSignal(
   signal: SignalPayload,
   onSignal?: (signal: SignalPayload) => void,
 ): Promise<void> {
+  if (signal.kind === "audio") {
+    if (signal.b64) postCallAudio({ type: "voice-play", b64: signal.b64 });
+    return;
+  }
   const bundle = active;
   if (!bundle) return;
   const { pc } = bundle;
@@ -126,6 +135,8 @@ export async function handleGuestCallSignal(
 }
 
 export async function stopGuestCallMedia(): Promise<void> {
+  setVoiceFrameHandler(null);
+  postCallAudio({ type: "voice-stop" });
   const bundle = active;
   active = null;
   if (!bundle) return;

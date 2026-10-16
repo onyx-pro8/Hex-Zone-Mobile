@@ -24,6 +24,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CheckCircle, Loader2, MapPin, Phone, QrCode, ShieldAlert, X } from "lucide-react-native";
 import { useGuestCallOptional } from "@/context/GuestCallContext";
+import { onEscalatedAccessClosed } from "@/lib/guestCall";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -227,30 +228,61 @@ export default function GuestAccessScreen() {
   );
 
   const openedPendingChat = useRef(false);
+  const escalationCallStarted = useRef(false);
+
+  useEffect(() => {
+    return onEscalatedAccessClosed(() => {
+      setPhase({
+        id: "rejected",
+        message: "The call was cancelled and this request was closed.",
+      });
+    });
+  }, []);
   const guestNameRef = useRef(guestName);
   guestNameRef.current = guestName;
 
-  const openPendingNetworkChat = useCallback(
-    async (token: string, guestId: string, zoneId: string) => {
-      if (openedPendingChat.current) return;
+  /** Persist guest JWT for call/chat sockets. Chat board only opens when not queue-blocked. */
+  const attachPendingGuestSession = useCallback(
+    async (
+      token: string,
+      guestId: string,
+      zoneId: string,
+      opts?: { openChat?: boolean; callFullscreen?: boolean; adminAvatarUrl?: string | null },
+    ) => {
       const accessToken = token.trim();
       const gid = guestId.trim();
       const zone = zoneId.trim();
-      if (!accessToken || !gid || !zone) return;
-      openedPendingChat.current = true;
-      await setStoredGuestSession({
-        access_token: accessToken,
-        guest_id: gid,
-        display_name: guestNameRef.current.trim() || "Guest",
-        zone_id: zone,
-        zone_ids: [zone],
-        allowed_message_types: ["CHAT"],
-        pending_approval: true,
-        saved_at: Date.now(),
-      });
-      router.replace(`/guest/messages?zone=${encodeURIComponent(zone)}`);
+      if (!gid || !zone) return;
+      // The card opens from the server invite, which carries the avatars.
+      // A local pending card had no photo and could not be cancelled.
+      if (accessToken) {
+        await setStoredGuestSession({
+          access_token: accessToken,
+          guest_id: gid,
+          display_name: guestNameRef.current.trim() || "Guest",
+          zone_id: zone,
+          zone_ids: [zone],
+          allowed_message_types: ["CHAT"],
+          pending_approval: true,
+          saved_at: Date.now(),
+        });
+      }
+      if (opts?.callFullscreen && !escalationCallStarted.current) {
+        escalationCallStarted.current = true;
+        guestCall?.startGuestCall({
+          fullscreen: true,
+          guestId: gid,
+          zoneId: zone,
+          adminAvatarUrl: opts.adminAvatarUrl,
+        });
+      }
+      if (opts?.openChat && accessToken) {
+        if (openedPendingChat.current) return;
+        openedPendingChat.current = true;
+        router.replace(`/guest/messages?zone=${encodeURIComponent(zone)}`);
+      }
     },
-    [router],
+    [guestCall, router],
   );
 
   /* Poll session while waiting for approval (and while awaiting exchange_code). */
@@ -336,16 +368,20 @@ export default function GuestAccessScreen() {
         });
         return;
       }
-      if (res.status === "PENDING" && res.chat_access_token) {
-        void openPendingNetworkChat(res.chat_access_token, guestId, pollZoneId);
-        return;
-      }
       if (res.status === "PENDING") {
+        const chatReady = Boolean(res.chat_access_token) && !res.chat_queue_waiting;
+        if (res.chat_access_token || res.call_fullscreen) {
+          void attachPendingGuestSession(res.chat_access_token || "", guestId, pollZoneId, {
+            openChat: chatReady,
+            callFullscreen: Boolean(res.call_fullscreen),
+          });
+        }
         setPhase((current) => {
           if (current.id !== "waiting") return current;
           return {
             ...current,
             chatQueueWaiting: Boolean(res.chat_queue_waiting),
+            callFullscreen: Boolean(res.call_fullscreen) || current.callFullscreen,
             ...(res.message ? { pollMessage: res.message } : {}),
           };
         });
@@ -367,7 +403,7 @@ export default function GuestAccessScreen() {
       cancelled = true;
       stopPolling();
     };
-  }, [phase, openPendingNetworkChat]);
+  }, [phase, attachPendingGuestSession]);
 
   /* Once we have an exchange_code, auto-run the exchange and route to home. */
   useEffect(() => {
@@ -476,8 +512,12 @@ export default function GuestAccessScreen() {
         chatQueueWaiting: Boolean(result.chat_queue_waiting),
         callFullscreen: Boolean(result.call_fullscreen),
       });
-      if (result.chat_access_token) {
-        void openPendingNetworkChat(result.chat_access_token, guestId, pollZoneId);
+      if (result.chat_access_token || result.call_fullscreen) {
+        void attachPendingGuestSession(result.chat_access_token || "", guestId, pollZoneId, {
+          openChat: Boolean(result.chat_access_token) && !result.chat_queue_waiting,
+          callFullscreen: Boolean(result.call_fullscreen),
+          adminAvatarUrl: result.admin_avatar_url,
+        });
       }
     } finally {
       setSubmitting(false);
@@ -726,13 +766,16 @@ export default function GuestAccessScreen() {
                     Ref: {phase.guestId}
                   </Text>
                   <Button
-                    label="Call"
+                    label={guestCall?.callRequesting ? "Calling…" : "Call"}
                     size="sm"
                     variant="outline"
-                    disabled={Boolean(guestCall?.session)}
+                    loading={Boolean(guestCall?.callRequesting)}
+                    disabled={Boolean(guestCall?.session) || Boolean(guestCall?.callRequesting)}
                     onPress={() => {
                       guestCall?.startGuestCall({
                         fullscreen: Boolean(phase.callFullscreen),
+                        guestId: phase.guestId,
+                        zoneId: phase.pollZoneId,
                       });
                     }}
                     leftIcon={<Phone size={14} color={colors.accent} />}

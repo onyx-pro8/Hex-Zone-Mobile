@@ -530,10 +530,11 @@ export default function GuestMessagesScreen() {
                   Waiting for approval — you can message the network administrator
                 </Text>
                 <Button
-                  label="Call"
+                  label={guestCall?.callRequesting ? "Calling…" : "Call"}
                   size="sm"
                   variant="outline"
-                  disabled={Boolean(guestCall?.session)}
+                  loading={Boolean(guestCall?.callRequesting)}
+                  disabled={Boolean(guestCall?.session) || Boolean(guestCall?.callRequesting)}
                   onPress={() => {
                     guestCall?.startGuestCall();
                   }}
