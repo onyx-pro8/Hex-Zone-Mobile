@@ -503,6 +503,34 @@ export default function DashboardScreen() {
         </View>
       </SafeAreaView>
 
+      {builder.areaLines ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 118,
+            left: 16,
+            right: 16,
+          }}
+        >
+          <Text
+            style={{
+              color: builder.areaLines.reason ? "#E23B4E" : colors.text,
+              fontSize: 11,
+              fontWeight: "700",
+              backgroundColor: "rgba(255,255,255,0.92)",
+              borderRadius: 10,
+              overflow: "hidden",
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+            }}
+          >
+            {`This zone: ${builder.areaLines.thisZone}\nEach-zone room left: ${builder.areaLines.eachLeft}\nTotal left: ${builder.areaLines.totalLeft}`}
+            {builder.areaLines.reason ? `\n${builder.areaLines.reason}` : ""}
+          </Text>
+        </View>
+      ) : null}
+
       {communalZonesLoading ? (
         <View
           pointerEvents="none"

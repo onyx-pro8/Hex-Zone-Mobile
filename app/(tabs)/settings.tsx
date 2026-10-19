@@ -8,11 +8,13 @@ import {
   Home,
   KeyRound,
   LogOut,
+  Ruler,
   Smartphone,
   UserPlus,
   Users,
   Zap,
 } from "lucide-react-native";
+import { isSystemAdministrator } from "@/lib/accountLimits";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +26,11 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
+  const isSystemAdmin = isSystemAdministrator({
+    role: user?.role,
+    accountType: user?.accountType,
+    legacyAccountType: user?.account_type,
+  });
 
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure you want to log out?", [
@@ -55,6 +62,14 @@ export default function SettingsScreen() {
                 title="Access codes"
                 subtitle="Request or review universal access"
                 onPress={() => router.push("/(tabs)/access-codes")}
+              />
+            ) : null}
+            {isSystemAdmin ? (
+              <SettingsNavRow
+                icon={<Ruler size={18} color={colors.accent} />}
+                title="Zone size limit"
+                subtitle="Each zone and the account total"
+                onPress={() => router.push("/(tabs)/zone-size-limits")}
               />
             ) : null}
             <SettingsNavRow
