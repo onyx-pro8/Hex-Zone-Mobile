@@ -151,6 +151,30 @@ export type PushTestResult = {
  * after the response, so the caller can close the app and verify killed-app
  * delivery (system tray notification on Android).
  */
+export type HubCommandRecord = {
+  id: number;
+  hid: string;
+  command: string;
+  status: string;
+  detail: string;
+  created_at?: string | null;
+};
+
+export async function listHubCommands() {
+  return request<HubCommandRecord[]>({
+    method: "GET",
+    url: "/devices/hub-commands",
+  });
+}
+
+export async function sendHubCommand(hid: string, command: string) {
+  return request<HubCommandRecord>({
+    method: "POST",
+    url: "/devices/hub-commands",
+    data: { hid, command },
+  });
+}
+
 export async function sendTestPush(payload: {
   title?: string;
   message?: string;

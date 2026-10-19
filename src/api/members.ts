@@ -82,6 +82,20 @@ function normalizeMember(raw: unknown): Member | null {
   };
 }
 
+export async function listNetworkAdmins() {
+  const result = await request<unknown[]>({
+    method: "GET",
+    url: "/owners/network-admins",
+  });
+  if (result.error || !result.data) {
+    return { ...result, data: null as Member[] | null };
+  }
+  const members = result.data
+    .map((row) => normalizeMember(row))
+    .filter((row): row is Member => row != null);
+  return { ...result, data: members };
+}
+
 export async function getMembers() {
   const result = await request<unknown[]>({ method: "GET", url: "/members" });
   return {

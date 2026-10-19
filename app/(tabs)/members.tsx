@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Modal,
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import {
   getMembers,
+  listNetworkAdmins,
   setMemberAccountType,
   setMemberActive,
   setMemberRole,
@@ -43,7 +45,7 @@ import { toast } from "@/lib/toast";
 import { devLog } from "@/lib/devConsole";
 import { colors } from "@/theme/colors";
 
-type Filter = "same-zone" | "all";
+type Filter = "same-zone" | "all" | "admins";
 
 function MemberAvatar({ member }: { member: Member }) {
   const uri = useResolvedAvatarUri(member.avatar_url);
@@ -501,6 +503,7 @@ function ManageMemberModal({
 export default function MembersScreen() {
   const { user, token, ownerZoneId } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
+  const [networkAdmins, setNetworkAdmins] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("same-zone");
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -521,6 +524,17 @@ export default function MembersScreen() {
         return;
       }
       const rows = result.data ?? [];
+      if (
+        isSystemAdministrator({
+          role: user?.role,
+          accountType: user?.accountType ?? user?.account_type,
+        })
+      ) {
+        const admins = await listNetworkAdmins();
+        if (!admins.error) setNetworkAdmins(admins.data ?? []);
+      } else {
+        setNetworkAdmins([]);
+      }
       devLog("Members: loaded", {
         count: rows.length,
         myZoneId: user?.zoneId ?? null,
@@ -529,7 +543,7 @@ export default function MembersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.zoneId]);
+  }, [user?.zoneId, user?.role, user?.accountType, user?.account_type]);
 
   useEffect(() => {
     void load();
@@ -695,7 +709,12 @@ export default function MembersScreen() {
     return members.filter((m) => String(m.zone_id ?? "") === myZoneId);
   }, [members, myZoneId]);
 
-  const visible = filter === "same-zone" ? sameZoneMembers : members;
+  const visible =
+    filter === "admins"
+      ? networkAdmins
+      : filter === "same-zone"
+        ? sameZoneMembers
+        : members;
 
   const subtitle = useMemo(() => {
     const inZone = sameZoneMembers.length;
@@ -776,6 +795,18 @@ export default function MembersScreen() {
                 />
               </TouchableOpacity>
             ) : null}
+            {isSystemAdmin ? (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setFilter("admins")}
+              >
+                <Chip
+                  label="Network admins"
+                  tone="muted"
+                  active={filter === "admins"}
+                />
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
@@ -795,15 +826,48 @@ export default function MembersScreen() {
               const isSelf = myId !== "" && item.id === myId;
               const canOpenManage =
                 isSystemAdmin && filter === "all" && !isSelf;
+              const confirmAccess = () => {
+                const restore = item.active === false;
+                Alert.alert(
+                  restore ? "Restore network admin" : "Suspend network admin",
+                  restore
+                    ? "They can sign in again."
+                    : "They will be signed out and cannot sign in until you restore them.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: restore ? "Restore" : "Suspend",
+                      style: restore ? "default" : "destructive",
+                      onPress: () => {
+                        void setMemberActive(item.id, restore).then((result) => {
+                          if (result.error) {
+                            toast.error(result.error);
+                            return;
+                          }
+                          setNetworkAdmins((prev) =>
+                            prev.map((row) =>
+                              row.id === item.id
+                                ? { ...row, active: restore }
+                                : row,
+                            ),
+                          );
+                        });
+                      },
+                    },
+                  ],
+                );
+              };
               return (
                 <MemberRow
                   member={item}
                   isSelf={isSelf}
                   sameZone={sameZone}
                   onPress={
-                    canOpenManage
-                      ? () => setManaging(item)
-                      : undefined
+                    filter === "admins" && !isSelf
+                      ? confirmAccess
+                      : canOpenManage
+                        ? () => setManaging(item)
+                        : undefined
                   }
                 />
               );
