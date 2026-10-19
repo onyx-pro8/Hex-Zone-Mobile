@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import {
+  FlatList,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
@@ -26,6 +28,8 @@ type Props<T extends string | number> = {
   disabled?: boolean;
   /** Hide the uppercase label and tighten padding for toolbar rows. */
   compact?: boolean;
+  /** Filter a long option list by keyword inside the picker. */
+  searchable?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -39,13 +43,29 @@ export function FormSelect<T extends string | number>({
   onChange,
   disabled = false,
   compact = false,
+  searchable = false,
   style,
 }: Props<T>) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const { height: windowHeight } = useWindowDimensions();
+  const listHeight = Math.min(420, Math.round(windowHeight * 0.5));
   const selected = useMemo(
     () => options.find((o) => o.value === value) ?? options[0],
     [options, value],
   );
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!searchable || !needle) return options;
+    return options.filter((option) =>
+      option.label.toLowerCase().includes(needle),
+    );
+  }, [options, query, searchable]);
+
+  function close() {
+    setOpen(false);
+    setQuery("");
+  }
 
   return (
     <>
@@ -53,7 +73,10 @@ export function FormSelect<T extends string | number>({
         {compact ? null : <Text style={styles.fieldLabel}>{label}</Text>}
         <Pressable
           disabled={disabled}
-          onPress={() => setOpen(true)}
+          onPress={() => {
+            setQuery("");
+            setOpen(true);
+          }}
           accessibilityRole="button"
           accessibilityLabel={`${label}: ${selected?.label ?? ""}`}
           style={[
@@ -79,26 +102,38 @@ export function FormSelect<T extends string | number>({
         visible={open}
         transparent
         animationType="fade"
-        onRequestClose={() => setOpen(false)}
+        onRequestClose={close}
       >
-        <Pressable style={styles.backdrop} onPress={() => setOpen(false)}>
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            style={styles.sheet}
-          >
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={close} />
+          <View style={styles.sheet}>
             <Text style={styles.sheetTitle}>{label}</Text>
-            <ScrollView
-              style={{ maxHeight: 360 }}
+            {searchable ? (
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder={`Search ${label.toLowerCase()}`}
+                placeholderTextColor={colors.textDim}
+                autoCorrect={false}
+                autoCapitalize="none"
+                style={styles.search}
+              />
+            ) : null}
+            <FlatList
+              data={visible}
+              keyExtractor={(opt) => String(opt.value)}
+              style={{ height: listHeight }}
               keyboardShouldPersistTaps="handled"
-            >
-              {options.map((opt) => {
+              initialNumToRender={30}
+              windowSize={10}
+              ListEmptyComponent={<Text style={styles.empty}>No matches.</Text>}
+              renderItem={({ item: opt }) => {
                 const active = opt.value === value;
                 return (
                   <Pressable
-                    key={String(opt.value)}
                     onPress={() => {
                       onChange(opt.value);
-                      setOpen(false);
+                      close();
                     }}
                     style={[styles.option, active ? styles.optionActive : null]}
                   >
@@ -118,10 +153,10 @@ export function FormSelect<T extends string | number>({
                     {active ? <Check size={18} color={colors.accent} /> : null}
                   </Pressable>
                 );
-              })}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
+              }}
+            />
+          </View>
+        </View>
       </Modal>
     </>
   );
@@ -183,6 +218,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 4,
+  },
+  search: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    backgroundColor: colors.bgCard,
+    fontSize: 15,
+  },
+  empty: {
+    color: colors.textMuted,
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
   },
   option: {
     flexDirection: "row",

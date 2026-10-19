@@ -19,6 +19,7 @@
     "axios": "^1.7.7",
     "babel-preset-expo": "~54.0.10",
     "buffer": "^6.0.3",
+    "country-state-city": "^3.2.1",
     "exceljs": "^4.4.0",
     "expo": "~54.0.0",
     "expo-audio": "~1.1.1",

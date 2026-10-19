@@ -136,7 +136,7 @@ export default function ZoneSizeLimitsScreen() {
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
           <ScreenHeader
             title="Zone size limit"
             subtitle="Network admin and member, per account type"
@@ -176,7 +176,7 @@ export default function ZoneSizeLimitsScreen() {
               const draft = rules.find((rule) => rule.account_type === account && rule.role === role);
               if (!draft) return null;
               return (
-                <Card key={role} style={{ gap: 12 }}>
+                <Card key={role} style={{ gap: 18, paddingBottom: 22 }}>
                   <Text style={{ color: colors.text, fontSize: 16, fontWeight: "700" }}>
                     {role === "administrator" ? "Network admin" : "Member"}
                   </Text>
@@ -252,7 +252,8 @@ function LimitField({
             borderColor: colors.border ?? "#DCE6F2",
             borderRadius: 10,
             paddingHorizontal: 12,
-            paddingVertical: 10,
+            paddingTop: 12,
+            paddingBottom: 14,
             color: colors.text,
             backgroundColor: "#F7FAFE",
           }}

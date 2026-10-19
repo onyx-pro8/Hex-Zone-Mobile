@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -32,20 +34,15 @@ import {
   type UniversalAccessRequestRow,
 } from "@/api/universalAccess";
 import { toast } from "@/lib/toast";
+import {
+  cityOptions,
+  COUNTRY_OPTIONS,
+  countryName,
+  matchRegion,
+  regionName,
+  regionOptions,
+} from "@/lib/places";
 import { colors } from "@/theme/colors";
-
-const COUNTRIES = [
-  "United States",
-  "Canada",
-  "United Kingdom",
-  "Australia",
-  "Germany",
-  "France",
-  "Indonesia",
-  "Finland",
-  "Japan",
-  "Singapore",
-];
 
 type Tab = "compose" | "list";
 
@@ -86,9 +83,11 @@ export default function AccessCodesScreen() {
   const [rows, setRows] = useState<UniversalAccessRequestRow[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadedOnce = useRef(false);
   const [memberId, setMemberId] = useState("");
   const [address, setAddress] = useState("");
-  const [country, setCountry] = useState(COUNTRIES[0]);
+  const [country, setCountry] = useState("US");
   const [region, setRegion] = useState("");
   const [city, setCity] = useState("");
   const [note, setNote] = useState("");
@@ -102,9 +101,31 @@ export default function AccessCodesScreen() {
     () => members.find((member) => member.id === memberId) ?? null,
     [members, memberId],
   );
+  const regions = useMemo(() => {
+    const base = regionOptions(country);
+    if (region && !base.some((item) => item.value === region)) {
+      return [{ value: region, label: region }, ...base];
+    }
+    return base;
+  }, [country, region]);
+  const cities = useMemo(() => {
+    const base = cityOptions(country, region);
+    if (city && !base.some((item) => item.value === city)) {
+      return [{ value: city, label: city }, ...base];
+    }
+    return base;
+  }, [country, region, city]);
+
+  function applyCountry(iso: string) {
+    setCountry(iso);
+    const nextRegions = regionOptions(iso);
+    setRegion(nextRegions.length === 1 ? nextRegions[0].value : "");
+    setCity("");
+  }
 
   const reload = useCallback(async () => {
-    setLoading(true);
+    if (loadedOnce.current) setRefreshing(true);
+    else setLoading(true);
     const [requestResult, memberResult] = await Promise.all([
       listUniversalAccessRequests(),
       isSystemAdmin ? Promise.resolve({ data: [] as Member[], error: null }) : getMembers(),
@@ -112,12 +133,16 @@ export default function AccessCodesScreen() {
     if (requestResult.error) toast.error(requestResult.error);
     setRows(requestResult.data ?? []);
     setMembers(memberResult.data ?? []);
+    loadedOnce.current = true;
     setLoading(false);
+    setRefreshing(false);
   }, [isSystemAdmin]);
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  useFocusEffect(
+    useCallback(() => {
+      void reload();
+    }, [reload]),
+  );
 
   const tabs: { key: Tab; label: string }[] = isSystemAdmin
     ? [
@@ -141,7 +166,7 @@ export default function AccessCodesScreen() {
       return;
     }
     if (!region.trim() || !city.trim() || !address.trim()) {
-      toast.error("Address, region, and city are required.");
+      toast.error("Address, state/province, and city are required.");
       return;
     }
     setSubmitting(true);
@@ -149,8 +174,8 @@ export default function AccessCodesScreen() {
       member_id: Number(selected.id),
       address: address.trim(),
       photo_id: photo,
-      country,
-      region: region.trim(),
+      country: countryName(country),
+      region: regionName(country, region).trim(),
       city: city.trim(),
       note: note.trim(),
     });
@@ -161,6 +186,7 @@ export default function AccessCodesScreen() {
     }
     setMemberId("");
     setAddress("");
+    setCountry("US");
     setRegion("");
     setCity("");
     setNote("");
@@ -196,10 +222,6 @@ export default function AccessCodesScreen() {
   }
 
   async function onReject(row: UniversalAccessRequestRow) {
-    if (!rejectReason.trim()) {
-      toast.error("A reject reason is required.");
-      return;
-    }
     setBusyId(row.id);
     const result = await rejectUniversalAccessRequest(row.id, rejectReason.trim());
     setBusyId(null);
@@ -221,7 +243,15 @@ export default function AccessCodesScreen() {
         >
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingBottom: 120 }}
+            contentContainerStyle={{ paddingBottom: 120, flexGrow: 1 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => void reload()}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
           >
             <ScreenHeader
               title="Access codes"
@@ -231,7 +261,13 @@ export default function AccessCodesScreen() {
             />
             <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 20 }}>
               {tabs.map((item) => (
-                <Pressable key={item.key} onPress={() => setTab(item.key)}>
+                <Pressable
+                  key={item.key}
+                  onPress={() => {
+                    setTab(item.key);
+                    void reload();
+                  }}
+                >
                   <Text
                     style={{
                       color: tab === item.key ? colors.accent : colors.textMuted,
@@ -274,15 +310,52 @@ export default function AccessCodesScreen() {
                   />
                   <Locked label="Name" value={selected?.name ?? ""} />
                   <Locked label="Registered email" value={selected?.email ?? ""} />
-                  <Editor label="Address" value={address} onChange={setAddress} />
+                  <AddressSearch
+                    value={address}
+                    onChange={setAddress}
+                    onPick={(hit) => {
+                      setAddress(hit.street);
+                      if (
+                        hit.countryIso &&
+                        COUNTRY_OPTIONS.some((item) => item.value === hit.countryIso)
+                      ) {
+                        setCountry(hit.countryIso);
+                        setRegion(hit.region);
+                        setCity(hit.city);
+                      }
+                    }}
+                  />
                   <FormSelect
                     label="Country"
                     value={country}
-                    options={COUNTRIES.map((item) => ({ value: item, label: item }))}
-                    onChange={setCountry}
+                    searchable
+                    options={COUNTRY_OPTIONS}
+                    onChange={applyCountry}
                   />
-                  <Editor label="Region" value={region} onChange={setRegion} />
-                  <Editor label="City" value={city} onChange={setCity} />
+                  <FormSelect
+                    label="State / Province"
+                    value={region}
+                    searchable
+                    options={[
+                      { value: "", label: "Select state / province" },
+                      ...regions,
+                    ]}
+                    onChange={(value) => {
+                      setRegion(value);
+                      setCity("");
+                    }}
+                  />
+                  <FormSelect
+                    label="City"
+                    value={city}
+                    searchable
+                    disabled={!region}
+                    options={[
+                      { value: "", label: region ? "Select city" : "Select a state or province first" },
+                      ...cities,
+                    ]}
+                    onChange={setCity}
+                  />
                   <Editor label="Note" value={note} onChange={setNote} />
                   <Button
                     label={photo ? "Replace photo ID" : "Add photo ID"}
@@ -298,7 +371,7 @@ export default function AccessCodesScreen() {
                   {photo ? (
                     <Image
                       source={{ uri: photo }}
-                      style={{ width: 96, height: 72, borderRadius: 8 }}
+                      style={{ width: 120, height: 84, borderRadius: 8 }}
                     />
                   ) : null}
                   <Button
@@ -372,63 +445,240 @@ export default function AccessCodesScreen() {
               </View>
             ) : null}
 
-            {detail ? (
-              <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
-                <Card style={{ gap: 8 }}>
-                  <Text style={{ color: colors.text, fontWeight: "800" }}>
-                    {detail.member_name}
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {detail.email}
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {detail.address}
-                  </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {detail.place}
-                  </Text>
-                  {detail.note ? (
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      {detail.note}
-                    </Text>
-                  ) : null}
-                  {detail.photo_id ? (
-                    <Image
-                      source={{ uri: detail.photo_id }}
-                      style={{ width: 160, height: 110, borderRadius: 8 }}
-                    />
-                  ) : null}
-                  <Editor
-                    label="Reject reason"
-                    value={rejectReason}
-                    onChange={setRejectReason}
-                  />
-                  <Button
-                    label={busyId === detail.id ? "Working…" : "Approve"}
-                    size="sm"
-                    disabled={busyId === detail.id}
-                    onPress={() => void onApprove(detail)}
-                  />
-                  <Button
-                    label="Reject"
-                    size="sm"
-                    variant="danger"
-                    disabled={busyId === detail.id}
-                    onPress={() => void onReject(detail)}
-                  />
-                  <Button
-                    label="Close"
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => setDetail(null)}
-                  />
-                </Card>
-              </View>
-            ) : null}
           </ScrollView>
+          <Modal
+            visible={detail != null}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setDetail(null)}
+          >
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: "rgba(15, 44, 92, 0.45)",
+                justifyContent: "center",
+                padding: 20,
+              }}
+            >
+              <Pressable
+                style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+                onPress={() => setDetail(null)}
+              />
+              {detail ? (
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === "ios" ? "padding" : undefined}
+                >
+                  <Card style={{ gap: 10, maxHeight: "88%" }}>
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={{ gap: 10 }}
+                    >
+                      <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>
+                        {detail.member_name}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                        {detail.email}
+                      </Text>
+                      <Text style={{ color: colors.text, fontSize: 14 }}>
+                        {detail.address}
+                      </Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                        {detail.place}
+                        {detail.network_id ? ` · ${detail.network_id}` : ""}
+                      </Text>
+                      {detail.note ? (
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                          {detail.note}
+                        </Text>
+                      ) : null}
+                      {detail.photo_id ? (
+                        <Image
+                          source={{ uri: detail.photo_id }}
+                          resizeMode="contain"
+                          style={{
+                            width: "100%",
+                            height: 220,
+                            borderRadius: 12,
+                            backgroundColor: "#F7FAFE",
+                          }}
+                        />
+                      ) : null}
+                      <Editor
+                        label="Reject reason (optional)"
+                        value={rejectReason}
+                        onChange={setRejectReason}
+                      />
+                      <Button
+                        label={busyId === detail.id ? "Working…" : "Approve"}
+                        size="sm"
+                        fullWidth
+                        disabled={busyId === detail.id}
+                        onPress={() => void onApprove(detail)}
+                      />
+                      <Button
+                        label="Reject"
+                        size="sm"
+                        variant="danger"
+                        fullWidth
+                        disabled={busyId === detail.id}
+                        onPress={() => void onReject(detail)}
+                      />
+                      <Button
+                        label="Close"
+                        size="sm"
+                        variant="ghost"
+                        fullWidth
+                        onPress={() => setDetail(null)}
+                      />
+                    </ScrollView>
+                  </Card>
+                </KeyboardAvoidingView>
+              ) : null}
+            </View>
+          </Modal>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </GradientBackground>
+  );
+}
+
+type AddressHit = {
+  id: string;
+  label: string;
+  street: string;
+  countryIso: string;
+  region: string;
+  city: string;
+};
+
+type PhotonFeature = {
+  properties?: {
+    osm_id?: number;
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    city?: string;
+    state?: string;
+    county?: string;
+    country?: string;
+    countrycode?: string;
+  };
+};
+
+function toAddressHit(feature: PhotonFeature, index: number): AddressHit {
+  const parts = feature.properties ?? {};
+  const street = [parts.housenumber, parts.street || parts.name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const countryIso = (parts.countrycode ?? "").toUpperCase();
+  const city = parts.city || "";
+  const stateName = parts.state || parts.county || "";
+  const label = [street, city, stateName, parts.country].filter(Boolean).join(", ");
+  return {
+    id: String(parts.osm_id ?? index),
+    label: label || street,
+    street,
+    countryIso,
+    region: countryIso ? matchRegion(countryIso, stateName) || stateName : "",
+    city,
+  };
+}
+
+function AddressSearch({
+  value,
+  onChange,
+  onPick,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onPick: (hit: AddressHit) => void;
+}) {
+  const [hits, setHits] = useState<AddressHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const skip = useRef("");
+
+  useEffect(() => {
+    if (value === skip.current) return;
+    const query = value.trim();
+    if (query.length < 3) {
+      setHits([]);
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      setSearching(true);
+      fetch(
+        `https://photon.komoot.io/api/?limit=6&q=${encodeURIComponent(query)}`,
+        { signal: controller.signal, headers: { Accept: "application/json" } },
+      )
+        .then((response) => (response.ok ? response.json() : { features: [] }))
+        .then((payload: { features?: PhotonFeature[] }) => {
+          setHits(
+            (payload.features ?? [])
+              .map(toAddressHit)
+              .filter((hit) => hit.street),
+          );
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setHits([]);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
+    }, 600);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [value]);
+
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700" }}>
+        ADDRESS
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="Search street or place"
+        placeholderTextColor={colors.textDim}
+        autoCorrect={false}
+        style={{
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          color: colors.text,
+          backgroundColor: "#F7FAFE",
+        }}
+      />
+      {searching ? (
+        <Text style={{ color: colors.textDim, fontSize: 12 }}>Searching…</Text>
+      ) : null}
+      {hits.map((hit) => (
+        <Pressable
+          key={hit.id}
+          onPress={() => {
+            skip.current = hit.street;
+            setHits([]);
+            onPick(hit);
+          }}
+          style={{
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <Text style={{ color: colors.text, fontSize: 13 }}>{hit.label}</Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
