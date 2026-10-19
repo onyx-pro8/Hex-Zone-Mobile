@@ -13,10 +13,10 @@ import {
   type AppSettings,
 } from "@/lib/appSettings";
 import { getRemoteAppSettings, updateRemoteAppSettings } from "@/api";
-import { getDevices } from "@/api/devices";
+import { getDevices, listHubCommands, sendHubCommand, type HubCommandRecord } from "@/api/devices";
 import { useAuth } from "@/context/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { normalizeAccountType } from "@/lib/accountLimits";
+import { isSystemAdministrator, normalizeAccountType } from "@/lib/accountLimits";
 import { isSmartHomeHid } from "@/lib/deviceSync";
 import { toastSmartHomeSettingsSaved } from "@/lib/smartHomeToast";
 import { toast } from "@/lib/toast";
@@ -120,6 +120,15 @@ export function ConfigForm({
   const isAdmin = useIsAdmin();
   const isIndividual =
     normalizeAccountType(user?.accountType, user?.account_type) === "EXCLUSIVE";
+  const isSystemAdmin = isSystemAdministrator({
+    role: user?.role,
+    accountType: user?.accountType,
+    legacyAccountType: user?.account_type,
+  });
+  const isNetworkAdmin = isAdmin && !isSystemAdmin && !isIndividual;
+  const [hubCommand, setHubCommand] = useState<"arm" | "disarm" | "status">("arm");
+  const [hubCommands, setHubCommands] = useState<HubCommandRecord[]>([]);
+  const [sendingCommand, setSendingCommand] = useState(false);
   const settings = useAppSettings();
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [hubs, setHubs] = useState<SmartHomeHubOption[]>([]);
@@ -219,12 +228,20 @@ export function ConfigForm({
           if (settingsRes.error) toast.error(settingsRes.error);
           else if (devicesRes.error) toast.error(devicesRes.error);
         }
+        if (
+          mounted &&
+          section === "smartHome" &&
+          isNetworkAdmin
+        ) {
+          const commandRes = await listHubCommands();
+          if (mounted) setHubCommands(commandRes.data ?? []);
+        }
         if (mounted) setLoading(false);
       })();
       return () => {
         mounted = false;
       };
-    }, [user?.id]),
+    }, [user?.id, section, isNetworkAdmin]),
   );
 
   const hidOptions = useMemo(
@@ -436,6 +453,67 @@ export function ConfigForm({
                 disabled={busy}
                 fullWidth
               />
+              {isNetworkAdmin ? (
+                <View style={{ gap: 8, marginTop: 8 }}>
+                  <Text style={{ color: colors.text, fontWeight: "800" }}>
+                    Send command
+                  </Text>
+                  <Text style={FIELD_HINT_STYLE}>
+                    Arm, disarm, or ask this hub for status. Save the webhook
+                    first. The hub has to accept it or the result stays failed.
+                  </Text>
+                  <FormSelect
+                    label="Command"
+                    value={hubCommand}
+                    options={[
+                      { value: "arm", label: "Arm" },
+                      { value: "disarm", label: "Disarm" },
+                      { value: "status", label: "Status" },
+                    ]}
+                    onChange={setHubCommand}
+                    disabled={hubs.length === 0 || sendingCommand}
+                  />
+                  <Button
+                    label={sendingCommand ? "Sending…" : "Send"}
+                    size="sm"
+                    fullWidth
+                    disabled={
+                      hubs.length === 0 ||
+                      sendingCommand ||
+                      draft.sharedNotification.webhook.trim() !==
+                        settings.sharedNotification.webhook.trim()
+                    }
+                    onPress={() => {
+                      const hid =
+                        draft.sharedNotification.hid || hubs[0]?.hid;
+                      if (!hid) return;
+                      setSendingCommand(true);
+                      void sendHubCommand(hid, hubCommand).then((result) => {
+                        setSendingCommand(false);
+                        if (result.error || !result.data) {
+                          toast.error(result.error || "Could not send the command.");
+                          return;
+                        }
+                        setHubCommands((prev) =>
+                          [result.data as HubCommandRecord, ...prev].slice(0, 8),
+                        );
+                      });
+                    }}
+                  />
+                  {draft.sharedNotification.webhook.trim() !==
+                  settings.sharedNotification.webhook.trim() ? (
+                    <Text style={FIELD_HINT_STYLE}>
+                      Save the webhook before sending a command.
+                    </Text>
+                  ) : null}
+                  {hubCommands.map((row) => (
+                    <Text key={row.id} style={FIELD_HINT_STYLE}>
+                      {row.command.toUpperCase()} · {row.status}
+                      {row.detail ? ` · ${row.detail}` : ""}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
             </>
           )}
         </Card>

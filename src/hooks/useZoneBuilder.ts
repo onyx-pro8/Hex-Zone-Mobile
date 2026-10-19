@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, PermissionsAndroid, Platform } from "react-native";
 import { toast } from "@/lib/toast";
+import { areaBlockReason, draftAreaM2, formatArea } from "@/lib/zoneArea";
 import {
   loadExpoLocation,
   readDeviceLocation,
@@ -12,8 +13,10 @@ import {
   createZone,
   deleteZone,
   generateZoneReference,
+  getZoneAreaBudget,
   getZoneCapabilities,
   getZones,
+  type ZoneAreaBudget,
   listCommunalIds,
   listPublicZones,
   listZonesForCommunalId,
@@ -206,6 +209,7 @@ export function useZoneBuilder(
 
   /** DB record id of the zone currently loaded for edit (`null` = create mode). */
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null);
+  const [areaBudget, setAreaBudget] = useState<ZoneAreaBudget | null>(null);
   const [editingZoneName, setEditingZoneName] = useState<string | null>(null);
 
   const [zoneType, setZoneType] = useState<ZoneType>("geofence");
@@ -532,8 +536,13 @@ export function useZoneBuilder(
           isAccountAdministrator: scope?.isAccountAdministrator,
         })
       ) {
+        const universal = Boolean(
+          (zone.config as Record<string, unknown> | undefined)?.universal_access,
+        );
         toast.warning(
-          "You can edit only primary zones as administrator, or secondary zones you created.",
+          universal
+            ? "Universal zones are view-only."
+            : "You can edit only primary zones as administrator, or secondary zones you created.",
         );
         return null;
       }
@@ -1341,11 +1350,78 @@ export function useZoneBuilder(
     }
   }, [governmentFields, governmentMode, notifyError, setError]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void getZoneAreaBudget(editingZoneId ?? undefined).then((result) => {
+      if (!cancelled) setAreaBudget(result.data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingZoneId, loadingList]);
+
+  const draftM2 = useMemo(() => {
+    const radius =
+      zoneType === "proximity"
+        ? proximityRadius
+        : zoneType === "object"
+          ? objectRadius
+          : zoneType === "dynamic"
+            ? (dynamicPreview?.resolved_radius_meters ?? dynamicMax)
+            : null;
+    return draftAreaM2({
+      zoneType,
+      ring: draftRingForMap,
+      circleRadius:
+        zoneType === "geofence" && geofenceTool === "circle"
+          ? (draftCircle?.radiusMeters ?? null)
+          : null,
+      cells: selectedH3CellsForMap,
+      radiusMeters: radius,
+    });
+  }, [
+    zoneType,
+    proximityRadius,
+    objectRadius,
+    dynamicPreview,
+    dynamicMax,
+    draftRingForMap,
+    geofenceTool,
+    draftCircle,
+    selectedH3CellsForMap,
+  ]);
+
+  const zoneAreaReason =
+    zoneType === "communal_id"
+      ? null
+      : areaBlockReason({
+          draftM2,
+          eachZoneM2: areaBudget?.each_zone_m2 ?? null,
+          remainingTotalM2: areaBudget?.remaining_total_m2 ?? null,
+        });
+
+  const areaLines =
+    zoneType === "communal_id" || !areaBudget
+      ? null
+      : {
+          thisZone: formatArea(draftM2),
+          eachLeft:
+            areaBudget.each_zone_m2 == null
+              ? "no limit"
+              : formatArea(Math.max(0, areaBudget.each_zone_m2 - draftM2)),
+          totalLeft:
+            areaBudget.remaining_total_m2 == null
+              ? "no limit"
+              : formatArea(Math.max(0, areaBudget.remaining_total_m2 - draftM2)),
+          reason: zoneAreaReason,
+        };
+
   const canSave = useMemo(() => {
     const isEditing = editingZoneId != null;
     if (isEditing && capabilities?.can_edit_active_zone === false) {
       return false;
     }
+    if (zoneAreaReason) return false;
     if (zoneType === "communal_id") {
       return (
         canUseCommunalTools &&
@@ -1406,12 +1482,13 @@ export function useZoneBuilder(
     zoneName,
     zoneType,
     capabilities,
+    zoneAreaReason,
   ]);
 
   const save = useCallback(async () => {
     setError(null);
     if (!canSave) {
-      notifyError("Complete the zone details first.");
+      notifyError(zoneAreaReason ?? "Complete the zone details first.");
       return false;
     }
 
@@ -1649,6 +1726,7 @@ export function useZoneBuilder(
     return true;
   }, [
     canSave,
+    zoneAreaReason,
     canUseCommunalTools,
     clearEditing,
     communalCode,
@@ -1966,6 +2044,7 @@ export function useZoneBuilder(
     error,
     setError,
     canSave,
+    areaLines,
     save,
   };
 }
