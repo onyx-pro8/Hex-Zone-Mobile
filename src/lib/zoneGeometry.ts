@@ -413,6 +413,8 @@ export function canDeleteSavedZone(
   },
 ): boolean {
   if (scope?.isSystemAdministrator) return true;
+  const config = (zone.config ?? {}) as Record<string, unknown>;
+  if (config.universal_access === true) return false;
   const isPrimary = Boolean(
     (zone as { is_primary?: boolean }).is_primary ??
       (zone as { isPrimary?: boolean }).isPrimary,
@@ -451,9 +453,12 @@ export function zoneRecordToLayer(
   const id = zone.id ?? zone.zone_id;
   if (id == null) return null;
   const zoneType = normalizeZoneType(zone.type ?? zone.zone_type);
+  const universal = Boolean(
+    (zone.config as Record<string, unknown> | undefined)?.universal_access,
+  );
   const name =
     typeof zone.name === "string" && zone.name.trim()
-      ? zone.name.trim()
+      ? `${zone.name.trim()}${universal ? " · Universal" : ""}`
       : `Zone ${id}`;
   const rings = readZoneRings(zone);
   const circles = readZoneCircles(zone);

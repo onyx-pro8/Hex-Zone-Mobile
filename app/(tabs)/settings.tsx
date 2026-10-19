@@ -6,6 +6,7 @@ import {
   BookOpen,
   History,
   Home,
+  KeyRound,
   LogOut,
   Smartphone,
   UserPlus,
@@ -21,7 +22,8 @@ import { colors } from "@/theme/colors";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
 
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure you want to log out?", [
@@ -47,6 +49,14 @@ export default function SettingsScreen() {
           />
 
           <View style={{ paddingHorizontal: 20 }}>
+            {isAdmin ? (
+              <SettingsNavRow
+                icon={<KeyRound size={18} color={colors.accent} />}
+                title="Access codes"
+                subtitle="Request or review universal access"
+                onPress={() => router.push("/(tabs)/access-codes")}
+              />
+            ) : null}
             <SettingsNavRow
               icon={<Home size={18} color={colors.accent} />}
               title="Smart-home integration"
