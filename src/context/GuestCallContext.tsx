@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { subscribeRealtimeMessages, useWebSocket } from "@/hooks/useWebSocket";
 import {
   emitEscalatedAccessClosed,
@@ -119,6 +120,10 @@ function guestSubject(token: string | null): string | null {
 
 export function GuestCallProvider({ children }: { children: ReactNode }) {
   const { token: memberToken, user } = useAuth();
+  const isAdmin = useIsAdmin();
+  const canHandleAdminCall = Boolean(user) && isAdmin;
+  const isAdminRef = useRef(canHandleAdminCall);
+  isAdminRef.current = canHandleAdminCall;
   const [guestToken, setGuestToken] = useState<string | null>(null);
   const [guestZoneIds, setGuestZoneIds] = useState<string[]>([]);
   const [session, setSession] = useState<GuestCallSession | null>(null);
@@ -460,6 +465,8 @@ export function GuestCallProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     return subscribeRealtimeMessages((raw) => {
+      // Guest calls are guest↔admin only. Members share this socket but must not ring.
+      if (!isAdminRef.current) return;
       void applyEventRef.current(raw, "admin");
     });
   }, []);
