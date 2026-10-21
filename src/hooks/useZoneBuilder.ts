@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, PermissionsAndroid, Platform } from "react-native";
 import { toast } from "@/lib/toast";
-import { areaBlockReason, draftAreaM2, formatArea } from "@/lib/zoneArea";
+import { areaBlockReason, draftAreaM2, formatAreaCompact, formatAreaLimit } from "@/lib/zoneArea";
 import {
   loadExpoLocation,
   readDeviceLocation,
@@ -1404,15 +1404,9 @@ export function useZoneBuilder(
     zoneType === "communal_id" || !areaBudget
       ? null
       : {
-          thisZone: formatArea(draftM2),
-          eachLeft:
-            areaBudget.each_zone_m2 == null
-              ? "no limit"
-              : formatArea(Math.max(0, areaBudget.each_zone_m2 - draftM2)),
-          totalLeft:
-            areaBudget.remaining_total_m2 == null
-              ? "no limit"
-              : formatArea(Math.max(0, areaBudget.remaining_total_m2 - draftM2)),
+          thisZone: formatAreaCompact(draftM2),
+          eachLimit: formatAreaLimit(areaBudget.each_zone_m2),
+          totalLimit: formatAreaLimit(areaBudget.total_m2),
           reason: zoneAreaReason,
         };
 

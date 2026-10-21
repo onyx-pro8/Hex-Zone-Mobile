@@ -74,6 +74,49 @@ const PROXIMITY_RADIUS_MAX = 5000;
 const ZONES_HEADER_BODY_HEIGHT = 70;
 /** Space reserved on the chrome row for Leaflet +/- and the Zones list button. */
 const CHROME_SIDE_WIDTH = 78;
+/** Drops the size card below the drawing hint. */
+const AREA_CARD_GAP = 52;
+
+function ZoneSizeRow({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        gap: 14,
+      }}
+    >
+      <Text
+        style={{
+          color: colors.textMuted,
+          fontSize: 11,
+          fontWeight: "600",
+          letterSpacing: 0.1,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          color: valueColor ?? colors.text,
+          fontSize: 12,
+          fontWeight: "700",
+        }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
 
 export default function DashboardScreen() {
   const { ownerZoneId, user } = useAuth();
@@ -319,6 +362,23 @@ export default function DashboardScreen() {
 
   const drawingActive = activeTool != null;
 
+  const drawInProgress = useMemo(() => {
+    if (!drawingActive) return false;
+    if (builder.zoneType === "geofence") {
+      return builder.geofenceTool === "circle"
+        ? builder.draftCircle != null
+        : builder.draftRing.length > 0;
+    }
+    if (builder.zoneType === "grid") return builder.selectedH3Cells.length > 0;
+    if (builder.zoneType === "proximity") return builder.proximityCenter != null;
+    if (builder.zoneType === "dynamic") return builder.dynamicPreview?.center != null;
+    if (builder.zoneType === "object") return builder.objectCenter != null;
+    if (builder.zoneType === "government_local_code") {
+      return builder.governmentValidation?.valid === true;
+    }
+    return false;
+  }, [builder, drawingActive]);
+
   const canUndo =
     drawingActive &&
     builder.zoneType === "geofence" &&
@@ -503,31 +563,62 @@ export default function DashboardScreen() {
         </View>
       </SafeAreaView>
 
-      {builder.areaLines ? (
+      {drawInProgress && builder.areaLines ? (
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
-            top: 118,
-            left: 16,
+            top: chromeRowTop + AREA_CARD_GAP,
             right: 16,
+            maxWidth: 260,
+            zIndex: 20,
           }}
         >
-          <Text
+          <View
             style={{
-              color: builder.areaLines.reason ? "#E23B4E" : colors.text,
-              fontSize: 11,
-              fontWeight: "700",
-              backgroundColor: "rgba(255,255,255,0.92)",
-              borderRadius: 10,
-              overflow: "hidden",
-              paddingHorizontal: 10,
-              paddingVertical: 8,
+              backgroundColor: "rgba(255,255,255,0.96)",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: builder.areaLines.reason ? colors.danger : colors.border,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              gap: 7,
+              shadowColor: "#1B3A6B",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.1,
+              shadowRadius: 8,
+              elevation: 4,
             }}
           >
-            {`This zone: ${builder.areaLines.thisZone}\nEach-zone room left: ${builder.areaLines.eachLeft}\nTotal left: ${builder.areaLines.totalLeft}`}
-            {builder.areaLines.reason ? `\n${builder.areaLines.reason}` : ""}
-          </Text>
+            <ZoneSizeRow
+              label="This zone"
+              value={builder.areaLines.thisZone}
+              valueColor={
+                builder.areaLines.reason ? colors.danger : colors.accentDeep
+              }
+            />
+            <View style={{ height: 1, backgroundColor: colors.border }} />
+            <ZoneSizeRow
+              label="Each-zone size limit"
+              value={builder.areaLines.eachLimit}
+            />
+            <ZoneSizeRow
+              label="Total limit"
+              value={builder.areaLines.totalLimit}
+            />
+            {builder.areaLines.reason ? (
+              <Text
+                style={{
+                  color: colors.danger,
+                  fontSize: 11,
+                  fontWeight: "600",
+                  lineHeight: 15,
+                }}
+              >
+                {builder.areaLines.reason}
+              </Text>
+            ) : null}
+          </View>
         </View>
       ) : null}
 
