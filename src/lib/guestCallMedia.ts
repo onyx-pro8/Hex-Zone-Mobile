@@ -6,6 +6,7 @@
  */
 
 import { Platform } from "react-native";
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 import {
   isCallMicLive,
   postCallAudio,
@@ -37,6 +38,13 @@ function getRtcPeerConnection(): typeof RTCPeerConnection | null {
   return null;
 }
 
+const callAudioConstraints: MediaTrackConstraints = {
+  echoCancellation: { ideal: true },
+  noiseSuppression: { ideal: true },
+  autoGainControl: { ideal: true },
+  channelCount: { ideal: 1 },
+};
+
 async function getUserMedia(): Promise<MediaStream | null> {
   const nav = globalThis.navigator as
     | (Navigator & {
@@ -45,9 +53,43 @@ async function getUserMedia(): Promise<MediaStream | null> {
     | undefined;
   if (!nav?.mediaDevices?.getUserMedia) return null;
   try {
-    return await nav.mediaDevices.getUserMedia({ audio: true, video: false });
+    return await nav.mediaDevices.getUserMedia({ audio: callAudioConstraints, video: false });
   } catch {
-    return null;
+    try {
+      return await nav.mediaDevices.getUserMedia({ audio: true, video: false });
+    } catch {
+      return null;
+    }
+  }
+}
+
+/** Play and record together, on the speaker, without mixing in other apps. */
+async function setCallAudioRoute(active: boolean): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    await Audio.setAudioModeAsync(
+      active
+        ? {
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: false,
+            interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+            interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+            shouldDuckAndroid: false,
+            playThroughEarpieceAndroid: false,
+          }
+        : {
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: false,
+            staysActiveInBackground: false,
+            interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+            interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+          },
+    );
+  } catch {
+    /* a route change must not take down the call */
   }
 }
 
@@ -60,12 +102,17 @@ export async function startGuestCallMedia(opts: {
   onSignal: (signal: SignalPayload) => void;
 }): Promise<boolean> {
   if (Platform.OS !== "web") {
+    await setCallAudioRoute(true);
     setVoiceFrameHandler((b64, level) => {
       opts.onSignal({ kind: "audio", b64, level });
     });
     if (!isCallMicLive()) {
       const mic = await requestMicPermission();
-      if (mic !== "granted") return false;
+      if (mic !== "granted") {
+        setVoiceFrameHandler(null);
+        await setCallAudioRoute(false);
+        return false;
+      }
       primeCallAudio();
       void startAndWaitForCallMic(10000);
     }
@@ -137,6 +184,7 @@ export async function handleGuestCallSignal(
 export async function stopGuestCallMedia(): Promise<void> {
   setVoiceFrameHandler(null);
   postCallAudio({ type: "voice-stop" });
+  await setCallAudioRoute(false);
   const bundle = active;
   active = null;
   if (!bundle) return;

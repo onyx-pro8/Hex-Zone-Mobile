@@ -56,6 +56,9 @@ const PAGE = `<!DOCTYPE html>
   var lastLevelAt = 0;
   var frameSeq = 0;
   var primed = false;
+  var farRms = 0;
+  var speakHang = 0;
+  var lpState = 0;
 
   function audio() {
     var AC = window.AudioContext || window.webkitAudioContext;
@@ -73,8 +76,9 @@ const PAGE = `<!DOCTYPE html>
     osc.type = "sine";
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, c.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.95, c.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.35, c.currentTime + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + ms / 1000);
+    farRms = Math.max(farRms, 0.12);
     osc.connect(gain);
     gain.connect(c.destination);
     osc.start();
@@ -114,6 +118,9 @@ const PAGE = `<!DOCTYPE html>
       micStream = null;
     }
     primed = false;
+    farRms = 0;
+    speakHang = 0;
+    lpState = 0;
   }
 
   function send(payload) {
@@ -147,21 +154,37 @@ const PAGE = `<!DOCTYPE html>
     var step = Math.max(1, Math.round(inRate / outRate));
     var count = Math.floor(input.length / step);
     var pcm = new Int16Array(count);
+    var lpA = 0.35;
+    var rawEnergy = 0;
+    for (var n = 0; n < input.length; n++) {
+      lpState += lpA * ((input[n] || 0) - lpState);
+      input[n] = lpState;
+      rawEnergy += lpState * lpState;
+    }
+    var rawRms = input.length ? Math.sqrt(rawEnergy / input.length) : 0;
+    farRms *= 0.68;
+    if (rawRms >= 0.016) speakHang = 4;
+    else if (speakHang > 0) speakHang -= 1;
+    var speaking = rawRms >= 0.016 || speakHang > 0;
+    var localTalk = rawRms > 0.045 && rawRms > farRms * 0.55;
+    var suppress = farRms > 0.03 && !localTalk;
+    var drive = 2.2;
+    if (!speaking || suppress) drive = 0;
+    else if (rawRms < 0.08) drive = Math.min(5, 0.14 / Math.max(rawRms, 0.02));
     var energy = 0;
     var peak = 0;
     for (var i = 0; i < count; i++) {
       var sample = 0;
-      for (var s = 0; s < step; s++) sample += input[i * step + s] || 0;
-      sample = (sample / step) * 12;
-      if (sample > 1) sample = 1;
-      if (sample < -1) sample = -1;
+      var base = i * step;
+      for (var s = 0; s < step; s++) sample += input[base + s] || 0;
+      sample = Math.tanh((sample / step) * drive);
       var abs = sample < 0 ? -sample : sample;
       if (abs > peak) peak = abs;
       energy += sample * sample;
       pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
     }
     var rms = count ? Math.sqrt(energy / count) : 0;
-    var level = Math.max(0, Math.min(1, Math.max(peak * 8, rms * 28)));
+    var level = Math.max(0, Math.min(1, Math.max(peak * 1.6, rms * 6)));
     var bytes = new Uint8Array(pcm.buffer);
     return { b64: bytesToB64(bytes), level: level };
   }
@@ -178,9 +201,12 @@ const PAGE = `<!DOCTYPE html>
       micElement = document.createElement("audio");
       micElement.setAttribute("autoplay", "true");
       micElement.setAttribute("playsinline", "true");
-      micElement.volume = 0.01;
+      micElement.muted = true;
+      micElement.volume = 0;
       document.body.appendChild(micElement);
     }
+    micElement.muted = true;
+    micElement.volume = 0;
     micElement.srcObject = stream;
     var played = micElement.play();
     if (played && played.catch) played.catch(function () {});
@@ -195,21 +221,25 @@ const PAGE = `<!DOCTYPE html>
     processor.onaudioprocess = function (event) {
       if (c.state === "suspended") c.resume();
       var input = event.inputBuffer.getChannelData(0);
-      var rawPeak = 0;
-      for (var n = 0; n < input.length; n++) {
-        var abs = input[n] < 0 ? -input[n] : input[n];
-        if (abs > rawPeak) rawPeak = abs;
-      }
+      var output = event.outputBuffer.getChannelData(0);
+      for (var z = 0; z < output.length; z++) output[z] = 0;
       var packed = encodePcm(input, event.inputBuffer.sampleRate || c.sampleRate || 48000);
-      var level = Math.max(packed.level, Math.min(1, rawPeak * 14));
       frameSeq += 1;
-      send({ type: "audio", b64: packed.b64, level: level, seq: frameSeq });
+      send({ type: "audio", b64: packed.b64, level: packed.level, seq: frameSeq });
     };
     send({ type: "mic-ready" });
   }
 
   function openMic(c) {
-    return navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(function (stream) {
+    var audioConstraints = {
+      echoCancellation: { ideal: true },
+      noiseSuppression: { ideal: true },
+      autoGainControl: { ideal: true },
+      channelCount: { ideal: 1 }
+    };
+    return navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false }).catch(function () {
+      return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    }).then(function (stream) {
       primed = true;
       attachProcessor(stream, c);
       send({ type: "mic-primed" });
@@ -256,7 +286,7 @@ const PAGE = `<!DOCTYPE html>
     if (!c) return null;
     if (!voiceGain) {
       voiceGain = c.createGain();
-      voiceGain.gain.value = 2.2;
+      voiceGain.gain.value = 1;
       voiceGain.connect(c.destination);
     }
     return voiceGain;
@@ -281,6 +311,7 @@ const PAGE = `<!DOCTYPE html>
       energy += sample * sample;
     }
     var rms = Math.sqrt(energy / pcm.length);
+    farRms = Math.max(farRms, rms);
     var level = Math.max(0, Math.min(1, rms * 8));
     var nowMs = Date.now();
     if (nowMs - lastLevelAt > 35) {
@@ -291,7 +322,7 @@ const PAGE = `<!DOCTYPE html>
     node.buffer = buffer;
     node.connect(dest);
     var now = c.currentTime;
-    if (!playAt || playAt < now + 0.01) playAt = now + 0.03;
+    if (!playAt || playAt < now) playAt = now + 0.04;
     node.start(playAt);
     playAt += buffer.duration;
   }
@@ -415,8 +446,6 @@ export function CallAudioBridge() {
           if (!url.startsWith("https://call-audio.local/")) return true;
           const path = url.slice("https://call-audio.local/".length);
           const kind = path.split("?")[0];
-          const levelMatch = /(?:^|&)l=([^&]+)/.exec(path.split("?")[1] || "");
-          const level = levelMatch ? Number(decodeURIComponent(levelMatch[1])) : 0;
           if (kind === "ready") {
             pageReady = true;
             const queued = pending.splice(0, pending.length);
@@ -426,9 +455,8 @@ export function CallAudioBridge() {
           } else if (kind === "mic-error") {
             settleMicWaiters(false);
             onMicError?.();
-          } else if (kind === "meter" && Number.isFinite(level)) {
+          } else if (kind === "meter") {
             micCaptureLive = true;
-            publishPartnerLevel(Math.min(1, level));
           }
           return false;
         }}
@@ -460,9 +488,9 @@ export function CallAudioBridge() {
               onMicError?.();
               return;
             }
-            if (msg.type === "meter" || msg.type === "audio") {
-              const level = Math.min(1, Number(msg.level) || 0);
-              if (level > 0) publishPartnerLevel(level);
+            if (msg.type === "level") {
+              publishPartnerLevel(Math.min(1, Number(msg.level) || 0));
+              return;
             }
             if (msg.type === "audio" && msg.b64) {
               micCaptureLive = true;
