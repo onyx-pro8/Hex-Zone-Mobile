@@ -23,33 +23,36 @@ import { Button } from "@/components/ui/Button";
 import { FormSelect } from "@/components/ui/FormSelect";
 import { useAuth } from "@/context/AuthContext";
 import { isSystemAdministrator } from "@/lib/accountLimits";
-import { getMembers, type Member } from "@/api/members";
 import {
   approveUniversalAccessRequest,
-  createUniversalAccessRequest,
+  createInviteUniversalAccessRequest,
+  createPlaceAccessUniversalRequest,
   getUniversalAccessRequest,
+  listShareableUniversalZones,
   listUniversalAccessRequests,
   rejectUniversalAccessRequest,
+  searchUniversalAccessInvitees,
   setUniversalAccessEnabled,
+  type UniversalAccessInvitee,
   type UniversalAccessRequestRow,
+  type UniversalAccessZone,
 } from "@/api/universalAccess";
-import { toast } from "@/lib/toast";
 import {
   cityOptions,
   COUNTRY_OPTIONS,
   countryName,
-  matchRegion,
   regionName,
   regionOptions,
 } from "@/lib/places";
+import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
-type Tab = "compose" | "list";
+type Tab = "invite" | "place" | "list";
 
 async function photoDataUrl(): Promise<string | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
-    toast.error("Photo library permission is required for the photo ID.");
+    toast.error("Photo library permission is required.");
     return null;
   }
   const picked = await ImagePicker.launchImageLibraryAsync({
@@ -79,28 +82,34 @@ export default function AccessCodesScreen() {
     accountType: user?.accountType,
     legacyAccountType: user?.account_type,
   });
-  const [tab, setTab] = useState<Tab>(isSystemAdmin ? "list" : "compose");
+  const [tab, setTab] = useState<Tab>(isSystemAdmin ? "list" : "invite");
   const [rows, setRows] = useState<UniversalAccessRequestRow[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
+  const [zones, setZones] = useState<UniversalAccessZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const loadedOnce = useRef(false);
-  const [memberId, setMemberId] = useState("");
-  const [address, setAddress] = useState("");
+
+  const [inviteeEmail, setInviteeEmail] = useState("");
+  const [invitee, setInvitee] = useState<UniversalAccessInvitee | null>(null);
+  const [inviteeMatches, setInviteeMatches] = useState<UniversalAccessInvitee[]>([]);
+  const [lookingUp, setLookingUp] = useState(false);
+  const [inviteeHint, setInviteeHint] = useState("");
+  const [selectedZoneIds, setSelectedZoneIds] = useState<number[]>([]);
+  const [inviteNote, setInviteNote] = useState("");
+
   const [country, setCountry] = useState("US");
   const [region, setRegion] = useState("");
   const [city, setCity] = useState("");
-  const [note, setNote] = useState("");
+  const [placeNote, setPlaceNote] = useState("");
   const [photo, setPhoto] = useState("");
+  const [businessDoc, setBusinessDoc] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [detail, setDetail] = useState<UniversalAccessRequestRow | null>(null);
+  const [approveZoneIds, setApproveZoneIds] = useState<number[]>([]);
   const [rejectReason, setRejectReason] = useState("");
 
-  const selected = useMemo(
-    () => members.find((member) => member.id === memberId) ?? null,
-    [members, memberId],
-  );
   const regions = useMemo(() => {
     const base = regionOptions(country);
     if (region && !base.some((item) => item.value === region)) {
@@ -116,23 +125,19 @@ export default function AccessCodesScreen() {
     return base;
   }, [country, region, city]);
 
-  function applyCountry(iso: string) {
-    setCountry(iso);
-    const nextRegions = regionOptions(iso);
-    setRegion(nextRegions.length === 1 ? nextRegions[0].value : "");
-    setCity("");
-  }
-
   const reload = useCallback(async () => {
     if (loadedOnce.current) setRefreshing(true);
     else setLoading(true);
-    const [requestResult, memberResult] = await Promise.all([
+    const [requestResult, zoneResult] = await Promise.all([
       listUniversalAccessRequests(),
-      isSystemAdmin ? Promise.resolve({ data: [] as Member[], error: null }) : getMembers(),
+      isSystemAdmin
+        ? Promise.resolve({ data: [] as UniversalAccessZone[], error: null })
+        : listShareableUniversalZones(),
     ]);
     if (requestResult.error) toast.error(requestResult.error);
+    if (zoneResult.error) toast.error(zoneResult.error);
     setRows(requestResult.data ?? []);
-    setMembers(memberResult.data ?? []);
+    setZones(zoneResult.data ?? []);
     loadedOnce.current = true;
     setLoading(false);
     setRefreshing(false);
@@ -144,55 +149,115 @@ export default function AccessCodesScreen() {
     }, [reload]),
   );
 
+  useEffect(() => {
+    if (invitee && invitee.email === inviteeEmail.trim()) {
+      setInviteeMatches([]);
+      setLookingUp(false);
+      return;
+    }
+    const query = inviteeEmail.trim();
+    if (query.length < 2) {
+      setInviteeMatches([]);
+      setInviteeHint("");
+      setLookingUp(false);
+      return;
+    }
+    let cancelled = false;
+    setLookingUp(true);
+    setInviteeHint("");
+    const timer = setTimeout(() => {
+      void searchUniversalAccessInvitees(query).then((result) => {
+        if (cancelled) return;
+        setLookingUp(false);
+        const matches = Array.isArray(result.data) ? result.data.slice(0, 5) : [];
+        setInviteeMatches(matches);
+        if (result.error) setInviteeHint(result.error);
+        else if (matches.length === 0) {
+          setInviteeHint("No account in any network matches.");
+        }
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [invitee, inviteeEmail]);
+
   const tabs: { key: Tab; label: string }[] = isSystemAdmin
-    ? [
-        { key: "list", label: "Incoming" },
-        { key: "compose", label: "Issued" },
-      ]
+    ? [{ key: "list", label: "Incoming" }]
     : [
-        { key: "compose", label: "New request" },
+        { key: "invite", label: "Invite" },
+        { key: "place", label: "Access other" },
         { key: "list", label: "My requests" },
       ];
-  const issued = rows.filter((row) => row.status === "approved");
-  const tableRows = isSystemAdmin && tab === "compose" ? issued : rows;
 
-  async function onSubmit() {
-    if (!selected) {
-      toast.error("Pick a member who already has an account.");
+  function toggleZone(id: number, current: number[], setCurrent: (next: number[]) => void) {
+    setCurrent(current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  async function onSubmitInvite() {
+    if (!invitee) {
+      toast.error("Pick an invitee from the search results.");
+      return;
+    }
+    if (selectedZoneIds.length === 0) {
+      toast.error("Select at least one primary or communal zone.");
+      return;
+    }
+    setSubmitting(true);
+    const result = await createInviteUniversalAccessRequest({
+      invitee_email: invitee.email,
+      zone_ids: selectedZoneIds,
+      note: inviteNote.trim(),
+    });
+    setSubmitting(false);
+    if (result.error || !result.data) {
+      toast.error(result.error || "Could not submit the invite.");
+      return;
+    }
+    toast.success("Invite sent to the system administrator.");
+    setInvitee(null);
+    setInviteeEmail("");
+    setSelectedZoneIds([]);
+    setInviteNote("");
+    setTab("list");
+    await reload();
+  }
+
+  async function onSubmitPlace() {
+    if (!country.trim() && !region.trim() && !city.trim()) {
+      toast.error("Enter at least a country, state/province, or city.");
       return;
     }
     if (!photo) {
       toast.error("Photo ID is required.");
       return;
     }
-    if (!region.trim() || !city.trim() || !address.trim()) {
-      toast.error("Address, state/province, and city are required.");
+    if (!businessDoc) {
+      toast.error("Business document is required.");
       return;
     }
     setSubmitting(true);
-    const result = await createUniversalAccessRequest({
-      member_id: Number(selected.id),
-      address: address.trim(),
-      photo_id: photo,
+    const result = await createPlaceAccessUniversalRequest({
       country: countryName(country),
-      region: regionName(country, region).trim(),
+      region: region ? regionName(country, region).trim() : "",
       city: city.trim(),
-      note: note.trim(),
+      photo_id: photo,
+      business_document: businessDoc,
+      note: placeNote.trim(),
     });
     setSubmitting(false);
     if (result.error || !result.data) {
       toast.error(result.error || "Could not submit the request.");
       return;
     }
-    setMemberId("");
-    setAddress("");
-    setCountry("US");
+    toast.success("Place access request sent.");
     setRegion("");
     setCity("");
-    setNote("");
+    setPlaceNote("");
     setPhoto("");
+    setBusinessDoc("");
     setTab("list");
-    toast.success("Request sent.");
     await reload();
   }
 
@@ -209,15 +274,23 @@ export default function AccessCodesScreen() {
   }
 
   async function onApprove(row: UniversalAccessRequestRow) {
+    if (row.request_kind === "place_access" && approveZoneIds.length === 0) {
+      toast.error("Select at least one matching zone.");
+      return;
+    }
     setBusyId(row.id);
-    const result = await approveUniversalAccessRequest(row.id);
+    const result = await approveUniversalAccessRequest(
+      row.id,
+      row.request_kind === "place_access" ? approveZoneIds : undefined,
+    );
     setBusyId(null);
     if (result.error) {
       toast.error(result.error);
       return;
     }
+    toast.success("Request approved.");
     setDetail(null);
-    toast.success("Access code issued.");
+    setApproveZoneIds([]);
     await reload();
   }
 
@@ -229,7 +302,7 @@ export default function AccessCodesScreen() {
       toast.error(result.error);
       return;
     }
-    setRejectReason("");
+    toast.success("Request rejected.");
     setDetail(null);
     await reload();
   }
@@ -254,20 +327,18 @@ export default function AccessCodesScreen() {
             }
           >
             <ScreenHeader
-              title="Access codes"
-              subtitle={isSystemAdmin ? "Review every network" : "Ask for a universal code"}
+              title="Universal Access"
+              subtitle={
+                isSystemAdmin
+                  ? "Review invite and place-access requests"
+                  : "Invite someone, or ask to enter other zones"
+              }
               showBack
               onBack={() => router.replace("/(tabs)/settings")}
             />
-            <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 20 }}>
               {tabs.map((item) => (
-                <Pressable
-                  key={item.key}
-                  onPress={() => {
-                    setTab(item.key);
-                    void reload();
-                  }}
-                >
+                <Pressable key={item.key} onPress={() => setTab(item.key)}>
                   <Text
                     style={{
                       color: tab === item.key ? colors.accent : colors.textMuted,
@@ -289,57 +360,155 @@ export default function AccessCodesScreen() {
               <ActivityIndicator style={{ marginTop: 24 }} color={colors.accent} />
             ) : null}
 
-            {!loading && tab === "compose" && !isSystemAdmin ? (
+            {!loading && tab === "invite" && !isSystemAdmin ? (
               <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
                 <Card style={{ gap: 12 }}>
-                  <FormSelect
-                    label="Member"
-                    value={memberId}
-                    options={[
-                      { value: "", label: "Choose a member" },
-                      ...members.map((member) => ({
-                        value: member.id,
-                        label: member.name,
-                      })),
-                    ]}
-                    onChange={(id) => {
-                      setMemberId(id);
-                      const member = members.find((row) => row.id === id);
-                      setAddress(member?.address ?? "");
-                    }}
+                  <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+                    Invite an existing account into your primary or communal zones. No ID
+                    documents are required.
+                  </Text>
+                  <View style={{ zIndex: 5 }}>
+                    <Editor
+                      label="Invitee email"
+                      value={inviteeEmail}
+                      onChange={(value) => {
+                        setInviteeEmail(value);
+                        setInvitee(null);
+                      }}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                    {lookingUp ? (
+                      <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 6 }}>
+                        Searching every network…
+                      </Text>
+                    ) : null}
+                    {inviteeHint ? (
+                      <Text style={{ color: colors.danger, fontSize: 12, marginTop: 6 }}>
+                        {inviteeHint}
+                      </Text>
+                    ) : null}
+                    {inviteeMatches.length > 0 ? (
+                      <View
+                        style={{
+                          marginTop: 6,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          backgroundColor: "#fff",
+                        }}
+                      >
+                        {inviteeMatches.map((match) => (
+                          <Pressable
+                            key={match.id}
+                            onPress={() => {
+                              setInvitee(match);
+                              setInviteeEmail(match.email);
+                              setInviteeMatches([]);
+                            }}
+                            style={{
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                            }}
+                          >
+                            <Text style={{ color: colors.text, fontWeight: "700" }}>
+                              {match.email}
+                            </Text>
+                            <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                              {[match.name, match.network_id].filter(Boolean).join(" · ")}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                  {invitee ? (
+                    <Locked
+                      label="Selected invitee"
+                      value={`${invitee.name} · ${invitee.email}`}
+                    />
+                  ) : null}
+
+                  <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700" }}>
+                    ZONES TO SHARE
+                  </Text>
+                  {zones.length === 0 ? (
+                    <Text style={{ color: colors.textDim, fontSize: 13 }}>
+                      Create a primary or communal zone first.
+                    </Text>
+                  ) : (
+                    zones.map((zone) => {
+                      const active = selectedZoneIds.includes(zone.id);
+                      return (
+                        <Pressable
+                          key={zone.id}
+                          onPress={() =>
+                            toggleZone(zone.id, selectedZoneIds, setSelectedZoneIds)
+                          }
+                          style={{
+                            borderRadius: 10,
+                            borderWidth: 1,
+                            borderColor: active ? colors.accent : colors.border,
+                            backgroundColor: active ? colors.accentGlow : "#F7FAFE",
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                          }}
+                        >
+                          <Text style={{ color: colors.text, fontWeight: "700" }}>
+                            {zone.name}
+                          </Text>
+                          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                            {[
+                              zone.zone_type,
+                              zone.is_primary ? "primary" : null,
+                              zone.communal ? "communal" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </Text>
+                        </Pressable>
+                      );
+                    })
+                  )}
+                  <Editor label="Note" value={inviteNote} onChange={setInviteNote} />
+                  <Button
+                    label={submitting ? "Sending…" : "Send invite request"}
+                    size="sm"
+                    fullWidth
+                    disabled={submitting}
+                    onPress={() => void onSubmitInvite()}
                   />
-                  <Locked label="Name" value={selected?.name ?? ""} />
-                  <Locked label="Registered email" value={selected?.email ?? ""} />
-                  <AddressSearch
-                    value={address}
-                    onChange={setAddress}
-                    onPick={(hit) => {
-                      setAddress(hit.street);
-                      if (
-                        hit.countryIso &&
-                        COUNTRY_OPTIONS.some((item) => item.value === hit.countryIso)
-                      ) {
-                        setCountry(hit.countryIso);
-                        setRegion(hit.region);
-                        setCity(hit.city);
-                      }
-                    }}
-                  />
+                </Card>
+              </View>
+            ) : null}
+
+            {!loading && tab === "place" && !isSystemAdmin ? (
+              <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
+                <Card style={{ gap: 12 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+                    Ask for access to other networks&apos; zones in a place. Attach photo ID
+                    and a business document. Fill at least one place field.
+                  </Text>
                   <FormSelect
                     label="Country"
                     value={country}
                     searchable
                     options={COUNTRY_OPTIONS}
-                    onChange={applyCountry}
+                    onChange={(iso) => {
+                      setCountry(iso);
+                      const next = regionOptions(iso);
+                      setRegion(next.length === 1 ? next[0].value : "");
+                      setCity("");
+                    }}
                   />
                   <FormSelect
                     label="State / Province"
                     value={region}
                     searchable
-                    options={[
-                      { value: "", label: "Select state / province" },
-                      ...regions,
-                    ]}
+                    options={[{ value: "", label: "Optional" }, ...regions]}
                     onChange={(value) => {
                       setRegion(value);
                       setCity("");
@@ -349,14 +518,17 @@ export default function AccessCodesScreen() {
                     label="City"
                     value={city}
                     searchable
-                    disabled={!region}
+                    disabled={!region && regions.length > 0}
                     options={[
-                      { value: "", label: region ? "Select city" : "Select a state or province first" },
+                      {
+                        value: "",
+                        label: region ? "Optional" : "Optional — pick a state first if needed",
+                      },
                       ...cities,
                     ]}
                     onChange={setCity}
                   />
-                  <Editor label="Note" value={note} onChange={setNote} />
+                  <Editor label="Note" value={placeNote} onChange={setPlaceNote} />
                   <Button
                     label={photo ? "Replace photo ID" : "Add photo ID"}
                     variant="outline"
@@ -375,30 +547,46 @@ export default function AccessCodesScreen() {
                     />
                   ) : null}
                   <Button
-                    label={submitting ? "Sending…" : "Submit request"}
+                    label={businessDoc ? "Replace business document" : "Add business document"}
+                    variant="outline"
+                    size="sm"
+                    fullWidth
+                    onPress={() => {
+                      void photoDataUrl().then((url) => {
+                        if (url) setBusinessDoc(url);
+                      });
+                    }}
+                  />
+                  {businessDoc ? (
+                    <Image
+                      source={{ uri: businessDoc }}
+                      style={{ width: 120, height: 84, borderRadius: 8 }}
+                    />
+                  ) : null}
+                  <Button
+                    label={submitting ? "Sending…" : "Send place-access request"}
                     size="sm"
                     fullWidth
                     disabled={submitting}
-                    onPress={() => void onSubmit()}
+                    onPress={() => void onSubmitPlace()}
                   />
                 </Card>
               </View>
             ) : null}
 
-            {!loading && (tab === "list" || (isSystemAdmin && tab === "compose")) ? (
+            {!loading && tab === "list" ? (
               <View style={{ paddingHorizontal: 20, marginTop: 12, gap: 10 }}>
-                {tableRows.length === 0 ? (
-                  <Text style={{ color: colors.textMuted, paddingHorizontal: 4 }}>
-                    Nothing here yet.
-                  </Text>
+                {rows.length === 0 ? (
+                  <Text style={{ color: colors.textMuted }}>Nothing here yet.</Text>
                 ) : null}
-                {tableRows.map((row) => (
+                {rows.map((row) => (
                   <Card key={row.id} style={{ gap: 6 }}>
                     <Text style={{ color: colors.text, fontWeight: "800" }}>
+                      {row.request_kind === "place_access" ? "Place access" : "Invite"} ·{" "}
                       {row.member_name}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      {row.place}
+                      {row.place || "No zones"}
                       {isSystemAdmin ? ` · ${row.network_id}` : ""}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -408,7 +596,7 @@ export default function AccessCodesScreen() {
                       {row.enabled === true ? " · on" : ""}
                     </Text>
                     {row.reject_reason ? (
-                      <Text style={{ color: "#E23B4E", fontSize: 12 }}>
+                      <Text style={{ color: colors.danger, fontSize: 12 }}>
                         {row.reject_reason}
                       </Text>
                     ) : null}
@@ -433,9 +621,12 @@ export default function AccessCodesScreen() {
                         size="sm"
                         onPress={() => {
                           setRejectReason("");
+                          setApproveZoneIds([]);
                           void getUniversalAccessRequest(row.id).then((result) => {
-                            if (result.data) setDetail(result.data);
-                            else if (result.error) toast.error(result.error);
+                            if (result.data) {
+                              setDetail(result.data);
+                              setApproveZoneIds([]);
+                            } else if (result.error) toast.error(result.error);
                           });
                         }}
                       />
@@ -444,8 +635,8 @@ export default function AccessCodesScreen() {
                 ))}
               </View>
             ) : null}
-
           </ScrollView>
+
           <Modal
             visible={detail != null}
             transparent
@@ -474,17 +665,16 @@ export default function AccessCodesScreen() {
                       contentContainerStyle={{ gap: 10 }}
                     >
                       <Text style={{ color: colors.text, fontSize: 18, fontWeight: "800" }}>
-                        {detail.member_name}
+                        {detail.request_kind === "place_access"
+                          ? "Place access"
+                          : "Invite"}{" "}
+                        · {detail.member_name}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                         {detail.email}
                       </Text>
                       <Text style={{ color: colors.text, fontSize: 14 }}>
-                        {detail.address}
-                      </Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                        {detail.place}
-                        {detail.network_id ? ` · ${detail.network_id}` : ""}
+                        {detail.place || "No zones"}
                       </Text>
                       {detail.note ? (
                         <Text style={{ color: colors.textMuted, fontSize: 13 }}>
@@ -497,12 +687,85 @@ export default function AccessCodesScreen() {
                           resizeMode="contain"
                           style={{
                             width: "100%",
-                            height: 220,
+                            height: 160,
                             borderRadius: 12,
                             backgroundColor: "#F7FAFE",
                           }}
                         />
                       ) : null}
+                      {detail.business_document?.startsWith("data:image/") ? (
+                        <Image
+                          source={{ uri: detail.business_document }}
+                          resizeMode="contain"
+                          style={{
+                            width: "100%",
+                            height: 160,
+                            borderRadius: 12,
+                            backgroundColor: "#F7FAFE",
+                          }}
+                        />
+                      ) : detail.business_document ? (
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                          Business document attached.
+                        </Text>
+                      ) : null}
+
+                      {detail.request_kind === "place_access" ? (
+                        <View style={{ gap: 8 }}>
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 11,
+                              fontWeight: "700",
+                            }}
+                          >
+                            MATCHING ZONES
+                          </Text>
+                          {(detail.candidate_zones ?? []).length === 0 ? (
+                            <Text style={{ color: colors.textDim, fontSize: 13 }}>
+                              No matching zones found for this place.
+                            </Text>
+                          ) : (
+                            (detail.candidate_zones ?? []).map((zone) => {
+                              const active = approveZoneIds.includes(zone.id);
+                              return (
+                                <Pressable
+                                  key={zone.id}
+                                  onPress={() =>
+                                    toggleZone(zone.id, approveZoneIds, setApproveZoneIds)
+                                  }
+                                  style={{
+                                    borderRadius: 10,
+                                    borderWidth: 1,
+                                    borderColor: active ? colors.accent : colors.border,
+                                    backgroundColor: active ? colors.accentGlow : "#F7FAFE",
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 10,
+                                  }}
+                                >
+                                  <Text style={{ color: colors.text, fontWeight: "700" }}>
+                                    {zone.name}
+                                  </Text>
+                                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                                    {[zone.network_id, zone.zone_type]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })
+                          )}
+                        </View>
+                      ) : (
+                        <View style={{ gap: 4 }}>
+                          {(detail.zones ?? []).map((zone) => (
+                            <Text key={zone.id} style={{ color: colors.textMuted, fontSize: 13 }}>
+                              {zone.name}
+                            </Text>
+                          ))}
+                        </View>
+                      )}
+
                       <Editor
                         label="Reject reason (optional)"
                         value={rejectReason}
@@ -542,146 +805,6 @@ export default function AccessCodesScreen() {
   );
 }
 
-type AddressHit = {
-  id: string;
-  label: string;
-  street: string;
-  countryIso: string;
-  region: string;
-  city: string;
-};
-
-type PhotonFeature = {
-  properties?: {
-    osm_id?: number;
-    name?: string;
-    street?: string;
-    housenumber?: string;
-    city?: string;
-    state?: string;
-    county?: string;
-    country?: string;
-    countrycode?: string;
-  };
-};
-
-function toAddressHit(feature: PhotonFeature, index: number): AddressHit {
-  const parts = feature.properties ?? {};
-  const street = [parts.housenumber, parts.street || parts.name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  const countryIso = (parts.countrycode ?? "").toUpperCase();
-  const city = parts.city || "";
-  const stateName = parts.state || parts.county || "";
-  const label = [street, city, stateName, parts.country].filter(Boolean).join(", ");
-  return {
-    id: String(parts.osm_id ?? index),
-    label: label || street,
-    street,
-    countryIso,
-    region: countryIso ? matchRegion(countryIso, stateName) || stateName : "",
-    city,
-  };
-}
-
-function AddressSearch({
-  value,
-  onChange,
-  onPick,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  onPick: (hit: AddressHit) => void;
-}) {
-  const [hits, setHits] = useState<AddressHit[]>([]);
-  const [searching, setSearching] = useState(false);
-  const skip = useRef("");
-
-  useEffect(() => {
-    if (value === skip.current) return;
-    const query = value.trim();
-    if (query.length < 3) {
-      setHits([]);
-      setSearching(false);
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      setSearching(true);
-      fetch(
-        `https://photon.komoot.io/api/?limit=6&q=${encodeURIComponent(query)}`,
-        { signal: controller.signal, headers: { Accept: "application/json" } },
-      )
-        .then((response) => (response.ok ? response.json() : { features: [] }))
-        .then((payload: { features?: PhotonFeature[] }) => {
-          setHits(
-            (payload.features ?? [])
-              .map(toAddressHit)
-              .filter((hit) => hit.street),
-          );
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) setHits([]);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setSearching(false);
-        });
-    }, 600);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [value]);
-
-  return (
-    <View style={{ gap: 6 }}>
-      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: "700" }}>
-        ADDRESS
-      </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder="Search street or place"
-        placeholderTextColor={colors.textDim}
-        autoCorrect={false}
-        style={{
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          color: colors.text,
-          backgroundColor: "#F7FAFE",
-        }}
-      />
-      {searching ? (
-        <Text style={{ color: colors.textDim, fontSize: 12 }}>Searching…</Text>
-      ) : null}
-      {hits.map((hit) => (
-        <Pressable
-          key={hit.id}
-          onPress={() => {
-            skip.current = hit.street;
-            setHits([]);
-            onPick(hit);
-          }}
-          style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            backgroundColor: "#FFFFFF",
-          }}
-        >
-          <Text style={{ color: colors.text, fontSize: 13 }}>{hit.label}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
 function Locked({ label, value }: { label: string; value: string }) {
   return (
     <View style={{ gap: 4 }}>
@@ -697,10 +820,14 @@ function Editor({
   label,
   value,
   onChange,
+  keyboardType,
+  autoCapitalize,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  keyboardType?: "default" | "email-address";
+  autoCapitalize?: "none" | "sentences";
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -710,6 +837,8 @@ function Editor({
       <TextInput
         value={value}
         onChangeText={onChange}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
         placeholderTextColor={colors.textDim}
         style={{
           borderWidth: 1,

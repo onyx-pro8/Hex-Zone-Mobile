@@ -59,8 +59,8 @@ export default function SettingsScreen() {
             {isAdmin ? (
               <SettingsNavRow
                 icon={<KeyRound size={18} color={colors.accent} />}
-                title="Access codes"
-                subtitle="Request or review universal access"
+                title="Universal Access"
+                subtitle="Invite to your zones, or ask for place access"
                 onPress={() => router.push("/(tabs)/access-codes")}
               />
             ) : null}
