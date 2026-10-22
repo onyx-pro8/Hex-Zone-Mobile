@@ -34,6 +34,7 @@ import {
   type ZoneReferenceValidateResult,
   type ZoneType,
 } from "@/api/zones";
+import { subscribeRealtimeMessages } from "@/hooks/useWebSocket";
 import { AUTH_MAP_DEFAULT_CENTER, type LatLng } from "@/lib/h3";
 import { getStoredMapCenter, setStoredMapCenter } from "@/lib/storage";
 import {
@@ -427,6 +428,32 @@ export function useZoneBuilder(
 
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    return subscribeRealtimeMessages((raw) => {
+      try {
+        const parsed = JSON.parse(raw) as {
+          type?: string;
+          data?: { zones?: SavedZone[] };
+        };
+        if (parsed.type !== "UNIVERSAL_ZONES_GRANTED") return;
+        const incoming = Array.isArray(parsed.data?.zones) ? parsed.data.zones : [];
+        if (incoming.length > 0) {
+          setLayers((prev) => {
+            const byId = new Map(prev.map((layer) => [layer.id, layer]));
+            incoming.forEach((row, index) => {
+              const layer = zoneRecordToLayer(row, prev.length + index);
+              if (layer) byId.set(layer.id, layer);
+            });
+            return Array.from(byId.values());
+          });
+        }
+        void refresh();
+      } catch {
+        // ignore non-JSON frames
+      }
+    });
   }, [refresh]);
 
   /** Live dynamic preview, debounced. */
