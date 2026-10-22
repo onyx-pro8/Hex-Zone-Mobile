@@ -349,7 +349,7 @@ function MemberInviteSection({
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
         {isSystemAdmin
           ? "Invitees create an Individual user account for a new network and choose their own network ID on the join form. Every link is single-use, including ones that never expire. Generate multiple codes when you need a batch for handout or printing."
-          : "Invitees join this network as user-role members (Family/Organization keep your account type; Individual Pro invites one Individual). Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
+          : "Invitees join this network as user-role members (Family and Organization keep your account type). Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
       </Text>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

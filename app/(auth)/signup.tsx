@@ -78,7 +78,7 @@ const accountOptions: {
   {
     value: "ENHANCED",
     title: "Individual Pro",
-    lines: ["1 device only", "Extended zone capabilities"],
+    lines: ["Administrator only", "1 device · no member invites"],
   },
   {
     value: "ENHANCED_PLUS",
@@ -134,6 +134,7 @@ export default function SignupScreen() {
   const [regCodeLoading, setRegCodeLoading] = useState(false);
 
   const isIndividual = accountType === "EXCLUSIVE";
+  const isIndividualPro = accountType === "ENHANCED";
   const isInviteFlow = Boolean(inviteToken);
 
   const loadRegistrationCode = useCallback(async () => {
@@ -170,6 +171,9 @@ export default function SignupScreen() {
       setRegCodeLoading(false);
       return;
     }
+    if (accountType === "ENHANCED") {
+      setRegistrationType("ADMINISTRATOR");
+    }
     if (registrationType === "USER") {
       setRegistrationCode("");
       setRegCodeLoading(false);
@@ -183,7 +187,7 @@ export default function SignupScreen() {
       addressCoords ?? addressToMockCoords(address) ?? AUTH_MAP_DEFAULT_CENTER,
     [address, addressCoords],
   );
-  const joiningNetwork = !isIndividual && registrationType === "USER";
+  const joiningNetwork = !isIndividual && !isIndividualPro && registrationType === "USER";
   const selectedZoneId = joiningNetwork
     ? existingZoneId.trim()
     : useExistingZone && existingZoneId.trim()
@@ -247,7 +251,9 @@ export default function SignupScreen() {
   const onSubmit = async () => {
     const effectiveRegistrationType: RegistrationType = isIndividual
       ? "USER"
-      : registrationType;
+      : isIndividualPro
+        ? "ADMINISTRATOR"
+        : registrationType;
     const code = isIndividual ? "FREE" : registrationCode.trim();
     if (!isIndividual && !joiningNetwork && !code) {
       toast.error(
@@ -521,6 +527,8 @@ export default function SignupScreen() {
                             setRegistrationCode(
                               inviteToken ? inviteToken : "FREE",
                             );
+                          } else if (option.value === "ENHANCED") {
+                            setRegistrationType("ADMINISTRATOR");
                           } else if (registrationType !== "USER") {
                             setRegistrationType("ADMINISTRATOR");
                           }
@@ -569,7 +577,7 @@ export default function SignupScreen() {
                   })}
                 </View>
 
-                {!isIndividual ? (
+                {!isIndividual && !isIndividualPro ? (
                   <View
                     style={{
                       padding: 14,
@@ -634,6 +642,39 @@ export default function SignupScreen() {
                         that network, so you do not need an account owner ID.
                       </Text>
                     ) : null}
+                  </View>
+                ) : isIndividualPro ? (
+                  <View
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                      marginTop: 4,
+                    }}
+                  >
+                    <Text style={labelStyle}>Role</Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontSize: 14,
+                        fontWeight: "600",
+                      }}
+                    >
+                      Administrator
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textDim,
+                        fontSize: 11,
+                        marginTop: 6,
+                        lineHeight: 16,
+                      }}
+                    >
+                      Individual Pro accounts are administrator only. They cannot
+                      invite members or generate a member access QR code.
+                    </Text>
                   </View>
                 ) : (
                   <View

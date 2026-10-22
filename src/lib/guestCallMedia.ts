@@ -6,7 +6,6 @@
  */
 
 import { Platform } from "react-native";
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 import {
   isCallMicLive,
   postCallAudio,
@@ -67,25 +66,24 @@ async function getUserMedia(): Promise<MediaStream | null> {
 async function setCallAudioRoute(active: boolean): Promise<void> {
   if (Platform.OS === "web") return;
   try {
-    await Audio.setAudioModeAsync(
+    // Loaded only when a call starts. A static expo-av import crashes the app
+    // on SDK 54, where the ExponentAV native module is no longer present.
+    const { setAudioModeAsync } = await import("expo-audio");
+    await setAudioModeAsync(
       active
         ? {
-            allowsRecordingIOS: true,
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: false,
-            interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-            interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
-            shouldDuckAndroid: false,
-            playThroughEarpieceAndroid: false,
+            allowsRecording: true,
+            playsInSilentMode: true,
+            shouldPlayInBackground: false,
+            interruptionMode: "doNotMix",
+            shouldRouteThroughEarpiece: false,
           }
         : {
-            allowsRecordingIOS: false,
-            playsInSilentModeIOS: false,
-            staysActiveInBackground: false,
-            interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
-            interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-            shouldDuckAndroid: true,
-            playThroughEarpieceAndroid: false,
+            allowsRecording: false,
+            playsInSilentMode: false,
+            shouldPlayInBackground: false,
+            interruptionMode: "mixWithOthers",
+            shouldRouteThroughEarpiece: false,
           },
     );
   } catch {

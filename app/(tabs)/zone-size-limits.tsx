@@ -139,16 +139,20 @@ export default function ZoneSizeLimitsScreen() {
         <ScrollView contentContainerStyle={{ paddingBottom: 180 }}>
           <ScreenHeader
             title="Zone size limit"
-            subtitle="Network admin and member, per account type"
+            subtitle={
+              account === "enhanced"
+                ? "Administrator only for Individual Pro"
+                : "Network admin and member, per account type"
+            }
             showBack
             onBack={() => router.replace("/(tabs)/settings")}
           />
           <View style={{ paddingHorizontal: 20, gap: 12 }}>
             <Card style={{ gap: 12 }}>
               <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
-                Set the biggest one zone may be, and the biggest combined area
-                that person may cover. Each limit has its own unit. Polygons,
-                circles, and hex cells count. Leave a field empty for no limit.
+                {account === "enhanced"
+                  ? "Individual Pro is administrator only, so there is no member limit. Set the biggest one zone may be, and the biggest combined area that administrator may cover. Leave a field empty for no limit."
+                  : "Set the biggest one zone may be, and the biggest combined area that person may cover. Each limit has its own unit. Polygons, circles, and hex cells count. Leave a field empty for no limit."}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {ACCOUNTS.map((item) => {
@@ -172,7 +176,9 @@ export default function ZoneSizeLimitsScreen() {
                 })}
               </View>
             </Card>
-            {(["administrator", "user"] as const).map((role) => {
+            {(["administrator", "user"] as const)
+              .filter((role) => account !== "enhanced" || role === "administrator")
+              .map((role) => {
               const draft = rules.find((rule) => rule.account_type === account && rule.role === role);
               if (!draft) return null;
               return (
