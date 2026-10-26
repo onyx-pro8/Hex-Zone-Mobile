@@ -1222,36 +1222,48 @@ export default function AccessScreen() {
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
-          <AppHeader
-            title="Access"
-            subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
-          />
-
-          <AccessTabs
-            tab={tab}
-            onChange={setTab}
-            options={tabOptions}
-          />
-
-          {tab === "universal" ? <AccessCodesScreen embedded /> : null}
-
-          {isAdmin && tab === "member" ? (
-            <View style={{ paddingHorizontal: 20, gap: 16 }}>
-              <MemberInviteSection
-                disabled={memberInviteDisabled}
-                unavailableHint={memberInviteHint}
-                isSystemAdmin={isSystemAdmin}
-              />
+        {tab === "universal" ? (
+          <View style={{ flex: 1 }}>
+            <AppHeader
+              title="Access"
+              subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
+            />
+            <AccessTabs
+              tab={tab}
+              onChange={setTab}
+              options={tabOptions}
+            />
+            <View style={{ flex: 1, paddingBottom: 90 }}>
+              <AccessCodesScreen embedded />
             </View>
-          ) : null}
-
-          {isAdmin && tab === "guest" ? (
-            <View style={{ paddingHorizontal: 20, gap: 16 }}>
-              <NetworkAccessSection zoneId={effectiveZoneId} />
-            </View>
-          ) : null}
-        </ScrollView>
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
+            <AppHeader
+              title="Access"
+              subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
+            />
+            <AccessTabs
+              tab={tab}
+              onChange={setTab}
+              options={tabOptions}
+            />
+            {isAdmin && tab === "member" ? (
+              <View style={{ paddingHorizontal: 20, gap: 16 }}>
+                <MemberInviteSection
+                  disabled={memberInviteDisabled}
+                  unavailableHint={memberInviteHint}
+                  isSystemAdmin={isSystemAdmin}
+                />
+              </View>
+            ) : null}
+            {isAdmin && tab === "guest" ? (
+              <View style={{ paddingHorizontal: 20, gap: 16 }}>
+                <NetworkAccessSection zoneId={effectiveZoneId} />
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </GradientBackground>
   );

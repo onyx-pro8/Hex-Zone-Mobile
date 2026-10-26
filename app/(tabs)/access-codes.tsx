@@ -39,10 +39,70 @@ import {
   type UniversalAccessTargetNetwork,
   type UniversalAccessZone,
 } from "@/api/universalAccess";
+import {
+  Copy as CopyIcon,
+  RefreshCw as RefreshIcon,
+} from "lucide-react-native";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 type Tab = "invite" | "place" | "list";
+
+function CopyableAccessKey({
+  code,
+  label = "Access key",
+}: {
+  code: string;
+  label?: string;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        flexWrap: "wrap",
+      }}
+    >
+      <Text
+        style={{
+          color: colors.text,
+          fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+          flexShrink: 1,
+        }}
+      >
+        {label ? `${label}: ${code}` : code}
+      </Text>
+      <Pressable
+        onPress={() => {
+          void copyToClipboard(code).then((result) => {
+            if (result.ok) toast.success("Access key copied.", { title: "Copied" });
+            else toast.error(result.message || "Could not copy.");
+          });
+        }}
+        accessibilityLabel="Copy access key"
+        hitSlop={8}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.bgSurface,
+        }}
+      >
+        <CopyIcon size={12} color={colors.accent} />
+        <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>
+          Copy
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
 
 async function photoDataUrl(): Promise<string | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -359,19 +419,19 @@ export default function AccessCodesScreen({
           ) : null}
 
           <ScrollView
-            scrollEnabled={!embedded}
+            style={embedded ? { flex: 1 } : undefined}
             nestedScrollEnabled
-            contentContainerStyle={{ paddingBottom: embedded ? 24 : 120 }}
+            contentContainerStyle={{ paddingBottom: embedded ? 40 : 120 }}
             refreshControl={
-              embedded ? undefined : (
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={() => {
-                    setRefreshing(true);
-                    void reload().finally(() => setRefreshing(false));
-                  }}
-                />
-              )
+              <RefreshControl
+                refreshing={refreshing}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+                onRefresh={() => {
+                  setRefreshing(true);
+                  void reload().finally(() => setRefreshing(false));
+                }}
+              />
             }
           >
             {loading ? (
@@ -524,9 +584,7 @@ export default function AccessCodesScreen({
                     }}
                   />
                   {generatedCode ? (
-                    <Text style={{ color: colors.text, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>
-                      Access key: {generatedCode}
-                    </Text>
+                    <CopyableAccessKey code={generatedCode} />
                   ) : null}
                   <Button
                     label={
@@ -735,6 +793,37 @@ export default function AccessCodesScreen({
                     ...sheetCardCorners,
                   }}
                 >
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 2,
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    Pull down to refresh
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      setRefreshing(true);
+                      void reload().finally(() => setRefreshing(false));
+                    }}
+                    disabled={refreshing}
+                    hitSlop={8}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                      opacity: refreshing ? 0.6 : 1,
+                    }}
+                  >
+                    <RefreshIcon size={14} color={colors.accent} />
+                    <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+                      {refreshing ? "Refreshing…" : "Refresh"}
+                    </Text>
+                  </Pressable>
+                </View>
                 {rows.length === 0 ? (
                   <Text style={{ color: colors.textMuted }}>Nothing here yet.</Text>
                 ) : null}
@@ -752,20 +841,23 @@ export default function AccessCodesScreen({
                       }}
                     >
                       <Text style={{ color: colors.text, fontWeight: "800" }}>
-                        {row.request_kind === "place_access" ? "Access other" : "Invite"} ·{" "}
-                        {row.member_name}
+                        {row.request_kind === "place_access" ? "Access other" : "Invite"}
                         {row.key_type ? ` · ${row.key_type}` : ""}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                        {row.place || "No zones"}
-                        {row.network_id ? ` · ${row.network_id}` : ""}
-                      </Text>
-                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                        {row.status}
-                        {row.code ? ` · ${row.code}` : ""}
                         {row.created_at
-                          ? ` · ${new Date(row.created_at).toLocaleString()}`
-                          : ""}
+                          ? new Date(row.created_at).toLocaleString()
+                          : "—"}
+                      </Text>
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontSize: 12,
+                          fontWeight: "700",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {row.status}
                       </Text>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
                         {row.status === "approved" &&
@@ -865,15 +957,83 @@ export default function AccessCodesScreen({
           >
             <Card style={{ gap: 10 }}>
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
-                {detail?.request_kind === "place_access" ? "Access other" : "Invite"} ·{" "}
-                {detail?.member_name}
+                {detail?.request_kind === "place_access" ? "Access other" : "Invite"}
+                {detail?.key_type ? ` · ${detail.key_type}` : ""}
               </Text>
-              <Text style={{ color: colors.textMuted }}>{detail?.email}</Text>
-              <Text style={{ color: colors.textMuted }}>{detail?.place || "No zones"}</Text>
-              {detail?.code ? (
-                <Text style={{ color: colors.text, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>
-                  {detail.code}
+              <Text
+                style={{
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: "700",
+                  textTransform: "capitalize",
+                }}
+              >
+                {detail?.status}
+                {detail?.created_at
+                  ? ` · ${new Date(detail.created_at).toLocaleString()}`
+                  : ""}
+              </Text>
+              {detail?.request_kind === "invite" &&
+              detail?.key_type === "private" &&
+              detail?.email ? (
+                <View>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Invited user
+                  </Text>
+                  <Text style={{ color: colors.text }}>{detail.email}</Text>
+                  {detail.member_name ? (
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      {detail.member_name}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              <View>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    fontWeight: "700",
+                    textTransform: "uppercase",
+                    marginBottom: 4,
+                  }}
+                >
+                  Zones
                 </Text>
+                <Text style={{ color: colors.text }}>
+                  {(detail?.zones ?? []).map((zone) => zone.name).join(", ") ||
+                    detail?.place ||
+                    "No zones"}
+                </Text>
+                {detail?.network_id ? (
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                    {detail.network_id}
+                  </Text>
+                ) : null}
+              </View>
+              {detail?.code ? (
+                <View>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Access key
+                  </Text>
+                  <CopyableAccessKey code={detail.code} label="" />
+                </View>
               ) : null}
               {detail?.viewer_actions?.can_approve || detail?.viewer_actions?.can_reject ? (
                 <>
@@ -1014,7 +1174,7 @@ export default function AccessCodesScreen({
   );
 
   if (embedded) {
-    return <View>{panel}</View>;
+    return <View style={{ flex: 1 }}>{panel}</View>;
   }
 
   return (

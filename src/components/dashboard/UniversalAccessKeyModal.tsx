@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { KeyRound, X } from "lucide-react-native";
+import { Copy, KeyRound, X } from "lucide-react-native";
 import { Button } from "@/components/ui/Button";
 import {
   activatePublicUniversalAccessKey,
@@ -17,8 +17,38 @@ import {
   searchPublicUniversalAccessKeys,
   type UniversalAccessKeyRow,
 } from "@/api/universalAccess";
+import { copyToClipboard } from "@/lib/copyToClipboard";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
+
+function CopyKeyButton({ code }: { code: string }) {
+  return (
+    <Pressable
+      onPress={() => {
+        void copyToClipboard(code).then((result) => {
+          if (result.ok) toast.success("Access key copied.", { title: "Copied" });
+          else toast.error(result.message || "Could not copy.");
+        });
+      }}
+      accessibilityLabel="Copy access key"
+      hitSlop={8}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.bgSurface,
+      }}
+    >
+      <Copy size={12} color={colors.accent} />
+      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>Copy</Text>
+    </Pressable>
+  );
+}
 
 type Props = {
   open: boolean;
@@ -258,12 +288,29 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                       borderRadius: 10,
                       paddingHorizontal: 12,
                       paddingVertical: 10,
+                      gap: 6,
                     }}
                   >
-                    <Text style={{ color: colors.text, fontFamily: "monospace" }}>
-                      {item.code}
-                    </Text>
-                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.text,
+                          fontFamily: "monospace",
+                          flexShrink: 1,
+                        }}
+                      >
+                        {item.code}
+                      </Text>
+                      <CopyKeyButton code={item.code} />
+                    </View>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                       {(item.zones ?? []).map((zone) => zone.name).join(", ") || "Zones"}
                     </Text>
                   </View>
@@ -284,12 +331,26 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                   Activated public keys
                 </Text>
                 {activated.map((item) => (
-                  <Text
+                  <View
                     key={item.credential_id}
-                    style={{ color: colors.text, fontFamily: "monospace" }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
                   >
-                    {item.code}
-                  </Text>
+                    <Text
+                      style={{
+                        color: colors.text,
+                        fontFamily: "monospace",
+                        flexShrink: 1,
+                      }}
+                    >
+                      {item.code}
+                    </Text>
+                    <CopyKeyButton code={item.code} />
+                  </View>
                 ))}
               </View>
             ) : null}
