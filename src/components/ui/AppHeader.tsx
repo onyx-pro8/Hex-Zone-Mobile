@@ -22,8 +22,11 @@ type AppHeaderProps = {
   style?: ViewStyle;
   /** Tighter padding/icons for overlay layouts (e.g. Zones map). */
   compact?: boolean;
-  /** Rendered to the left of the emergency/siren icon. */
-  leadingActions?: ReactNode;
+  /**
+   * Icons to the left of siren/bell/avatar.
+   * Pass an array so each icon gets the same slot size and gap as the others.
+   */
+  leadingActions?: ReactNode | ReactNode[];
 };
 
 export function AppHeader({
@@ -41,10 +44,20 @@ export function AppHeader({
 
   const displayName = (user?.name ?? "").trim() || "Account";
   const displayEmail = (user?.email ?? "").trim() || "—";
-  /** Shared slot so leading / siren / bell / avatar share one vertical center. */
-  const actionSlot = compact ? 36 : 40;
+  /**
+   * Icon slots match glyph size so gaps between icons equal the gap from
+   * bell edge → avatar edge. Avatar keeps a larger tap target.
+   */
   const glyphSize = compact ? 18 : 20;
-  const bellGlyph = compact ? 18 : 20;
+  const iconSlot = glyphSize;
+  const avatarSlot = compact ? 36 : 40;
+  const leadingItems = (
+    Array.isArray(leadingActions)
+      ? leadingActions
+      : leadingActions
+        ? [leadingActions]
+        : []
+  ).filter((item) => item != null && item !== false);
 
   return (
     <View style={[styles.header, compact && styles.headerCompact, style]}>
@@ -67,26 +80,30 @@ export function AppHeader({
       </View>
 
       <View style={[styles.actions, compact && styles.actionsCompact]}>
-        {leadingActions ? (
-          <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
-            {leadingActions}
+        {leadingItems.map((item, index) => (
+          <View
+            key={`leading-${index}`}
+            style={[styles.actionSlot, { width: iconSlot, height: iconSlot }]}
+          >
+            {item}
           </View>
-        ) : null}
-        <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
+        ))}
+        <View style={[styles.actionSlot, { width: iconSlot, height: iconSlot }]}>
           <Pressable
             onPress={openQuickAlerts}
             accessibilityLabel="Quick alerts"
+            hitSlop={8}
             style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
           >
             <Siren size={glyphSize} color={colors.accent} strokeWidth={2.2} />
           </Pressable>
         </View>
-        <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
-          <AlertBellButton size={actionSlot} iconSize={bellGlyph} />
+        <View style={[styles.actionSlot, { width: iconSlot, height: iconSlot }]}>
+          <AlertBellButton size={iconSlot} iconSize={glyphSize} />
         </View>
-        <View style={[styles.actionSlot, { width: actionSlot, height: actionSlot }]}>
+        <View style={[styles.actionSlot, { width: avatarSlot, height: avatarSlot }]}>
           <ProfileAvatarButton
-            size={actionSlot}
+            size={avatarSlot}
             inset={false}
             selected={menuOpen}
             onPress={() => setMenuOpen(true)}
@@ -238,10 +255,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 18,
   },
   actionsCompact: {
-    gap: 6,
+    // Same gap between every action (icons ↔ icons ↔ avatar).
+    gap: 18,
     flexShrink: 0,
     alignItems: "center",
   },

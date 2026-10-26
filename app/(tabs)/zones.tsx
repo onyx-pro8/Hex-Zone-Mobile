@@ -36,6 +36,7 @@ import {
   type ZoneDrawToolId,
 } from "@/components/dashboard/ZoneToolsRail";
 import { ZonesPageHeader } from "@/components/dashboard/ZonesPageHeader";
+import { UniversalAccessKeyModal } from "@/components/dashboard/UniversalAccessKeyModal";
 import { Input } from "@/components/ui/Input";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import {
@@ -160,6 +161,7 @@ export default function DashboardScreen() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailScrollEnabled, setDetailScrollEnabled] = useState(true);
   const [listOpen, setListOpen] = useState(false);
+  const [universalKeyModalOpen, setUniversalKeyModalOpen] = useState(false);
   const [focusLayerId, setFocusLayerId] = useState<string | null>(null);
   const [focusLayerToken, setFocusLayerToken] = useState(0);
   const [focusShape, setFocusShape] = useState<{
@@ -559,9 +561,18 @@ export default function DashboardScreen() {
                   : "Save"
             }
             showSave
+            onUniversalAccessPress={() => setUniversalKeyModalOpen(true)}
           />
         </View>
       </SafeAreaView>
+
+      <UniversalAccessKeyModal
+        open={universalKeyModalOpen}
+        onClose={() => setUniversalKeyModalOpen(false)}
+        onActivated={() => {
+          void builder.refresh();
+        }}
+      />
 
       {drawInProgress && builder.areaLines ? (
         <View
