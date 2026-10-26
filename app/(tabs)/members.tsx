@@ -226,9 +226,11 @@ function ManageMemberModal({
 
   useEffect(() => {
     if (!member) return;
-    setAccountType(normalizeAccountType(member.account_type));
+    const nextType = normalizeAccountType(member.account_type);
+    setAccountType(nextType);
     setRole(
-      String(member.role ?? "").toLowerCase() === "administrator"
+      nextType === "ENHANCED" ||
+        String(member.role ?? "").toLowerCase() === "administrator"
         ? "administrator"
         : "user",
     );
@@ -325,11 +327,12 @@ function ManageMemberModal({
               Role
             </Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              {(
-                [
-                  { value: "administrator" as const, label: "Administrator" },
-                  { value: "user" as const, label: "User" },
-                ] as const
+              {(accountType === "ENHANCED"
+                ? ([{ value: "administrator" as const, label: "Administrator" }] as const)
+                : ([
+                    { value: "administrator" as const, label: "Administrator" },
+                    { value: "user" as const, label: "User" },
+                  ] as const)
               ).map((option) => {
                 const selected = role === option.value;
                 return (
@@ -384,7 +387,10 @@ function ManageMemberModal({
                   <Pressable
                     key={option.value}
                     disabled={busy}
-                    onPress={() => setAccountType(option.value)}
+                    onPress={() => {
+                      setAccountType(option.value);
+                      if (option.value === "ENHANCED") setRole("administrator");
+                    }}
                     style={{
                       borderRadius: 10,
                       paddingHorizontal: 10,

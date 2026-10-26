@@ -89,7 +89,7 @@ export default function TabsLayout() {
             options={{
               title: "Access",
               tabBarLabel: "Access",
-              href: isAdmin ? "/(tabs)/access-admin" : null,
+              href: "/(tabs)/access-admin",
             }}
           />
           <Tabs.Screen

@@ -22,6 +22,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react-native";
+import AccessCodesScreen from "./access-codes";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
@@ -52,7 +53,7 @@ import {
 import { downloadInviteQrCsv } from "@/lib/inviteQrExport";
 import { colors } from "@/theme/colors";
 
-type Tab = "member" | "guest";
+type Tab = "universal" | "member" | "guest";
 
 type ExpiryHours = number | null;
 
@@ -113,12 +114,14 @@ type GeneratedInvite = {
   expires_at: string | null;
 };
 
-function SegmentedTabs({
+function AccessTabs({
   tab,
   onChange,
+  options,
 }: {
   tab: Tab;
   onChange: (next: Tab) => void;
+  options: { key: Tab; title: string }[];
 }) {
   return (
     <View
@@ -134,17 +137,19 @@ function SegmentedTabs({
         gap: 4,
       }}
     >
-      {(["member", "guest"] as Tab[]).map((value) => {
-        const active = tab === value;
+      {options.map((option) => {
+        const active = tab === option.key;
         return (
           <Pressable
-            key={value}
-            onPress={() => onChange(value)}
+            key={option.key}
+            onPress={() => onChange(option.key)}
             style={{
               flex: 1,
               paddingVertical: 10,
+              paddingHorizontal: 6,
               borderRadius: 10,
               alignItems: "center",
+              justifyContent: "center",
               backgroundColor: active ? colors.accent : colors.bgCard,
               borderWidth: 1,
               borderColor: active ? colors.accent : colors.border,
@@ -154,11 +159,13 @@ function SegmentedTabs({
               style={{
                 color: active ? "#fff" : colors.text,
                 fontWeight: "700",
-                fontSize: 13,
-                letterSpacing: 0.4,
+                fontSize: 12,
+                letterSpacing: 0.2,
+                textAlign: "center",
               }}
+              numberOfLines={2}
             >
-              {value === "member" ? "Member invite" : "Guest access"}
+              {option.title}
             </Text>
           </Pressable>
         );
@@ -349,7 +356,7 @@ function MemberInviteSection({
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
         {isSystemAdmin
           ? "Invitees create an Individual user account for a new network and choose their own network ID on the join form. Every link is single-use, including ones that never expire. Generate multiple codes when you need a batch for handout or printing."
-          : "Invitees join this network as user-role members (Family/Organization keep your account type; Individual Pro invites one Individual). Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
+          : "Invitees join this network as user-role members (Family and Organization keep your account type). Every link is single-use (including never-expiring). You can generate one invite QR at a time."}
       </Text>
 
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -1147,7 +1154,8 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
 export default function AccessScreen() {
   const { user } = useAuth();
   const { effectiveZoneId } = useEffectiveZoneId();
-  const [tab, setTab] = useState<Tab>("member");
+  const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
+  const [tab, setTab] = useState<Tab>(isAdmin ? "member" : "universal");
 
   const params = useLocalSearchParams<{
     gt?: string;
@@ -1196,34 +1204,66 @@ export default function AccessScreen() {
   );
 
   useEffect(() => {
-    if (memberInviteDisabled) {
+    if (memberInviteDisabled && tab === "member") {
       setTab("guest");
     }
-  }, [memberInviteDisabled]);
+  }, [memberInviteDisabled, tab]);
+
+  const tabOptions = [
+    ...(isAdmin
+      ? [
+          { key: "member" as const, title: "Member invite" },
+          { key: "guest" as const, title: "Guest access" },
+        ]
+      : []),
+    { key: "universal" as const, title: "Universal Access" },
+  ];
 
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
-          <AppHeader
-            title="Access"
-            subtitle="QR invites"
-          />
-
-          <SegmentedTabs tab={tab} onChange={setTab} />
-
-          <View style={{ paddingHorizontal: 20, gap: 16 }}>
-            {tab === "member" ? (
-              <MemberInviteSection
-                disabled={memberInviteDisabled}
-                unavailableHint={memberInviteHint}
-                isSystemAdmin={isSystemAdmin}
-              />
-            ) : (
-              <NetworkAccessSection zoneId={effectiveZoneId} />
-            )}
+        {tab === "universal" ? (
+          <View style={{ flex: 1 }}>
+            <AppHeader
+              title="Access"
+              subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
+            />
+            <AccessTabs
+              tab={tab}
+              onChange={setTab}
+              options={tabOptions}
+            />
+            <View style={{ flex: 1, paddingBottom: 90 }}>
+              <AccessCodesScreen embedded />
+            </View>
           </View>
-        </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
+            <AppHeader
+              title="Access"
+              subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
+            />
+            <AccessTabs
+              tab={tab}
+              onChange={setTab}
+              options={tabOptions}
+            />
+            {isAdmin && tab === "member" ? (
+              <View style={{ paddingHorizontal: 20, gap: 16 }}>
+                <MemberInviteSection
+                  disabled={memberInviteDisabled}
+                  unavailableHint={memberInviteHint}
+                  isSystemAdmin={isSystemAdmin}
+                />
+              </View>
+            ) : null}
+            {isAdmin && tab === "guest" ? (
+              <View style={{ paddingHorizontal: 20, gap: 16 }}>
+                <NetworkAccessSection zoneId={effectiveZoneId} />
+              </View>
+            ) : null}
+          </ScrollView>
+        )}
       </SafeAreaView>
     </GradientBackground>
   );

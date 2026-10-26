@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Layers, Pencil, Save, Trash2 } from "lucide-react-native";
+import { KeyRound, Layers, Pencil, Save, Trash2 } from "lucide-react-native";
 import { AppHeader } from "@/components/ui/AppHeader";
 import {
   isOwnZone,
@@ -47,6 +47,7 @@ type Props = {
   saveLabel?: string;
   /** Hide Save when the active tool does not create a zone (e.g. Communal). */
   showSave?: boolean;
+  onUniversalAccessPress?: () => void;
 };
 
 export function ZonesPageHeader({
@@ -71,6 +72,7 @@ export function ZonesPageHeader({
   canSave,
   saveLabel = "Save",
   showSave = true,
+  onUniversalAccessPress,
 }: Props) {
   const insets = useSafeAreaInsets();
   const [shapesLayer, setShapesLayer] = useState<MapZoneLayer | null>(null);
@@ -104,12 +106,33 @@ export function ZonesPageHeader({
             subtitle={subtitle}
             compact
             style={styles.headerInner}
-            leadingActions={
+            leadingActions={[
+              onUniversalAccessPress ? (
+                <Pressable
+                  key="universal-access"
+                  onPress={onUniversalAccessPress}
+                  accessibilityRole="button"
+                  accessibilityLabel="Universal access keys"
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    opacity: pressed ? 0.75 : 1,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  })}
+                >
+                  <KeyRound
+                    size={18}
+                    color={colors.accent}
+                    strokeWidth={2.2}
+                  />
+                </Pressable>
+              ) : null,
               <Pressable
+                key="zones-list"
                 onPress={() => onListOpenChange(!listOpen)}
                 accessibilityRole="button"
                 accessibilityLabel="Zones list"
-                hitSlop={6}
+                hitSlop={8}
                 style={({ pressed }) => ({
                   opacity: pressed ? 0.75 : 1,
                   alignItems: "center",
@@ -121,8 +144,8 @@ export function ZonesPageHeader({
                   color={listOpen ? colors.accentDeep : colors.accent}
                   strokeWidth={2.2}
                 />
-              </Pressable>
-            }
+              </Pressable>,
+            ]}
           />
         </View>
 

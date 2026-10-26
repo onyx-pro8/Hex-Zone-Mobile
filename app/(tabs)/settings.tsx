@@ -6,7 +6,6 @@ import {
   BookOpen,
   History,
   Home,
-  KeyRound,
   LogOut,
   Ruler,
   Smartphone,
@@ -25,7 +24,6 @@ import { colors } from "@/theme/colors";
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
   const isSystemAdmin = isSystemAdministrator({
     role: user?.role,
     accountType: user?.accountType,
@@ -56,14 +54,6 @@ export default function SettingsScreen() {
           />
 
           <View style={{ paddingHorizontal: 20 }}>
-            {isAdmin ? (
-              <SettingsNavRow
-                icon={<KeyRound size={18} color={colors.accent} />}
-                title="Universal Access"
-                subtitle="Invite to your zones, or ask for place access"
-                onPress={() => router.push("/(tabs)/access-codes")}
-              />
-            ) : null}
             {isSystemAdmin ? (
               <SettingsNavRow
                 icon={<Ruler size={18} color={colors.accent} />}

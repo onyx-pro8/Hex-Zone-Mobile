@@ -38,7 +38,7 @@ export function AlertBellButton({ size = 42, iconSize }: AlertBellButtonProps) {
       >
         <Bell
           size={glyph}
-          color={colors.text}
+          color={colors.accent}
           strokeWidth={2.2}
         />
         {unreadAlarmCount > 0 ? <View style={styles.dot} /> : null}
