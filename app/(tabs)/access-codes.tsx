@@ -40,8 +40,10 @@ import {
   type UniversalAccessZone,
 } from "@/api/universalAccess";
 import {
+  Check,
   Copy as CopyIcon,
   RefreshCw as RefreshIcon,
+  Search,
 } from "lucide-react-native";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { toast } from "@/lib/toast";
@@ -495,47 +497,152 @@ export default function AccessCodesScreen({
                     ))}
                   </View>
                   {keyType === "private" ? (
-                    <View>
+                    <View style={{ zIndex: inviteeMatches.length > 0 ? 20 : 1 }}>
                       <FieldLabel>Invitee email</FieldLabel>
-                      <TextInput
-                        value={inviteeEmail}
-                        editable={!inviteReadyToRefresh}
-                        onChangeText={(value) => {
-                          setInviteeEmail(value);
-                          setInvitee(null);
-                        }}
-                        autoCapitalize="none"
-                        keyboardType="email-address"
+                      <View
                         style={{
-                          borderWidth: 1,
-                          borderColor: colors.border,
-                          borderRadius: 10,
-                          paddingHorizontal: 12,
-                          paddingVertical: 10,
-                          color: colors.text,
-                          backgroundColor: colors.bgCard,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          borderWidth: 1.5,
+                          borderColor: invitee
+                            ? "#16A34A"
+                            : inviteeMatches.length > 0
+                              ? colors.accent
+                              : colors.border,
+                          borderRadius: 12,
+                          backgroundColor: invitee
+                            ? "rgba(22,163,74,0.06)"
+                            : colors.bgCard,
+                          paddingHorizontal: 10,
+                          minHeight: 44,
                         }}
-                      />
-                      {inviteeMatches.map((match) => (
-                        <Pressable
-                          key={match.id}
-                          onPress={() => {
-                            setInvitee(match);
-                            setInviteeEmail(match.email);
-                            setInviteeMatches([]);
+                      >
+                        {invitee ? (
+                          <Check size={15} color="#16A34A" />
+                        ) : (
+                          <Search
+                            size={15}
+                            color={
+                              inviteeMatches.length > 0
+                                ? colors.accent
+                                : colors.textMuted
+                            }
+                          />
+                        )}
+                        <TextInput
+                          value={inviteeEmail}
+                          editable={!inviteReadyToRefresh}
+                          onChangeText={(value) => {
+                            setInviteeEmail(value);
+                            setInvitee(null);
                           }}
+                          autoCapitalize="none"
+                          keyboardType="email-address"
+                          placeholder="Search other-network users…"
+                          placeholderTextColor={colors.textMuted}
                           style={{
+                            flex: 1,
+                            paddingHorizontal: 8,
                             paddingVertical: 10,
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.border,
+                            color: colors.text,
+                            fontSize: 13,
+                          }}
+                        />
+                        {invitee ? (
+                          <Text
+                            style={{
+                              color: "#16A34A",
+                              fontSize: 11,
+                              fontWeight: "700",
+                            }}
+                          >
+                            Selected
+                          </Text>
+                        ) : null}
+                      </View>
+                      {inviteeMatches.length > 0 ? (
+                        <View
+                          style={{
+                            marginTop: 6,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                            backgroundColor: "#fff",
+                            overflow: "hidden",
+                            shadowColor: "#0F2C5C",
+                            shadowOffset: { width: 0, height: 8 },
+                            shadowOpacity: 0.12,
+                            shadowRadius: 16,
+                            elevation: 6,
                           }}
                         >
-                          <Text style={{ color: colors.text, fontWeight: "700" }}>{match.email}</Text>
-                          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                            {[match.name, match.network_id].filter(Boolean).join(" · ")}
-                          </Text>
-                        </Pressable>
-                      ))}
+                          <View
+                            style={{
+                              paddingHorizontal: 16,
+                              paddingVertical: 12,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.border,
+                              backgroundColor: colors.bgSurface,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: colors.textMuted,
+                                fontSize: 11,
+                                fontWeight: "700",
+                                letterSpacing: 0.4,
+                              }}
+                            >
+                              {inviteeMatches.length} match
+                              {inviteeMatches.length === 1 ? "" : "es"} · other
+                              networks
+                            </Text>
+                          </View>
+                          {inviteeMatches.map((match, matchIndex) => {
+                            const isLast =
+                              matchIndex === inviteeMatches.length - 1;
+                            return (
+                              <Pressable
+                                key={match.id}
+                                onPress={() => {
+                                  setInvitee(match);
+                                  setInviteeEmail(match.email);
+                                  setInviteeMatches([]);
+                                }}
+                                style={{
+                                  paddingHorizontal: 16,
+                                  paddingVertical: 14,
+                                  backgroundColor: "#fff",
+                                  borderBottomWidth: isLast ? 0 : 1,
+                                  borderBottomColor: colors.border,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    color: colors.text,
+                                    fontWeight: "700",
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  {match.email}
+                                </Text>
+                                <Text
+                                  style={{
+                                    color: colors.textMuted,
+                                    fontSize: 12,
+                                    marginTop: 4,
+                                  }}
+                                  numberOfLines={1}
+                                >
+                                  {[match.name, match.network_id]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      ) : null}
                     </View>
                   ) : null}
                   <View>
@@ -613,79 +720,298 @@ export default function AccessCodesScreen({
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     Request access to another network. Their admin reviews your request.
                   </Text>
-                  <View>
+                  <View style={{ zIndex: targetMatches.length > 0 ? 20 : 1 }}>
                     <FieldLabel>Network ID</FieldLabel>
-                    <TextInput
-                      value={networkQuery}
-                      onChangeText={(value) => {
-                        setNetworkQuery(value);
-                        setTarget(null);
-                        setPlaceZoneIds([]);
-                      }}
-                      autoCapitalize="characters"
-                      placeholder="Search network ID"
-                      placeholderTextColor={colors.textMuted}
+                    <View
                       style={{
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        color: colors.text,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        borderWidth: 1.5,
+                        borderColor: target
+                          ? "#16A34A"
+                          : targetMatches.length > 0
+                            ? colors.accent
+                            : colors.border,
+                        borderRadius: 12,
+                        backgroundColor: target
+                          ? "rgba(22,163,74,0.06)"
+                          : "#fff",
+                        paddingHorizontal: 10,
+                        minHeight: 44,
                       }}
-                    />
-                    {targetMatches.map((match) => (
-                      <Pressable
-                        key={match.network_id}
-                        onPress={() => {
-                          setTarget(match);
-                          setNetworkQuery(match.network_id);
-                          setTargetMatches([]);
+                    >
+                      {target ? (
+                        <Check size={15} color="#16A34A" />
+                      ) : (
+                        <Search
+                          size={15}
+                          color={
+                            targetMatches.length > 0
+                              ? colors.accent
+                              : colors.textMuted
+                          }
+                        />
+                      )}
+                      <TextInput
+                        value={networkQuery}
+                        onChangeText={(value) => {
+                          setNetworkQuery(value);
+                          setTarget(null);
                           setPlaceZoneIds([]);
                         }}
+                        autoCapitalize="characters"
+                        placeholder="Search other networks…"
+                        placeholderTextColor={colors.textMuted}
                         style={{
+                          flex: 1,
+                          paddingHorizontal: 8,
                           paddingVertical: 10,
-                          borderBottomWidth: 1,
-                          borderBottomColor: colors.border,
+                          color: colors.text,
+                          fontSize: 13,
+                        }}
+                      />
+                      {target ? (
+                        <Text
+                          style={{
+                            color: "#16A34A",
+                            fontSize: 11,
+                            fontWeight: "700",
+                          }}
+                        >
+                          Selected
+                        </Text>
+                      ) : null}
+                    </View>
+                    {targetMatches.length > 0 ? (
+                      <View
+                        style={{
+                          marginTop: 6,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: "#fff",
+                          overflow: "hidden",
+                          shadowColor: "#0F2C5C",
+                          shadowOffset: { width: 0, height: 8 },
+                          shadowOpacity: 0.12,
+                          shadowRadius: 16,
+                          elevation: 6,
                         }}
                       >
-                        <Text style={{ color: colors.text, fontWeight: "700" }}>
-                          {match.network_id}
-                        </Text>
-                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                          {match.admin_name} · {match.admin_email}
-                        </Text>
-                      </Pressable>
-                    ))}
+                        <View
+                          style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                            backgroundColor: colors.bgSurface,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 11,
+                              fontWeight: "700",
+                              letterSpacing: 0.4,
+                            }}
+                          >
+                            {targetMatches.length} match
+                            {targetMatches.length === 1 ? "" : "es"} · other
+                            networks
+                          </Text>
+                        </View>
+                        {targetMatches.map((match, matchIndex) => {
+                          const isLast =
+                            matchIndex === targetMatches.length - 1;
+                          return (
+                            <Pressable
+                              key={match.network_id}
+                              onPress={() => {
+                                setTarget(match);
+                                setNetworkQuery(match.network_id);
+                                setTargetMatches([]);
+                                setPlaceZoneIds([]);
+                              }}
+                              style={{
+                                paddingHorizontal: 16,
+                                paddingVertical: 14,
+                                backgroundColor: "#fff",
+                                borderBottomWidth: isLast ? 0 : 1,
+                                borderBottomColor: colors.border,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: colors.text,
+                                  fontWeight: "700",
+                                  fontSize: 13,
+                                }}
+                              >
+                                {match.network_id}
+                              </Text>
+                              <Text
+                                style={{
+                                  color: colors.textMuted,
+                                  fontSize: 12,
+                                  marginTop: 4,
+                                }}
+                                numberOfLines={1}
+                              >
+                                {match.admin_name} · {match.admin_email}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
                   </View>
                   <View>
                     <FieldLabel>Zone name</FieldLabel>
                     {!target ? (
-                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                        Enter a network ID first.
-                      </Text>
-                    ) : null}
-                    {(target?.zones ?? []).map((zone) => (
-                      <Pressable
-                        key={zone.id}
-                        onPress={() => toggleZone(zone.id, placeZoneIds, setPlaceZoneIds)}
-                        style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 14,
+                          backgroundColor: colors.bgSurface,
+                        }}
+                      >
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                          Select a network first to choose zones.
+                        </Text>
+                      </View>
+                    ) : (target.zones ?? []).length === 0 ? (
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          borderRadius: 12,
+                          paddingHorizontal: 14,
+                          paddingVertical: 14,
+                          backgroundColor: colors.bgSurface,
+                        }}
+                      >
+                        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                          No shareable zones on this network.
+                        </Text>
+                      </View>
+                    ) : (
+                      <View
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor:
+                            placeZoneIds.length > 0
+                              ? colors.accent
+                              : colors.border,
+                          backgroundColor: "#fff",
+                          overflow: "hidden",
+                        }}
                       >
                         <View
                           style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: 4,
-                            borderWidth: 1,
-                            borderColor: colors.accent,
-                            backgroundColor: placeZoneIds.includes(zone.id)
-                              ? colors.accent
-                              : "transparent",
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                            backgroundColor: colors.bgSurface,
                           }}
-                        />
-                        <Text style={{ color: colors.text }}>{zone.name}</Text>
-                      </Pressable>
-                    ))}
+                        >
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 11,
+                              fontWeight: "700",
+                              letterSpacing: 0.4,
+                            }}
+                          >
+                            {placeZoneIds.length} selected ·{" "}
+                            {target.zones.length} available
+                          </Text>
+                        </View>
+                        {target.zones.map((zone, zoneIndex) => {
+                          const selected = placeZoneIds.includes(zone.id);
+                          const isLast =
+                            zoneIndex === target.zones.length - 1;
+                          const meta = [
+                            zone.zone_type,
+                            zone.is_primary ? "primary" : null,
+                            zone.communal ? "communal" : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ");
+                          return (
+                            <Pressable
+                              key={zone.id}
+                              onPress={() =>
+                                toggleZone(
+                                  zone.id,
+                                  placeZoneIds,
+                                  setPlaceZoneIds,
+                                )
+                              }
+                              style={{
+                                flexDirection: "row",
+                                alignItems: "center",
+                                gap: 12,
+                                paddingHorizontal: 16,
+                                paddingVertical: 14,
+                                backgroundColor: selected
+                                  ? "rgba(47,128,237,0.06)"
+                                  : "#fff",
+                                borderBottomWidth: isLast ? 0 : 1,
+                                borderBottomColor: colors.border,
+                              }}
+                            >
+                              <View
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: 6,
+                                  borderWidth: 1.5,
+                                  borderColor: selected
+                                    ? colors.accent
+                                    : colors.border,
+                                  backgroundColor: selected
+                                    ? colors.accent
+                                    : "#fff",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {selected ? (
+                                  <Check size={13} color="#fff" />
+                                ) : null}
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text
+                                  style={{
+                                    color: colors.text,
+                                    fontWeight: "700",
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  {zone.name}
+                                </Text>
+                                {meta ? (
+                                  <Text
+                                    style={{
+                                      color: colors.textMuted,
+                                      fontSize: 12,
+                                      marginTop: 3,
+                                    }}
+                                  >
+                                    {meta}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
                   </View>
                   <View>
                     <FieldLabel>Network admin email</FieldLabel>
