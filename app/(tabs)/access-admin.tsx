@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
@@ -17,12 +17,12 @@ import { toast } from "@/lib/toast";
 import {
   Copy,
   Download,
-  KeyRound,
   Link as LinkIcon,
   QrCode,
   RefreshCw,
   X,
 } from "lucide-react-native";
+import AccessCodesScreen from "./access-codes";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
@@ -53,7 +53,7 @@ import {
 import { downloadInviteQrCsv } from "@/lib/inviteQrExport";
 import { colors } from "@/theme/colors";
 
-type Tab = "member" | "guest";
+type Tab = "universal" | "member" | "guest";
 
 type ExpiryHours = number | null;
 
@@ -114,12 +114,14 @@ type GeneratedInvite = {
   expires_at: string | null;
 };
 
-function SegmentedTabs({
+function AccessTabs({
   tab,
   onChange,
+  options,
 }: {
   tab: Tab;
   onChange: (next: Tab) => void;
+  options: { key: Tab; title: string }[];
 }) {
   return (
     <View
@@ -135,17 +137,19 @@ function SegmentedTabs({
         gap: 4,
       }}
     >
-      {(["member", "guest"] as Tab[]).map((value) => {
-        const active = tab === value;
+      {options.map((option) => {
+        const active = tab === option.key;
         return (
           <Pressable
-            key={value}
-            onPress={() => onChange(value)}
+            key={option.key}
+            onPress={() => onChange(option.key)}
             style={{
               flex: 1,
               paddingVertical: 10,
+              paddingHorizontal: 6,
               borderRadius: 10,
               alignItems: "center",
+              justifyContent: "center",
               backgroundColor: active ? colors.accent : colors.bgCard,
               borderWidth: 1,
               borderColor: active ? colors.accent : colors.border,
@@ -155,11 +159,13 @@ function SegmentedTabs({
               style={{
                 color: active ? "#fff" : colors.text,
                 fontWeight: "700",
-                fontSize: 13,
-                letterSpacing: 0.4,
+                fontSize: 12,
+                letterSpacing: 0.2,
+                textAlign: "center",
               }}
+              numberOfLines={2}
             >
-              {value === "member" ? "Member invite" : "Guest access"}
+              {option.title}
             </Text>
           </Pressable>
         );
@@ -1146,11 +1152,10 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
 }
 
 export default function AccessScreen() {
-  const router = useRouter();
   const { user } = useAuth();
   const { effectiveZoneId } = useEffectiveZoneId();
-  const [tab, setTab] = useState<Tab>("member");
   const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
+  const [tab, setTab] = useState<Tab>(isAdmin ? "member" : "universal");
 
   const params = useLocalSearchParams<{
     gt?: string;
@@ -1199,10 +1204,20 @@ export default function AccessScreen() {
   );
 
   useEffect(() => {
-    if (memberInviteDisabled) {
+    if (memberInviteDisabled && tab === "member") {
       setTab("guest");
     }
-  }, [memberInviteDisabled]);
+  }, [memberInviteDisabled, tab]);
+
+  const tabOptions = [
+    ...(isAdmin
+      ? [
+          { key: "member" as const, title: "Member invite" },
+          { key: "guest" as const, title: "Guest access" },
+        ]
+      : []),
+    { key: "universal" as const, title: "Universal Access" },
+  ];
 
   return (
     <GradientBackground>
@@ -1213,46 +1228,27 @@ export default function AccessScreen() {
             subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
           />
 
-          <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
-            <Pressable
-              onPress={() => router.push("/(tabs)/access-codes")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                paddingVertical: 14,
-                paddingHorizontal: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.bgCard,
-              }}
-            >
-              <KeyRound size={18} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "800" }}>
-                  Universal Access
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-                  Invite keys, access other networks, request list
-                </Text>
-              </View>
-            </Pressable>
-          </View>
+          <AccessTabs
+            tab={tab}
+            onChange={setTab}
+            options={tabOptions}
+          />
 
-          {isAdmin ? <SegmentedTabs tab={tab} onChange={setTab} /> : null}
+          {tab === "universal" ? <AccessCodesScreen embedded /> : null}
 
-          {isAdmin ? (
+          {isAdmin && tab === "member" ? (
             <View style={{ paddingHorizontal: 20, gap: 16 }}>
-              {tab === "member" ? (
-                <MemberInviteSection
-                  disabled={memberInviteDisabled}
-                  unavailableHint={memberInviteHint}
-                  isSystemAdmin={isSystemAdmin}
-                />
-              ) : (
-                <NetworkAccessSection zoneId={effectiveZoneId} />
-              )}
+              <MemberInviteSection
+                disabled={memberInviteDisabled}
+                unavailableHint={memberInviteHint}
+                isSystemAdmin={isSystemAdmin}
+              />
+            </View>
+          ) : null}
+
+          {isAdmin && tab === "guest" ? (
+            <View style={{ paddingHorizontal: 20, gap: 16 }}>
+              <NetworkAccessSection zoneId={effectiveZoneId} />
             </View>
           ) : null}
         </ScrollView>

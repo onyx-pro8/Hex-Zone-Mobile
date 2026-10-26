@@ -86,7 +86,14 @@ function FieldLabel({ children }: { children: string }) {
   );
 }
 
-export default function AccessCodesScreen() {
+type AccessCodesScreenProps = {
+  /** When true, render as a panel inside Access (no back header / outer chrome). */
+  embedded?: boolean;
+};
+
+export default function AccessCodesScreen({
+  embedded = false,
+}: AccessCodesScreenProps) {
   const { user } = useAuth();
   const canInvite = String(user?.role ?? "").toLowerCase() === "administrator";
   const [tab, setTab] = useState<Tab>(canInvite ? "invite" : "place");
@@ -290,74 +297,98 @@ export default function AccessCodesScreen() {
     await reload();
   }
 
-  return (
-    <GradientBackground>
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
-          <ScreenHeader title="Universal Access" subtitle="Invite, request, and manage keys" showBack />
-          <View
+  const pageMarkers = (
+    <View
+      style={{
+        flexDirection: "row",
+        alignSelf: "flex-start",
+        gap: 2,
+        marginBottom: -1,
+        zIndex: 2,
+      }}
+    >
+      {tabs.map((item) => {
+        const active = tab === item.key;
+        return (
+          <Pressable
+            key={item.key}
+            onPress={() => setTab(item.key)}
             style={{
-              flexDirection: "row",
-              marginHorizontal: 20,
-              marginBottom: 8,
-              backgroundColor: colors.bgSurface,
-              borderRadius: 14,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderTopLeftRadius: 10,
+              borderTopRightRadius: 10,
               borderWidth: 1,
+              borderBottomWidth: active ? 0 : 1,
               borderColor: colors.border,
-              padding: 4,
-              gap: 4,
+              backgroundColor: active ? colors.bgCard : colors.bgSurface,
+              marginBottom: active ? 0 : 1,
             }}
           >
-            {tabs.map((item) => {
-              const active = tab === item.key;
-              return (
-                <Pressable
-                  key={item.key}
-                  onPress={() => setTab(item.key)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 10,
-                    alignItems: "center",
-                    backgroundColor: active ? colors.accent : colors.bgCard,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: active ? "#fff" : colors.text,
-                      fontWeight: "700",
-                      fontSize: 11,
-                    }}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            <Text
+              style={{
+                color: active ? colors.accent : colors.textMuted,
+                fontWeight: "700",
+                fontSize: 12,
+              }}
+            >
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  // Flush page-marker sheet: square top-left so the first marker meets the card.
+  const sheetCardCorners = {
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 22,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+  } as const;
+
+  const panel = (
+    <>
+          {!embedded ? (
+            <ScreenHeader
+              title="Universal Access"
+              subtitle="Invite, request, and manage keys"
+              showBack
+            />
+          ) : null}
 
           <ScrollView
-            contentContainerStyle={{ paddingBottom: 120 }}
+            scrollEnabled={!embedded}
+            nestedScrollEnabled
+            contentContainerStyle={{ paddingBottom: embedded ? 24 : 120 }}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => {
-                  setRefreshing(true);
-                  void reload().finally(() => setRefreshing(false));
-                }}
-              />
+              embedded ? undefined : (
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={() => {
+                    setRefreshing(true);
+                    void reload().finally(() => setRefreshing(false));
+                  }}
+                />
+              )
             }
           >
             {loading ? (
               <ActivityIndicator style={{ marginTop: 24 }} color={colors.accent} />
             ) : null}
 
-            {!loading && canInvite && tab === "invite" ? (
-              <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
-                <Card style={{ gap: 12 }}>
+            {!loading ? (
+              <View style={{ paddingHorizontal: 20, marginTop: 4 }}>
+                {pageMarkers}
+                {canInvite && tab === "invite" ? (
+                <Card
+                  style={{
+                    gap: 12,
+                    marginTop: 0,
+                    ...sheetCardCorners,
+                  }}
+                >
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     Generate a private or public universal access key for your zones.
                   </Text>
@@ -511,12 +542,16 @@ export default function AccessCodesScreen() {
                     onPress={() => void onSubmitInvite()}
                   />
                 </Card>
-              </View>
-            ) : null}
+                ) : null}
 
-            {!loading && tab === "place" ? (
-              <View style={{ paddingHorizontal: 20, marginTop: 12 }}>
-                <Card style={{ gap: 12 }}>
+                {tab === "place" ? (
+                <Card
+                  style={{
+                    gap: 12,
+                    marginTop: 0,
+                    ...sheetCardCorners,
+                  }}
+                >
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                     Request access to another network. Their admin reviews your request.
                   </Text>
@@ -689,18 +724,33 @@ export default function AccessCodesScreen() {
                     onPress={() => void onSubmitPlace()}
                   />
                 </Card>
-              </View>
-            ) : null}
+                ) : null}
 
-            {!loading && tab === "list" ? (
-              <View style={{ paddingHorizontal: 20, marginTop: 12, gap: 10 }}>
+                {tab === "list" ? (
+              <View style={{ gap: 10, marginTop: 0 }}>
+                <Card
+                  style={{
+                    gap: 10,
+                    marginTop: 0,
+                    ...sheetCardCorners,
+                  }}
+                >
                 {rows.length === 0 ? (
                   <Text style={{ color: colors.textMuted }}>Nothing here yet.</Text>
                 ) : null}
-                {rows.map((row) => {
+                {rows.map((row, index) => {
                   const actions = row.viewer_actions;
+                  const isLast = index === rows.length - 1;
                   return (
-                    <Card key={row.id} style={{ gap: 6 }}>
+                    <View
+                      key={row.id}
+                      style={{
+                        gap: 6,
+                        paddingBottom: isLast ? 0 : 10,
+                        borderBottomWidth: isLast ? 0 : 1,
+                        borderBottomColor: colors.border,
+                      }}
+                    >
                       <Text style={{ color: colors.text, fontWeight: "800" }}>
                         {row.request_kind === "place_access" ? "Access other" : "Invite"} ·{" "}
                         {row.member_name}
@@ -794,13 +844,15 @@ export default function AccessCodesScreen() {
                           />
                         ) : null}
                       </View>
-                    </Card>
+                    </View>
                   );
                 })}
+                </Card>
+              </View>
+                ) : null}
               </View>
             ) : null}
           </ScrollView>
-        </KeyboardAvoidingView>
 
         <Modal visible={detail != null} transparent animationType="fade">
           <View
@@ -958,6 +1010,22 @@ export default function AccessCodesScreen() {
             </Card>
           </View>
         </Modal>
+    </>
+  );
+
+  if (embedded) {
+    return <View>{panel}</View>;
+  }
+
+  return (
+    <GradientBackground>
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          {panel}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </GradientBackground>
   );
