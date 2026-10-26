@@ -8,10 +8,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Copy, KeyRound, X } from "lucide-react-native";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  KeyRound,
+  Search,
+  X,
+} from "lucide-react-native";
 import { Button } from "@/components/ui/Button";
 import {
   activatePublicUniversalAccessKey,
+  deactivatePublicUniversalAccessKey,
   listActivatedUniversalAccessKeys,
   listPrivateUniversalAccessKeys,
   searchPublicUniversalAccessKeys,
@@ -21,12 +29,15 @@ import { copyToClipboard } from "@/lib/copyToClipboard";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
+type FieldStatus = "empty" | "inputting" | "selected";
+
 function CopyKeyButton({ code }: { code: string }) {
   return (
     <Pressable
       onPress={() => {
         void copyToClipboard(code).then((result) => {
-          if (result.ok) toast.success("Access key copied.", { title: "Copied" });
+          if (result.ok)
+            toast.success("Access key copied.", { title: "Copied" });
           else toast.error(result.message || "Could not copy.");
         });
       }}
@@ -45,7 +56,9 @@ function CopyKeyButton({ code }: { code: string }) {
       }}
     >
       <Copy size={12} color={colors.accent} />
-      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>Copy</Text>
+      <Text style={{ color: colors.accent, fontSize: 11, fontWeight: "700" }}>
+        Copy
+      </Text>
     </Pressable>
   );
 }
@@ -58,6 +71,7 @@ type Props = {
 
 export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
   const [codes, setCodes] = useState<string[]>([""]);
+  const [selectedFlags, setSelectedFlags] = useState<boolean[]>([false]);
   const [privateKeys, setPrivateKeys] = useState<UniversalAccessKeyRow[]>([]);
   const [activated, setActivated] = useState<UniversalAccessKeyRow[]>([]);
   const [suggestions, setSuggestions] = useState<UniversalAccessKeyRow[]>([]);
@@ -65,8 +79,18 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  function fieldStatus(index: number): FieldStatus {
+    if (selectedFlags[index]) return "selected";
+    if ((codes[index] ?? "").trim().length > 0) return "inputting";
+    return "empty";
+  }
+
   useEffect(() => {
     if (!open) return;
+    setCodes([""]);
+    setSelectedFlags([false]);
+    setSuggestions([]);
+    setActiveIndex(0);
     setLoading(true);
     void Promise.all([
       listPrivateUniversalAccessKeys(),
@@ -82,6 +106,10 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    if (selectedFlags[activeIndex]) {
+      setSuggestions([]);
+      return;
+    }
     const query = (codes[activeIndex] ?? "").trim();
     if (query.length < 3) {
       setSuggestions([]);
@@ -93,14 +121,12 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
       });
     }, 200);
     return () => clearTimeout(timer);
-  }, [codes, activeIndex, open]);
+  }, [codes, activeIndex, open, selectedFlags]);
 
   async function submitCodes() {
     const unique = [
       ...new Set(
-        codes
-          .map((item) => item.trim().toUpperCase())
-          .filter(Boolean),
+        codes.map((item) => item.trim().toUpperCase()).filter(Boolean),
       ),
     ];
     if (unique.length === 0) {
@@ -118,14 +144,34 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
     }
     setBusy(false);
     setCodes([""]);
+    setSelectedFlags([false]);
+    setSuggestions([]);
     toast.success("Access keys applied.");
     onActivated?.();
     const activatedResult = await listActivatedUniversalAccessKeys();
     setActivated(activatedResult.data ?? []);
   }
 
+  async function removeActivated(credentialId: number) {
+    const result = await deactivatePublicUniversalAccessKey(credentialId);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setActivated((prev) =>
+      prev.filter((item) => item.credential_id !== credentialId),
+    );
+    onActivated?.();
+    toast.success("Access key removed.");
+  }
+
   return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
       <View
         style={{
           flex: 1,
@@ -155,7 +201,9 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
               borderBottomColor: colors.border,
             }}
           >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+            >
               <KeyRound size={16} color={colors.accent} />
               <Text style={{ color: colors.text, fontWeight: "800" }}>
                 Universal access keys
@@ -169,95 +217,263 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
           <ScrollView contentContainerStyle={{ padding: 14, gap: 14 }}>
             {loading ? <ActivityIndicator color={colors.accent} /> : null}
 
-            <View style={{ gap: 8 }}>
+            <View style={{ gap: 10 }}>
               <Text
                 style={{
                   color: colors.textMuted,
                   fontSize: 11,
                   fontWeight: "700",
                   textTransform: "uppercase",
+                  letterSpacing: 0.6,
                 }}
               >
                 Public access keys
               </Text>
-              {codes.map((code, index) => (
-                <View key={`code-${index}`}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <TextInput
-                      value={code}
-                      onFocus={() => setActiveIndex(index)}
-                      onChangeText={(value) => {
-                        const next = [...codes];
-                        next[index] = value;
-                        setCodes(next);
-                        setActiveIndex(index);
-                      }}
-                      autoCapitalize="characters"
-                      placeholder="UAC-XXXX-XXXX"
-                      placeholderTextColor={colors.textMuted}
+              {codes.map((code, index) => {
+                const status = fieldStatus(index);
+                const showMenu =
+                  status === "inputting" &&
+                  index === activeIndex &&
+                  suggestions.length > 0;
+                const borderColor =
+                  status === "selected"
+                    ? "#16A34A"
+                    : status === "inputting"
+                      ? colors.accent
+                      : colors.border;
+                return (
+                  <View
+                    key={`code-${index}`}
+                    style={{ zIndex: showMenu ? 20 : 1 }}
+                  >
+                    <View
                       style={{
-                        flex: 1,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 10,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        color: colors.text,
-                        fontFamily: "monospace",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 8,
                       }}
-                    />
-                    {index > 0 ? (
-                      <Pressable
-                        onPress={() => {
-                          setCodes((prev) => prev.filter((_, i) => i !== index));
-                          setActiveIndex((current) =>
-                            current >= index ? Math.max(0, current - 1) : current,
-                          );
-                          setSuggestions([]);
-                        }}
-                        accessibilityLabel="Remove key"
-                        hitSlop={8}
+                    >
+                      <View
                         style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
+                          flex: 1,
+                          flexDirection: "row",
                           alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: colors.bgSurface,
-                          borderWidth: 1,
-                          borderColor: colors.border,
+                          borderWidth: 1.5,
+                          borderColor,
+                          borderRadius: 12,
+                          backgroundColor:
+                            status === "selected"
+                              ? "rgba(22,163,74,0.06)"
+                              : "#fff",
+                          paddingHorizontal: 10,
+                          minHeight: 44,
                         }}
                       >
-                        <X size={14} color={colors.textMuted} />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                  {index === activeIndex
-                    ? suggestions.map((item) => (
-                        <Pressable
-                          key={item.credential_id}
-                          onPress={() => {
+                        {status === "selected" ? (
+                          <Check size={15} color="#16A34A" />
+                        ) : (
+                          <Search
+                            size={15}
+                            color={
+                              status === "inputting"
+                                ? colors.accent
+                                : colors.textMuted
+                            }
+                          />
+                        )}
+                        <TextInput
+                          value={code}
+                          onFocus={() => setActiveIndex(index)}
+                          onChangeText={(value) => {
                             const next = [...codes];
-                            next[index] = item.code;
+                            next[index] = value;
                             setCodes(next);
+                            setSelectedFlags((prev) => {
+                              const flags = [...prev];
+                              flags[index] = false;
+                              return flags;
+                            });
+                            setActiveIndex(index);
+                          }}
+                          autoCapitalize="characters"
+                          autoCorrect={false}
+                          placeholder="Search public key…"
+                          placeholderTextColor={colors.textMuted}
+                          style={{
+                            flex: 1,
+                            paddingHorizontal: 8,
+                            paddingVertical: 10,
+                            color: colors.text,
+                            fontFamily: "monospace",
+                            fontSize: 13,
+                          }}
+                        />
+                        {status === "selected" ? (
+                          <Text
+                            style={{
+                              color: "#16A34A",
+                              fontSize: 11,
+                              fontWeight: "700",
+                            }}
+                          >
+                            Selected
+                          </Text>
+                        ) : (
+                          <ChevronDown
+                            size={16}
+                            color={
+                              status === "inputting"
+                                ? colors.accent
+                                : colors.textMuted
+                            }
+                          />
+                        )}
+                      </View>
+                      {index > 0 ? (
+                        <Pressable
+                          onPress={() => {
+                            setCodes((prev) =>
+                              prev.filter((_, i) => i !== index),
+                            );
+                            setSelectedFlags((prev) =>
+                              prev.filter((_, i) => i !== index),
+                            );
+                            setActiveIndex((current) =>
+                              current >= index
+                                ? Math.max(0, current - 1)
+                                : current,
+                            );
                             setSuggestions([]);
                           }}
+                          accessibilityLabel="Remove key"
+                          hitSlop={8}
                           style={{
-                            paddingVertical: 8,
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.border,
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: colors.bgSurface,
+                            borderWidth: 1,
+                            borderColor: colors.border,
                           }}
                         >
-                          <Text style={{ color: colors.text, fontFamily: "monospace" }}>
-                            {item.code}
-                          </Text>
+                          <X size={14} color={colors.textMuted} />
                         </Pressable>
-                      ))
-                    : null}
-                </View>
-              ))}
-              <Pressable onPress={() => setCodes((prev) => [...prev, ""])}>
-                <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 12 }}>
+                      ) : null}
+                    </View>
+                    {showMenu ? (
+                      <View
+                        style={{
+                          marginTop: 6,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          backgroundColor: "#fff",
+                          overflow: "hidden",
+                          shadowColor: "#0F2C5C",
+                          shadowOffset: { width: 0, height: 8 },
+                          shadowOpacity: 0.12,
+                          shadowRadius: 16,
+                          elevation: 6,
+                        }}
+                      >
+                        <View
+                          style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                            backgroundColor: colors.bgSurface,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 11,
+                              fontWeight: "700",
+                              letterSpacing: 0.4,
+                            }}
+                          >
+                            {suggestions.length} match
+                            {suggestions.length === 1 ? "" : "es"}
+                          </Text>
+                        </View>
+                        {suggestions.map((item, suggestionIndex) => {
+                          const zoneLabel =
+                            (item.zones ?? [])
+                              .map((zone) => zone.name)
+                              .join(", ") || "Shared zones";
+                          const isLast =
+                            suggestionIndex === suggestions.length - 1;
+                          return (
+                            <Pressable
+                              key={item.credential_id}
+                              onPress={() => {
+                                const next = [...codes];
+                                next[index] = item.code;
+                                setCodes(next);
+                                setSelectedFlags((prev) => {
+                                  const flags = [...prev];
+                                  flags[index] = true;
+                                  return flags;
+                                });
+                                setSuggestions([]);
+                              }}
+                              style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 4,
+                                backgroundColor: "#fff",
+                                borderBottomWidth: isLast ? 0 : 1,
+                                borderBottomColor: colors.border,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  color: colors.text,
+                                  fontFamily: "monospace",
+                                  fontSize: 13,
+                                  fontWeight: "700",
+                                }}
+                              >
+                                {item.code}
+                              </Text>
+                              <Text
+                                style={{
+                                  color: colors.textMuted,
+                                  fontSize: 12,
+                                  marginTop: 4,
+                                }}
+                                numberOfLines={1}
+                              >
+                                {zoneLabel}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+              <Pressable
+                onPress={() => {
+                  setCodes((prev) => [...prev, ""]);
+                  setSelectedFlags((prev) => [...prev, false]);
+                }}
+                style={{
+                  alignSelf: "flex-start",
+                  paddingVertical: 6,
+                  paddingHorizontal: 2,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.accent,
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                >
                   + Add another key
                 </Text>
               </Pressable>
@@ -311,7 +527,8 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                       <CopyKeyButton code={item.code} />
                     </View>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      {(item.zones ?? []).map((zone) => zone.name).join(", ") || "Zones"}
+                      {(item.zones ?? []).map((zone) => zone.name).join(", ") ||
+                        "Zones"}
                     </Text>
                   </View>
                 ))
@@ -349,7 +566,32 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                     >
                       {item.code}
                     </Text>
-                    <CopyKeyButton code={item.code} />
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <CopyKeyButton code={item.code} />
+                      <Pressable
+                        onPress={() => void removeActivated(item.credential_id)}
+                        accessibilityLabel="Remove activated key"
+                        hitSlop={8}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: colors.bgSurface,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <X size={14} color={colors.textMuted} />
+                      </Pressable>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -357,7 +599,13 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
 
             <View style={{ flexDirection: "row", gap: 8 }}>
               <View style={{ flex: 1 }}>
-                <Button label="Close" size="sm" fullWidth variant="outline" onPress={onClose} />
+                <Button
+                  label="Close"
+                  size="sm"
+                  fullWidth
+                  variant="outline"
+                  onPress={onClose}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Button

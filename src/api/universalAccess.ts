@@ -214,3 +214,10 @@ export async function activatePublicUniversalAccessKey(code: string) {
     data: { code },
   });
 }
+
+export async function deactivatePublicUniversalAccessKey(credentialId: number) {
+  return request<UniversalAccessKeyRow>({
+    method: "DELETE",
+    url: `/universal-access/keys/activated/${credentialId}`,
+  });
+}
