@@ -5,7 +5,6 @@ import {
   Bell,
   BookOpen,
   History,
-  Home,
   LogOut,
   Ruler,
   Smartphone,
@@ -62,12 +61,6 @@ export default function SettingsScreen() {
                 onPress={() => router.push("/(tabs)/zone-size-limits")}
               />
             ) : null}
-            <SettingsNavRow
-              icon={<Home size={18} color={colors.accent} />}
-              title="Smart-home integration"
-              subtitle="Hubs, webhook, API key & network ID"
-              onPress={() => router.push("/(tabs)/smart-home-settings")}
-            />
             <SettingsNavRow
               icon={<Zap size={18} color={colors.accent} />}
               title="Quick alert messages"
