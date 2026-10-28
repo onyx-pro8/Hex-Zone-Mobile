@@ -50,7 +50,7 @@ export function normalizeTierLevel(tierLevel?: number | string | null): number |
 
 export function getDeviceLimit(type: NormalizedAccountType): number {
   if (type === "PRIVATE") return 1;
-  if (type === "PRIVATE_PLUS") return 10;
+  if (type === "PRIVATE_PLUS") return 1;
   if (type === "EXCLUSIVE") return 0; // Individual: smart-home disabled
   if (type === "ENHANCED") return 1;
   return Number.POSITIVE_INFINITY; // ENHANCED_PLUS
@@ -217,7 +217,7 @@ export function deviceLimitDescription(type: NormalizedAccountType): string {
     case "PRIVATE":
       return "Private accounts allow 1 smart-home hub. Phones and browsers register separately as login sessions and do not use that slot.";
     case "PRIVATE_PLUS":
-      return "Family accounts allow up to 10 smart-home hubs. Phones/browsers are separate login sessions; only one phone/web session can be active at a time.";
+      return "Family accounts allow 1 smart-home hub. Phones/browsers are separate login sessions; only one phone/web session can be active at a time.";
     case "EXCLUSIVE":
       return "Individual accounts do not support smart-home hubs. Phones and browsers still register as login sessions.";
     case "ENHANCED":
