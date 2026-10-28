@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { GradientBackground } from "@/components/ui/GradientBackground";
@@ -50,6 +51,55 @@ import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
 type Tab = "invite" | "place" | "list";
+
+function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
+  const value = (uri || "").trim();
+  const isImage = value.startsWith("data:image/");
+  const isPdf = value.startsWith("data:application/pdf");
+  return (
+    <View>
+      <Text
+        style={{
+          color: colors.textMuted,
+          fontSize: 11,
+          fontWeight: "700",
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}
+      >
+        {label}
+      </Text>
+      {isImage ? (
+        <Image
+          source={{ uri: value }}
+          resizeMode="contain"
+          style={{
+            width: "100%",
+            height: 180,
+            borderRadius: 10,
+            backgroundColor: colors.bgSurface,
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        />
+      ) : isPdf ? (
+        <View
+          style={{
+            height: 220,
+            borderRadius: 10,
+            overflow: "hidden",
+            borderWidth: 1,
+            borderColor: colors.border,
+          }}
+        >
+          <WebView originWhitelist={["*"]} source={{ uri: value }} />
+        </View>
+      ) : (
+        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Not provided</Text>
+      )}
+    </View>
+  );
+}
 
 function CopyableAccessKey({
   code,
@@ -1281,7 +1331,12 @@ export default function AccessCodesScreen({
               padding: 20,
             }}
           >
-            <Card style={{ gap: 10 }}>
+            <Card padded={false}>
+              <ScrollView
+                style={{ maxHeight: 560 }}
+                contentContainerStyle={{ gap: 10, padding: 18 }}
+                showsVerticalScrollIndicator
+              >
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
                 {detail?.request_kind === "place_access" ? "Access other" : "Invite"}
                 {detail?.key_type ? ` · ${detail.key_type}` : ""}
@@ -1345,6 +1400,55 @@ export default function AccessCodesScreen({
                   </Text>
                 ) : null}
               </View>
+              {detail?.request_kind === "place_access" ? (
+                <>
+                  <View>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Requester
+                    </Text>
+                    <Text style={{ color: colors.text, fontWeight: "700" }}>
+                      {[detail.first_name, detail.last_name].filter(Boolean).join(" ") ||
+                        detail.member_name ||
+                        "—"}
+                    </Text>
+                    <Text style={{ color: colors.text, marginTop: 2 }}>
+                      {detail.email || "—"}
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                      {detail.address || "No address"}
+                    </Text>
+                  </View>
+                  {detail.note ? (
+                    <View>
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 11,
+                          fontWeight: "700",
+                          textTransform: "uppercase",
+                          marginBottom: 4,
+                        }}
+                      >
+                        Note
+                      </Text>
+                      <Text style={{ color: colors.text }}>{detail.note}</Text>
+                    </View>
+                  ) : null}
+                  <ReviewDocument label="Photo ID" uri={detail.photo_id} />
+                  <ReviewDocument
+                    label="Business document"
+                    uri={detail.business_document}
+                  />
+                </>
+              ) : null}
               {detail?.code ? (
                 <View>
                   <Text
@@ -1419,6 +1523,7 @@ export default function AccessCodesScreen({
                 </>
               ) : null}
               <Button label="Close" size="sm" fullWidth variant="outline" onPress={() => setDetail(null)} />
+              </ScrollView>
             </Card>
           </View>
         </Modal>
