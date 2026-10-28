@@ -31,6 +31,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   createDevice,
   getDevices,
+  sendHubCommand,
   updateDevice,
   type DeviceRecord,
 } from "@/api/devices";
@@ -46,7 +47,9 @@ import {
 } from "@/lib/accountLimits";
 import {
   deriveDeviceOnline,
+  heartbeatCurrentDevice,
   isClientSessionHid,
+  parseServerDate,
   isSmartHomeHid,
   removeDevice,
   signOutDevice,
@@ -68,10 +71,9 @@ function zoneLabel(h3?: string | null): string | null {
 }
 
 function formatLastSeen(value?: string): string {
-  if (!value) return "Never";
-  const t = new Date(value);
-  if (Number.isNaN(t.getTime())) return "Never";
-  return t.toLocaleString();
+  const parsed = parseServerDate(value);
+  if (!parsed) return "Never";
+  return parsed.toLocaleString();
 }
 
 function generateSmartHomeHid(): string {
@@ -113,6 +115,9 @@ function DeviceRow({
   onSignOut,
   onRemove,
   onEdit,
+  commandNote,
+  commandBusy,
+  onCommand,
 }: {
   device: DeviceRecord;
   isThisPhone: boolean;
@@ -120,8 +125,13 @@ function DeviceRow({
   onSignOut: () => void;
   onRemove: () => void;
   onEdit: () => void;
+  commandNote?: string;
+  commandBusy: string | null;
+  onCommand: (command: "arm" | "disarm" | "status") => void;
 }) {
-  const online = deriveDeviceOnline(device);
+  const online =
+    deriveDeviceOnline(device) ||
+    (isThisPhone && isClientSessionHid(device.hid));
   const owner = ownerLabel(device);
   const zone = zoneLabel(device.h3_cell_id);
   const kind = deviceKindLabel(device.hid);
@@ -166,23 +176,25 @@ function DeviceRow({
             HID {device.hid}
           </Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <CircleDot
-            size={12}
-            color={online ? colors.success : colors.textDim}
-          />
-          <Text
-            style={{
-              color: online ? colors.success : colors.textDim,
-              fontSize: 12,
-              fontWeight: "700",
-              letterSpacing: 0.4,
-              textTransform: "uppercase",
-            }}
-          >
-            {online ? "Online" : "Offline"}
-          </Text>
-        </View>
+        {isHub ? null : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <CircleDot
+              size={12}
+              color={online ? colors.success : colors.textDim}
+            />
+            <Text
+              style={{
+                color: online ? colors.success : colors.textDim,
+                fontSize: 12,
+                fontWeight: "700",
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              {online ? "Online" : "Offline"}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={{ gap: 6 }}>
@@ -222,6 +234,43 @@ function DeviceRow({
           tone={device.propagate_enabled ? "default" : "muted"}
         />
       </View>
+
+      {isHub ? (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {(["arm", "disarm", "status"] as const).map((command) => {
+              const key = `${device.id}:${command}`;
+              const sending = commandBusy === key;
+              return (
+                <Pressable
+                  key={command}
+                  onPress={() => onCommand(command)}
+                  disabled={commandBusy != null}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: colors.accent,
+                    alignItems: "center",
+                    opacity: commandBusy != null && !sending ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>
+                    {sending ? "…" : command[0].toUpperCase() + command.slice(1)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {commandNote ? (
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>{commandNote}</Text>
+          ) : (
+            <Text style={{ color: colors.textDim, fontSize: 11 }}>
+              Commands are sent only to this hub's webhook.
+            </Text>
+          )}
+        </View>
+      ) : null}
 
       {!isThisPhone ? (
         <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
@@ -514,6 +563,8 @@ export default function DevicesScreen() {
   const [loading, setLoading] = useState(false);
   const [localHid, setLocalHid] = useState("");
   const [actionId, setActionId] = useState<string | null>(null);
+  const [commandBusy, setCommandBusy] = useState<string | null>(null);
+  const [commandNotes, setCommandNotes] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addSubmitting, setAddSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<number | string | null>(null);
@@ -532,11 +583,10 @@ export default function DevicesScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [hid, result] = await Promise.all([
-        getOrCreateDeviceHid(),
-        getDevices(),
-      ]);
+      const hid = await getOrCreateDeviceHid();
       setLocalHid(hid);
+      await heartbeatCurrentDevice();
+      const result = await getDevices();
       if (result.error) {
         toast.error(result.error);
         return;
@@ -699,6 +749,38 @@ export default function DevicesScreen() {
     }
   };
 
+  const sendCommand = (device: DeviceRecord, command: "arm" | "disarm" | "status") => {
+    void (async () => {
+      const key = `${device.id}:${command}`;
+      setCommandBusy(key);
+      try {
+        const result = await sendHubCommand(device.hid, command);
+        if (result.error || !result.data) {
+          const message = result.error || "Could not send the command.";
+          setCommandNotes((prev) => ({ ...prev, [device.hid]: message }));
+          toast.error(message);
+          return;
+        }
+        const label = command[0].toUpperCase() + command.slice(1);
+        const detail = result.data.detail?.trim() || "";
+        const note = `${result.data.command.toUpperCase()} · ${result.data.status}${
+          detail ? ` · ${detail}` : ""
+        }`;
+        setCommandNotes((prev) => ({ ...prev, [device.hid]: note }));
+        const hubName = device.name?.trim() || device.hid;
+        if (result.data.status === "sent") {
+          toast.success(detail || `${label} sent to ${hubName}.`, { title: label });
+        } else if (result.data.status === "no_reply") {
+          toast.warning(detail || `${hubName} did not reply.`, { title: label });
+        } else {
+          toast.error(detail || `${label} failed for ${hubName}.`, { title: label });
+        }
+      } finally {
+        setCommandBusy(null);
+      }
+    })();
+  };
+
   const confirmRemove = (device: DeviceRecord) => {
     const isHub = isSmartHomeHid(device.hid);
     Alert.alert(
@@ -826,6 +908,9 @@ export default function DevicesScreen() {
                   onSignOut={() => handleSignOut(item)}
                   onRemove={() => confirmRemove(item)}
                   onEdit={() => openEditModal(item)}
+                  commandNote={commandNotes[item.hid]}
+                  commandBusy={commandBusy}
+                  onCommand={(command) => sendCommand(item, command)}
                 />
               );
             }}

@@ -51,6 +51,7 @@ import {
   DEVICE_SIGNED_OUT_ELSEWHERE_MESSAGE,
   DeviceSessionConflictError,
   isLocalDeviceSessionActive,
+  heartbeatCurrentDevice,
   releaseCurrentDeviceSession,
   syncCurrentDevice,
 } from "@/lib/deviceSync";
@@ -510,6 +511,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (await enforceInactivity()) return;
         await touchLastActivity();
         consecutiveFailures = 0;
+        await heartbeatCurrentDevice();
         await checkRemoteSignOut({ syncFirst: true });
       })();
     });
@@ -523,6 +525,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sub.remove();
     };
   }, [token, user, performLogout, wsStatus]);
+
+  // Keep this phone Online while the account stays signed in. Presence expires
+  // after 30 minutes without a heartbeat, which made an open session look offline.
+  useEffect(() => {
+    if (!token || !user?.id) return;
+    void heartbeatCurrentDevice();
+    const timer = setInterval(() => {
+      void heartbeatCurrentDevice();
+    }, 4 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [token, user?.id]);
 
   // Pull the owner's saved settings (broadcast name, address, shared
   // notification, quick messages) into the local store after login so message
