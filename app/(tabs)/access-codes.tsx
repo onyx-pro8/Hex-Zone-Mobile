@@ -1243,7 +1243,7 @@ export default function AccessCodesScreen({
                           <Button
                             label={row.enabled ? "Turn off" : "Turn on"}
                             size="sm"
-                            variant="outline"
+                            tone={row.enabled ? "amber" : "green"}
                             disabled={busyId === row.id}
                             onPress={() => {
                               setBusyId(row.id);
@@ -1258,7 +1258,7 @@ export default function AccessCodesScreen({
                           <Button
                             label="Review"
                             size="sm"
-                            variant="outline"
+                            tone="blue"
                             onPress={() => {
                               void getUniversalAccessRequest(row.id).then((result) => {
                                 setDetail(result.data ?? row);
@@ -1271,7 +1271,7 @@ export default function AccessCodesScreen({
                           <Button
                             label="Edit"
                             size="sm"
-                            variant="outline"
+                            tone="amber"
                             onPress={() => {
                               void getUniversalAccessRequest(row.id).then((result) => {
                                 const full = result.data ?? row;
@@ -1282,12 +1282,11 @@ export default function AccessCodesScreen({
                             }}
                           />
                         ) : null}
-                        {actions?.can_remove &&
-                        (row.status === "pending" || row.request_kind === "invite") ? (
+                        {actions?.can_remove ? (
                           <Button
                             label="Remove"
                             size="sm"
-                            variant="outline"
+                            tone="red"
                             disabled={busyId === row.id}
                             onPress={() => {
                               setBusyId(row.id);
@@ -1304,7 +1303,7 @@ export default function AccessCodesScreen({
                           <Button
                             label="Detail"
                             size="sm"
-                            variant="outline"
+                            tone="slate"
                             onPress={() => {
                               void getUniversalAccessRequest(row.id).then((result) => {
                                 setDetail(result.data ?? row);
@@ -1479,6 +1478,7 @@ export default function AccessCodesScreen({
                     label="Approve"
                     size="sm"
                     fullWidth
+                    tone="green"
                     disabled={busyId === detail?.id}
                     onPress={() => {
                       if (!detail) return;
@@ -1511,7 +1511,7 @@ export default function AccessCodesScreen({
                     label="Reject"
                     size="sm"
                     fullWidth
-                    variant="outline"
+                    tone="red"
                     disabled={busyId === detail?.id}
                     onPress={() => {
                       if (!detail) return;
