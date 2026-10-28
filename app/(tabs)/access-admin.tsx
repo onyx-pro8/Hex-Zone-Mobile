@@ -1216,7 +1216,7 @@ export default function AccessScreen() {
           { key: "guest" as const, title: "Guest access" },
         ]
       : []),
-    { key: "universal" as const, title: "Universal Access" },
+    { key: "universal" as const, title: "Zone Management" },
   ];
 
   return (

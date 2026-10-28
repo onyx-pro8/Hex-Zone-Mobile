@@ -254,8 +254,8 @@ export default function AccessCodesScreen({
 
   const tabs = useMemo(
     () => [
-      ...(canInvite ? [{ key: "invite" as const, label: "Invite" }] : []),
-      { key: "place" as const, label: "Access other" },
+      ...(canInvite ? [{ key: "invite" as const, label: "Key Invitation" }] : []),
+      { key: "place" as const, label: "Request Key" },
       { key: "list" as const, label: "Request List" },
     ],
     [canInvite],
@@ -413,6 +413,7 @@ export default function AccessCodesScreen({
     <View
       style={{
         flexDirection: "row",
+        flexWrap: "wrap",
         alignSelf: "flex-start",
         gap: 2,
         marginBottom: -1,
@@ -464,7 +465,7 @@ export default function AccessCodesScreen({
     <>
           {!embedded ? (
             <ScreenHeader
-              title="Universal Access"
+              title="Zone Management"
               subtitle="Invite, request, and manage keys"
               showBack
             />
@@ -1217,7 +1218,7 @@ export default function AccessCodesScreen({
                       }}
                     >
                       <Text style={{ color: colors.text, fontWeight: "800" }}>
-                        {row.request_kind === "place_access" ? "Access other" : "Invite"}
+                        {row.request_kind === "place_access" ? "Request Key" : "Key Invitation"}
                         {row.key_type ? ` · ${row.key_type}` : ""}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
@@ -1322,15 +1323,22 @@ export default function AccessCodesScreen({
             ) : null}
           </ScrollView>
 
-        <Modal visible={detail != null} transparent animationType="fade">
-          <View
+        <Modal
+          visible={detail != null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDetail(null)}
+        >
+          <Pressable
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.45)",
               justifyContent: "center",
               padding: 20,
             }}
+            onPress={() => setDetail(null)}
           >
+            <View onStartShouldSetResponder={() => true}>
             <Card padded={false}>
               <ScrollView
                 style={{ maxHeight: 560 }}
@@ -1338,7 +1346,7 @@ export default function AccessCodesScreen({
                 showsVerticalScrollIndicator
               >
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
-                {detail?.request_kind === "place_access" ? "Access other" : "Invite"}
+                {detail?.request_kind === "place_access" ? "Request Key" : "Key Invitation"}
                 {detail?.key_type ? ` · ${detail.key_type}` : ""}
               </Text>
               <Text
@@ -1393,12 +1401,12 @@ export default function AccessCodesScreen({
                   {(detail?.zones ?? []).map((zone) => zone.name).join(", ") ||
                     detail?.place ||
                     "No zones"}
+                  {detail?.network_id ? (
+                    <Text style={{ color: colors.textMuted }}>
+                      {` · ${detail.network_id}`}
+                    </Text>
+                  ) : null}
                 </Text>
-                {detail?.network_id ? (
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    {detail.network_id}
-                  </Text>
-                ) : null}
               </View>
               {detail?.request_kind === "place_access" ? (
                 <>
@@ -1414,13 +1422,13 @@ export default function AccessCodesScreen({
                     >
                       Requester
                     </Text>
-                    <Text style={{ color: colors.text, fontWeight: "700" }}>
-                      {[detail.first_name, detail.last_name].filter(Boolean).join(" ") ||
-                        detail.member_name ||
-                        "—"}
-                    </Text>
-                    <Text style={{ color: colors.text, marginTop: 2 }}>
-                      {detail.email || "—"}
+                    <Text style={{ color: colors.text }}>
+                      <Text style={{ fontWeight: "700" }}>
+                        {[detail.first_name, detail.last_name].filter(Boolean).join(" ") ||
+                          detail.member_name ||
+                          "—"}
+                      </Text>
+                      {detail.email ? ` · ${detail.email}` : ""}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
                       {detail.address || "No address"}
@@ -1525,18 +1533,26 @@ export default function AccessCodesScreen({
               <Button label="Close" size="sm" fullWidth variant="outline" onPress={() => setDetail(null)} />
               </ScrollView>
             </Card>
-          </View>
+            </View>
+          </Pressable>
         </Modal>
 
-        <Modal visible={editing != null} transparent animationType="fade">
-          <View
+        <Modal
+          visible={editing != null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setEditing(null)}
+        >
+          <Pressable
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.45)",
               justifyContent: "center",
               padding: 20,
             }}
+            onPress={() => setEditing(null)}
           >
+            <View onStartShouldSetResponder={() => true}>
             <Card style={{ gap: 10 }}>
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
                 Edit documents
@@ -1599,7 +1615,8 @@ export default function AccessCodesScreen({
                 onPress={() => setEditing(null)}
               />
             </Card>
-          </View>
+            </View>
+          </Pressable>
         </Modal>
     </>
   );
