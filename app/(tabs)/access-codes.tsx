@@ -1206,6 +1206,8 @@ export default function AccessCodesScreen({
                 ) : null}
                 {rows.map((row, index) => {
                   const actions = row.viewer_actions;
+                  const showSenderReview =
+                    row.viewer_role === "requester" && row.status === "pending";
                   const isLast = index === rows.length - 1;
                   return (
                     <View
@@ -1254,7 +1256,9 @@ export default function AccessCodesScreen({
                             }}
                           />
                         ) : null}
-                        {actions?.can_approve || actions?.can_reject ? (
+                        {actions?.can_approve ||
+                        actions?.can_reject ||
+                        showSenderReview ? (
                           <Button
                             label="Review"
                             size="sm"
