@@ -11,10 +11,17 @@ export const ZONE_TYPE_LABELS: Record<ZoneType, string> = {
   object: "Monument",
 };
 
+/** True when the zone is on the map only because of an access zone key. */
+export function isAccessedZone(zone: SavedZone): boolean {
+  const config = (zone.config ?? {}) as Record<string, unknown>;
+  return config.universal_access === true;
+}
+
 /** Short, type-aware summary for the saved-zones list (radius, cells, etc). */
 export function summarizeZone(zone: SavedZone): string {
-  const tierLabel =
-    zone.is_primary === true
+  const tierLabel = isAccessedZone(zone)
+    ? ""
+    : zone.is_primary === true
       ? "Primary · "
       : zone.is_primary === false
         ? "Secondary · "

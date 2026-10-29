@@ -8,6 +8,10 @@ import {
   type DeviceRecord,
 } from "@/api/devices";
 import { normalizeAccountType, type NormalizedAccountType } from "@/lib/accountLimits";
+import {
+  mainDevicePlaceChanged,
+  resolveMainDevicePlace,
+} from "@/lib/mainDeviceLocation";
 import { getOrCreateDeviceHid, getToken, rotateDeviceHid } from "@/lib/storage";
 import type { AuthUser } from "@/api/auth";
 
@@ -53,11 +57,26 @@ export type DeviceSyncResult =
   | { status: "account-in-use" }
   | { status: "error"; message: string };
 
-function deviceLastSeenMs(device: DeviceRecord): number | null {
-  const raw = device.last_seen ?? device.updated_at ?? device.created_at;
+/**
+ * Server datetimes are UTC without a timezone suffix. Browsers treat that
+ * form as local time, which makes a fresh check-in look an hour stale in
+ * UTC+1 and marks a signed-in phone Offline.
+ */
+export function parseServerDate(value?: string | null): Date | null {
+  if (!value) return null;
+  const raw = value.trim();
   if (!raw) return null;
-  const t = new Date(raw).getTime();
-  return Number.isNaN(t) ? null : t;
+  const hasZone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
+  const normalized = hasZone ? raw : `${raw.replace(" ", "T")}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function deviceLastSeenMs(device: DeviceRecord): number | null {
+  const parsed = parseServerDate(
+    device.last_seen ?? device.updated_at ?? device.created_at,
+  );
+  return parsed ? parsed.getTime() : null;
 }
 
 /** Phone (MOB-) and browser (WEB-) login clients — not smart-home hubs. */
@@ -137,6 +156,36 @@ function mapCreateError(error: string): DeviceSyncResult {
     return { status: "account-in-use" };
   }
   return { status: "error", message: error };
+}
+
+/** Refresh this phone's login session so a signed-in user stays Online. */
+export async function heartbeatCurrentDevice(): Promise<void> {
+  if (!(await getToken())) return;
+  const localHid = (await getOrCreateDeviceHid()).toUpperCase();
+  const devices = await getDevices();
+  const existing = (devices.data ?? []).find(
+    (d) => String(d.hid).toUpperCase() === localHid,
+  );
+  if (!existing?.id || !isClientSessionHid(existing.hid)) return;
+  await sendDeviceHeartbeat(existing.id);
+  await refreshSessionDevicePlace(existing);
+}
+
+/** Write GPS, or the Settings address, onto this phone. Hubs keep their own address. */
+export async function refreshSessionDevicePlace(device: DeviceRecord): Promise<void> {
+  if (!device.id || !isClientSessionHid(device.hid)) return;
+  try {
+    const place = await resolveMainDevicePlace(device.address);
+    if (!place || !mainDevicePlaceChanged(device, place)) return;
+    await updateDevice(device.id, {
+      address: place.address,
+      ...(place.latitude != null && place.longitude != null
+        ? { latitude: place.latitude, longitude: place.longitude }
+        : {}),
+    });
+  } catch {
+    /* presence stays online even if the place lookup fails */
+  }
 }
 
 export async function setCurrentDeviceOffline(): Promise<void> {
@@ -223,6 +272,7 @@ export async function syncCurrentDevice(
       }
       await updateDevice(byLocalHid.id, { is_online: true });
       await sendDeviceHeartbeat(byLocalHid.id);
+      await refreshSessionDevicePlace(byLocalHid);
       return { status: "ok", deviceId: byLocalHid.id };
     }
 
@@ -235,12 +285,23 @@ export async function syncCurrentDevice(
 
     // Let the server evict offline devices when at capacity — never delete from
     // the client during login sync (that was removing the other platform's row).
+    const place = isClientSessionHid(localHid)
+      ? await resolveMainDevicePlace("Unknown").catch(() => null)
+      : null;
     const createPayload = {
       hid: localHid,
       name: `${display} (${platformLabel})`,
       enable_notification: true,
       propagate_enabled: true,
       is_online: true,
+      ...(place
+        ? {
+            address: place.address,
+            ...(place.latitude != null && place.longitude != null
+              ? { latitude: place.latitude, longitude: place.longitude }
+              : {}),
+          }
+        : {}),
     };
     let created = await createDevice(createPayload);
     if (

@@ -13,10 +13,20 @@ import { colors, gradients } from "@/theme/colors";
 
 type Variant = "primary" | "secondary" | "ghost" | "outline" | "danger";
 type Size = "sm" | "md" | "lg";
+type Tone = "blue" | "green" | "red" | "amber" | "slate";
+
+const tonePalette: Record<Tone, { bg: string; fg: string; border: string }> = {
+  blue: { bg: "rgba(47,128,237,0.08)", fg: "#1B5BB5", border: "#2F80ED" },
+  green: { bg: "rgba(47,162,74,0.10)", fg: "#1E7A36", border: "#2FA24A" },
+  red: { bg: "#FCE7EA", fg: "#C4283A", border: "#E23B4E" },
+  amber: { bg: "rgba(224,153,42,0.12)", fg: "#9A6410", border: "#E0992A" },
+  slate: { bg: "#F4F7FB", fg: "#566784", border: "#C2D2E6" },
+};
 
 type ButtonProps = Omit<PressableProps, "style"> & {
   label: string;
   variant?: Variant;
+  tone?: Tone;
   size?: Size;
   loading?: boolean;
   fullWidth?: boolean;
@@ -35,6 +45,7 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
   {
     label,
     variant = "primary",
+    tone,
     size = "md",
     loading,
     disabled,
@@ -72,7 +83,7 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
     onPressOut?.(e);
   };
 
-  if (variant === "primary") {
+  if (variant === "primary" && !tone) {
     return (
       <Animated.View
         style={[
@@ -157,7 +168,7 @@ export const Button = forwardRef<View, ButtonProps>(function Button(
     },
     danger: { bg: "#FCE7EA", fg: colors.danger, border: "#F3C2CA" },
   };
-  const p = palette[variant];
+  const p = tone ? tonePalette[tone] : palette[variant];
 
   return (
     <Animated.View

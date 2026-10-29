@@ -23,6 +23,7 @@ import {
   listActivatedUniversalAccessKeys,
   listPrivateUniversalAccessKeys,
   searchPublicUniversalAccessKeys,
+  setPrivateUniversalAccessKeySelected,
   type UniversalAccessKeyRow,
 } from "@/api/universalAccess";
 import { copyToClipboard } from "@/lib/copyToClipboard";
@@ -78,6 +79,7 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [privateBusyId, setPrivateBusyId] = useState<number | null>(null);
 
   function fieldStatus(index: number): FieldStatus {
     if (selectedFlags[index]) return "selected";
@@ -150,6 +152,29 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
     onActivated?.();
     const activatedResult = await listActivatedUniversalAccessKeys();
     setActivated(activatedResult.data ?? []);
+  }
+
+  async function togglePrivate(item: UniversalAccessKeyRow) {
+    const next = item.selected === false;
+    setPrivateBusyId(item.credential_id);
+    const result = await setPrivateUniversalAccessKeySelected(
+      item.credential_id,
+      next,
+    );
+    setPrivateBusyId(null);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setPrivateKeys((prev) =>
+      prev.map((row) =>
+        row.credential_id === item.credential_id
+          ? { ...row, selected: next }
+          : row,
+      ),
+    );
+    onActivated?.();
+    toast.success(next ? "Access key selected." : "Access key removed.");
   }
 
   async function removeActivated(credentialId: number) {
@@ -495,43 +520,80 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                   No private keys yet.
                 </Text>
               ) : (
-                privateKeys.map((item) => (
-                  <View
-                    key={item.credential_id}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 10,
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      gap: 6,
-                    }}
-                  >
+                privateKeys.map((item) => {
+                  const selected = item.selected !== false;
+                  const rowBusy = privateBusyId === item.credential_id;
+                  return (
                     <View
+                      key={item.credential_id}
                       style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.success : colors.border,
+                        backgroundColor: selected
+                          ? "rgba(47,162,74,0.08)"
+                          : colors.bgCard,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        gap: 6,
                       }}
                     >
-                      <Text
+                      <View
                         style={{
-                          color: colors.text,
-                          fontFamily: "monospace",
-                          flexShrink: 1,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
                         }}
                       >
-                        {item.code}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityState={{ selected, disabled: rowBusy }}
+                          disabled={rowBusy}
+                          onPress={() => void togglePrivate(item)}
+                          style={{
+                            flex: 1,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            opacity: rowBusy ? 0.6 : 1,
+                          }}
+                        >
+                          {selected ? (
+                            <Check size={16} color={colors.success} />
+                          ) : null}
+                          <Text
+                            style={{
+                              color: colors.text,
+                              fontFamily: "monospace",
+                              flexShrink: 1,
+                            }}
+                          >
+                            {item.code}
+                          </Text>
+                          <Text
+                            style={{
+                              color: selected ? colors.success : colors.accent,
+                              fontSize: 11,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {rowBusy
+                              ? "Saving…"
+                              : selected
+                                ? "Selected"
+                                : "Select"}
+                          </Text>
+                        </Pressable>
+                        <CopyKeyButton code={item.code} />
+                      </View>
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                        {(item.zones ?? []).map((zone) => zone.name).join(", ") ||
+                          "Zones"}
                       </Text>
-                      <CopyKeyButton code={item.code} />
                     </View>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                      {(item.zones ?? []).map((zone) => zone.name).join(", ") ||
-                        "Zones"}
-                    </Text>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
 

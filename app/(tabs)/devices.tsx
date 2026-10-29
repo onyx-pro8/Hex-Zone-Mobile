@@ -28,7 +28,15 @@ import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useAuth } from "@/context/AuthContext";
-import { createDevice, getDevices, type DeviceRecord } from "@/api/devices";
+import {
+  createDevice,
+  getDevices,
+  sendHubCommand,
+  updateDevice,
+  type DeviceRecord,
+} from "@/api/devices";
+import { getZones, type SavedZone } from "@/api/zones";
+import { getRemoteAppSettings } from "@/api/settings";
 import {
   accountSupportsSmartHome,
   accountTypeLabel,
@@ -39,7 +47,9 @@ import {
 } from "@/lib/accountLimits";
 import {
   deriveDeviceOnline,
+  heartbeatCurrentDevice,
   isClientSessionHid,
+  parseServerDate,
   isSmartHomeHid,
   removeDevice,
   signOutDevice,
@@ -61,10 +71,9 @@ function zoneLabel(h3?: string | null): string | null {
 }
 
 function formatLastSeen(value?: string): string {
-  if (!value) return "Never";
-  const t = new Date(value);
-  if (Number.isNaN(t.getTime())) return "Never";
-  return t.toLocaleString();
+  const parsed = parseServerDate(value);
+  if (!parsed) return "Never";
+  return parsed.toLocaleString();
 }
 
 function generateSmartHomeHid(): string {
@@ -105,14 +114,24 @@ function DeviceRow({
   busy,
   onSignOut,
   onRemove,
+  onEdit,
+  commandNote,
+  commandBusy,
+  onCommand,
 }: {
   device: DeviceRecord;
   isThisPhone: boolean;
   busy: boolean;
   onSignOut: () => void;
   onRemove: () => void;
+  onEdit: () => void;
+  commandNote?: string;
+  commandBusy: string | null;
+  onCommand: (command: "arm" | "disarm" | "status") => void;
 }) {
-  const online = deriveDeviceOnline(device);
+  const online =
+    deriveDeviceOnline(device) ||
+    (isThisPhone && isClientSessionHid(device.hid));
   const owner = ownerLabel(device);
   const zone = zoneLabel(device.h3_cell_id);
   const kind = deviceKindLabel(device.hid);
@@ -157,23 +176,25 @@ function DeviceRow({
             HID {device.hid}
           </Text>
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <CircleDot
-            size={12}
-            color={online ? colors.success : colors.textDim}
-          />
-          <Text
-            style={{
-              color: online ? colors.success : colors.textDim,
-              fontSize: 12,
-              fontWeight: "700",
-              letterSpacing: 0.4,
-              textTransform: "uppercase",
-            }}
-          >
-            {online ? "Online" : "Offline"}
-          </Text>
-        </View>
+        {isHub ? null : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <CircleDot
+              size={12}
+              color={online ? colors.success : colors.textDim}
+            />
+            <Text
+              style={{
+                color: online ? colors.success : colors.textDim,
+                fontSize: 12,
+                fontWeight: "700",
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+              }}
+            >
+              {online ? "Online" : "Offline"}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={{ gap: 6 }}>
@@ -195,6 +216,11 @@ function DeviceRow({
         <Text style={{ color: colors.textDim, fontSize: 11 }}>
           Last seen {formatLastSeen(device.last_seen ?? device.updated_at)}
         </Text>
+        {isHub && device.webhook ? (
+          <Text style={{ color: colors.textDim, fontSize: 11 }} numberOfLines={1}>
+            Webhook {device.webhook}
+          </Text>
+        ) : null}
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -209,8 +235,64 @@ function DeviceRow({
         />
       </View>
 
+      {isHub ? (
+        <View style={{ gap: 8 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {(["arm", "disarm", "status"] as const).map((command) => {
+              const key = `${device.id}:${command}`;
+              const sending = commandBusy === key;
+              return (
+                <Pressable
+                  key={command}
+                  onPress={() => onCommand(command)}
+                  disabled={commandBusy != null}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 10,
+                    backgroundColor: colors.accent,
+                    alignItems: "center",
+                    opacity: commandBusy != null && !sending ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>
+                    {sending ? "…" : command[0].toUpperCase() + command.slice(1)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {commandNote ? (
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>{commandNote}</Text>
+          ) : (
+            <Text style={{ color: colors.textDim, fontSize: 11 }}>
+              Commands are sent only to this hub's webhook.
+            </Text>
+          )}
+        </View>
+      ) : null}
+
       {!isThisPhone ? (
         <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+          {isHub ? (
+            <Pressable
+              onPress={onEdit}
+              disabled={busy}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: "center",
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600" }}>
+                Edit
+              </Text>
+            </Pressable>
+          ) : null}
           {online && isClientSessionHid(device.hid) ? (
             <Pressable
               onPress={onSignOut}
@@ -253,27 +335,51 @@ function DeviceRow({
   );
 }
 
+type ZoneOption = { id: number; name: string };
+
+type SmartHomeDraft = {
+  name: string;
+  hid: string;
+  address: string;
+  webhook: string;
+  periodicalCheckSec: string;
+  zoneIds: number[];
+};
+
+function zoneOptionsFrom(rows: SavedZone[] | undefined): ZoneOption[] {
+  const options: ZoneOption[] = [];
+  for (const row of rows ?? []) {
+    const id = Number(row.id);
+    if (!Number.isFinite(id)) continue;
+    options.push({
+      id,
+      name: String(row.name ?? "").trim() || `Zone ${id}`,
+    });
+  }
+  return options;
+}
+
 function AddSmartHomeModal({
   visible,
   submitting,
-  name,
-  hid,
-  address,
-  onChangeName,
-  onChangeHid,
-  onChangeAddress,
+  editing,
+  draft,
+  zones,
+  networkId,
+  apiKey,
+  onChange,
   onGenerateHid,
   onClose,
   onSubmit,
 }: {
   visible: boolean;
   submitting: boolean;
-  name: string;
-  hid: string;
-  address: string;
-  onChangeName: (v: string) => void;
-  onChangeHid: (v: string) => void;
-  onChangeAddress: (v: string) => void;
+  editing: boolean;
+  draft: SmartHomeDraft;
+  zones: ZoneOption[];
+  networkId: string;
+  apiKey: string;
+  onChange: (patch: Partial<SmartHomeDraft>) => void;
   onGenerateHid: () => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -310,11 +416,11 @@ function AddSmartHomeModal({
             }}
           >
             <Text style={{ color: colors.text, fontSize: 18, fontWeight: "700" }}>
-              Add smart-home device
+              {editing ? "Edit smart-home device" : "Add smart-home device"}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
-              Register a hub with a DEV- ID. Then open Account settings → Smart-home
-              integration to copy the API key and Network ID onto the device.
+              Each hub has its own webhook and the zones that should trigger it.
+              Copy the Network ID and API key onto the device.
             </Text>
           </View>
           <ScrollView
@@ -323,35 +429,38 @@ function AddSmartHomeModal({
           >
             <Input
               label="Device name"
-              value={name}
-              onChangeText={onChangeName}
+              value={draft.name}
+              onChangeText={(value) => onChange({ name: value })}
               placeholder="Living room hub"
               autoCapitalize="words"
             />
             <View style={{ gap: 8 }}>
               <Input
                 label="Hardware ID (HID)"
-                value={hid}
-                onChangeText={onChangeHid}
+                value={draft.hid}
+                onChangeText={(value) => onChange({ hid: value })}
                 placeholder="DEV-A1B2C3"
                 autoCapitalize="characters"
                 autoCorrect={false}
+                editable={!editing}
               />
-              <Pressable
-                onPress={onGenerateHid}
-                style={{
-                  alignSelf: "flex-start",
-                  paddingVertical: 8,
-                  paddingHorizontal: 12,
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
-                  Generate HID
-                </Text>
-              </Pressable>
+              {editing ? null : (
+                <Pressable
+                  onPress={onGenerateHid}
+                  style={{
+                    alignSelf: "flex-start",
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 8,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>
+                    Generate HID
+                  </Text>
+                </Pressable>
+              )}
               <Text style={{ color: colors.textDim, fontSize: 11 }}>
                 Use Generate or enter DEV- plus at least 3 letters/numbers. Do not use
                 MOB- or WEB- (those are phone/browser sessions).
@@ -359,12 +468,75 @@ function AddSmartHomeModal({
             </View>
             <Input
               label="Address (optional)"
-              value={address}
-              onChangeText={onChangeAddress}
+              value={draft.address}
+              onChangeText={(value) => onChange({ address: value })}
               placeholder="Home address"
             />
+            <Input
+              label="Webhook"
+              value={draft.webhook}
+              onChangeText={(value) => onChange({ webhook: value })}
+              placeholder="https://hub.example.com/hooks/hex-zone"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: "600" }}>
+                Zones
+              </Text>
+              {zones.length === 0 ? (
+                <Text style={{ color: colors.textDim, fontSize: 12 }}>
+                  No zones yet. Create a zone first, then connect this hub to it.
+                </Text>
+              ) : (
+                zones.map((zone) => {
+                  const selected = draft.zoneIds.includes(zone.id);
+                  return (
+                    <Pressable
+                      key={zone.id}
+                      onPress={() =>
+                        onChange({
+                          zoneIds: selected
+                            ? draft.zoneIds.filter((id) => id !== zone.id)
+                            : [...draft.zoneIds, zone.id],
+                        })
+                      }
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 4,
+                          borderWidth: 1,
+                          borderColor: selected ? colors.accent : colors.border,
+                          backgroundColor: selected ? colors.accent : "transparent",
+                        }}
+                      />
+                      <Text style={{ color: colors.text, fontSize: 14, flex: 1 }}>
+                        {zone.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </View>
+            <Input label="Network ID" value={networkId || "—"} editable={false} />
+            <Input label="API Key" value={apiKey || "—"} editable={false} />
+            <Input
+              label="Periodical check (sec)"
+              value={draft.periodicalCheckSec}
+              onChangeText={(value) => onChange({ periodicalCheckSec: value })}
+              placeholder="86400"
+              keyboardType="number-pad"
+            />
             <Button
-              label={submitting ? "Saving…" : "Save smart-home device"}
+              label={submitting ? "Saving…" : editing ? "Save changes" : "Save smart-home device"}
               onPress={onSubmit}
               loading={submitting}
               disabled={submitting}
@@ -391,20 +563,30 @@ export default function DevicesScreen() {
   const [loading, setLoading] = useState(false);
   const [localHid, setLocalHid] = useState("");
   const [actionId, setActionId] = useState<string | null>(null);
+  const [commandBusy, setCommandBusy] = useState<string | null>(null);
+  const [commandNotes, setCommandNotes] = useState<Record<string, string>>({});
   const [addOpen, setAddOpen] = useState(false);
   const [addSubmitting, setAddSubmitting] = useState(false);
-  const [addName, setAddName] = useState("");
-  const [addHid, setAddHid] = useState(generateSmartHomeHid());
-  const [addAddress, setAddAddress] = useState("");
+  const [editingId, setEditingId] = useState<number | string | null>(null);
+  const [zones, setZones] = useState<ZoneOption[]>([]);
+  const [apiKey, setApiKey] = useState("");
+  const emptyDraft = (): SmartHomeDraft => ({
+    name: "",
+    hid: generateSmartHomeHid(),
+    address: "",
+    webhook: "",
+    periodicalCheckSec: "86400",
+    zoneIds: [],
+  });
+  const [draft, setDraft] = useState<SmartHomeDraft>(emptyDraft);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [hid, result] = await Promise.all([
-        getOrCreateDeviceHid(),
-        getDevices(),
-      ]);
+      const hid = await getOrCreateDeviceHid();
       setLocalHid(hid);
+      await heartbeatCurrentDevice();
+      const result = await getDevices();
       if (result.error) {
         toast.error(result.error);
         return;
@@ -418,6 +600,19 @@ export default function DevicesScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void getZones().then((result) => {
+      const rows = Array.isArray(result.data) ? result.data : [];
+      setZones(zoneOptionsFrom(rows));
+    });
+    void getRemoteAppSettings().then((result) => {
+      const key = result.data?.sharedNotification?.apiKey;
+      if (typeof key === "string") setApiKey(key);
+    });
+  }, []);
+
+  const networkId = String(user?.zone_id ?? user?.zoneId ?? "").trim();
 
   const accountType = useMemo(
     () => normalizeAccountType(user?.accountType, user?.account_type),
@@ -452,14 +647,66 @@ export default function DevicesScreen() {
   }, [devices]);
 
   const openAddModal = () => {
-    setAddName("");
-    setAddHid(generateSmartHomeHid());
-    setAddAddress("");
+    setEditingId(null);
+    setDraft(emptyDraft());
     setAddOpen(true);
   };
 
-  const handleAddSmartHome = async () => {
-    const normalizedHid = normalizeSmartHomeHid(addHid);
+  const openEditModal = (device: DeviceRecord) => {
+    setEditingId(device.id);
+    setDraft({
+      name: device.name ?? "",
+      hid: device.hid,
+      address: device.address ?? "",
+      webhook: device.webhook ?? "",
+      periodicalCheckSec: device.periodical_check_sec || "86400",
+      zoneIds: (device.zone_ids ?? []).map((id) => Number(id)).filter(Number.isFinite),
+    });
+    setAddOpen(true);
+  };
+
+  const handleSaveSmartHome = async () => {
+    if (!draft.webhook.trim()) {
+      toast.error("Enter the webhook URL for this hub.");
+      return;
+    }
+    if (draft.zoneIds.length === 0) {
+      toast.error("Select at least one zone for this hub.");
+      return;
+    }
+    const binding = {
+      webhook: draft.webhook.trim(),
+      periodical_check_sec: draft.periodicalCheckSec.trim() || "86400",
+      zone_ids: draft.zoneIds,
+    };
+
+    if (editingId != null) {
+      const label = draft.name.trim();
+      if (!label) {
+        toast.error("Enter a device name.");
+        return;
+      }
+      setAddSubmitting(true);
+      try {
+        const result = await updateDevice(editingId, {
+          name: label,
+          address: draft.address.trim() || undefined,
+          ...binding,
+        });
+        if (result.error) {
+          toast.error(result.error);
+          return;
+        }
+        setAddOpen(false);
+        await load();
+        toast.success("Smart-home device updated.");
+      } finally {
+        setAddSubmitting(false);
+      }
+      return;
+    }
+
+    const normalizedHid = normalizeSmartHomeHid(draft.hid);
     if (!normalizedHid) {
       toast.error("Enter a valid HID (DEV- plus at least 3 letters or numbers).");
       return;
@@ -473,7 +720,7 @@ export default function DevicesScreen() {
       return;
     }
     const label =
-      addName.trim() ||
+      draft.name.trim() ||
       `${(user?.name?.split(/\s+/)[0] || "Home").replace(/[^a-zA-Z]/g, "") || "Home"} hub`;
 
     setAddSubmitting(true);
@@ -481,11 +728,12 @@ export default function DevicesScreen() {
       const result = await createDevice({
         hid: normalizedHid,
         name: label,
-        address: addAddress.trim() || undefined,
+        address: draft.address.trim() || undefined,
         enable_notification: true,
         propagate_enabled: true,
         is_online: false,
         active: true,
+        ...binding,
       });
       if (result.error) {
         toast.error(result.error);
@@ -493,13 +741,44 @@ export default function DevicesScreen() {
       }
       setAddOpen(false);
       await load();
-      toast.success(
-        `HID ${normalizedHid} is registered. Open Account settings → Smart-home integration to copy the API key and Network ID to your hub.`,
-        { title: "Smart-home device added" },
-      );
+      toast.success(`HID ${normalizedHid} is registered with its webhook and zones.`, {
+        title: "Smart-home device added",
+      });
     } finally {
       setAddSubmitting(false);
     }
+  };
+
+  const sendCommand = (device: DeviceRecord, command: "arm" | "disarm" | "status") => {
+    void (async () => {
+      const key = `${device.id}:${command}`;
+      setCommandBusy(key);
+      try {
+        const result = await sendHubCommand(device.hid, command);
+        if (result.error || !result.data) {
+          const message = result.error || "Could not send the command.";
+          setCommandNotes((prev) => ({ ...prev, [device.hid]: message }));
+          toast.error(message);
+          return;
+        }
+        const label = command[0].toUpperCase() + command.slice(1);
+        const detail = result.data.detail?.trim() || "";
+        const note = `${result.data.command.toUpperCase()} · ${result.data.status}${
+          detail ? ` · ${detail}` : ""
+        }`;
+        setCommandNotes((prev) => ({ ...prev, [device.hid]: note }));
+        const hubName = device.name?.trim() || device.hid;
+        if (result.data.status === "sent") {
+          toast.success(detail || `${label} sent to ${hubName}.`, { title: label });
+        } else if (result.data.status === "no_reply") {
+          toast.warning(detail || `${hubName} did not reply.`, { title: label });
+        } else {
+          toast.error(detail || `${label} failed for ${hubName}.`, { title: label });
+        }
+      } finally {
+        setCommandBusy(null);
+      }
+    })();
   };
 
   const confirmRemove = (device: DeviceRecord) => {
@@ -507,7 +786,7 @@ export default function DevicesScreen() {
     Alert.alert(
       "Remove device?",
       isHub
-        ? `Remove smart-home hub "${device.name ?? device.hid}"? Smart-home settings HID will update after you refresh settings.`
+        ? `Remove smart-home hub "${device.name ?? device.hid}"? Its webhook and zone links will be removed too.`
         : `Remove "${device.name ?? device.hid}" from your account? You can sign in again on that phone later.`,
       [
         { text: "Cancel", style: "cancel" },
@@ -628,6 +907,10 @@ export default function DevicesScreen() {
                   busy={actionId === String(item.id)}
                   onSignOut={() => handleSignOut(item)}
                   onRemove={() => confirmRemove(item)}
+                  onEdit={() => openEditModal(item)}
+                  commandNote={commandNotes[item.hid]}
+                  commandBusy={commandBusy}
+                  onCommand={(command) => sendCommand(item, command)}
                 />
               );
             }}
@@ -654,17 +937,19 @@ export default function DevicesScreen() {
         <AddSmartHomeModal
           visible={addOpen}
           submitting={addSubmitting}
-          name={addName}
-          hid={addHid}
-          address={addAddress}
-          onChangeName={setAddName}
-          onChangeHid={setAddHid}
-          onChangeAddress={setAddAddress}
-          onGenerateHid={() => setAddHid(generateSmartHomeHid())}
+          editing={editingId != null}
+          draft={draft}
+          zones={zones}
+          networkId={networkId}
+          apiKey={apiKey}
+          onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+          onGenerateHid={() =>
+            setDraft((current) => ({ ...current, hid: generateSmartHomeHid() }))
+          }
           onClose={() => {
             if (!addSubmitting) setAddOpen(false);
           }}
-          onSubmit={() => void handleAddSmartHome()}
+          onSubmit={() => void handleSaveSmartHome()}
         />
       </SafeAreaView>
     </GradientBackground>
