@@ -3,11 +3,13 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
   RefreshControl,
   ScrollView,
+  Share,
   Text,
   TextInput,
   View,
@@ -17,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
+import { File as ExpoFile, Paths } from "expo-file-system";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -52,10 +55,147 @@ import { colors } from "@/theme/colors";
 
 type Tab = "invite" | "place" | "list";
 
+function parseDataUrl(value: string): { mime: string; base64: string } | null {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("data:")) return null;
+  const comma = trimmed.indexOf(",");
+  if (comma < 0) return null;
+  const mime = (trimmed.slice(5, comma).split(";")[0] || "application/octet-stream").toLowerCase();
+  return { mime, base64: trimmed.slice(comma + 1).replace(/\s/g, "") };
+}
+
+function fileKind(mime: string): "image" | "pdf" | "text" | "docx" | "doc" | "other" {
+  if (mime.startsWith("image/")) return "image";
+  if (mime === "application/pdf") return "pdf";
+  if (mime === "text/plain") return "text";
+  if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return "docx";
+  }
+  if (mime === "application/msword") return "doc";
+  return "other";
+}
+
+function fileExtension(kind: ReturnType<typeof fileKind>, mime: string): string {
+  if (kind === "pdf") return "pdf";
+  if (kind === "text") return "txt";
+  if (kind === "docx") return "docx";
+  if (kind === "doc") return "doc";
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("gif")) return "gif";
+  if (kind === "image") return "jpg";
+  return "bin";
+}
+
+function fileTypeLabel(kind: ReturnType<typeof fileKind>): string {
+  if (kind === "image") return "Image";
+  if (kind === "pdf") return "PDF";
+  if (kind === "text") return "Text file";
+  if (kind === "docx" || kind === "doc") return "Word document";
+  return "File";
+}
+
+function decodeBase64Text(payload: string): string {
+  const binary = globalThis.atob(payload);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function previewHtml(kind: "pdf" | "docx", base64: string): string {
+  const payload = JSON.stringify(base64);
+  if (kind === "pdf") {
+    return `<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>body{margin:0;background:#f4f7fb;}canvas{width:100%;height:auto;display:block;margin:0 0 8px;background:#fff;}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head><body><div id="pages"></div>
+<script>
+  const payload = ${payload};
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  pdfjsLib.getDocument({ data: bytes }).promise.then(async function (pdf) {
+    const root = document.getElementById("pages");
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      const page = await pdf.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 1.3 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      root.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport: viewport }).promise;
+    }
+  }).catch(function () {
+    document.body.textContent = "Could not preview this PDF. Use Download to open it.";
+  });
+</script></body></html>`;
+  }
+  return `<!DOCTYPE html>
+<html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>body{margin:0;padding:12px;font-family:sans-serif;color:#0F2C5C;}</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+</head><body><div id="doc">Loading document…</div>
+<script>
+  const payload = ${payload};
+  const binary = atob(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  mammoth.convertToHtml({ arrayBuffer: bytes.buffer })
+    .then(function (result) { document.getElementById("doc").innerHTML = result.value || "Empty document."; })
+    .catch(function () { document.getElementById("doc").textContent = "Could not preview this Word document. Use Download to open it."; });
+</script></body></html>`;
+}
+
+async function downloadDataUrl(value: string, label: string): Promise<void> {
+  const parsed = parseDataUrl(value);
+  if (!parsed) {
+    toast.error("This file cannot be downloaded.");
+    return;
+  }
+  const kind = fileKind(parsed.mime);
+  const filename = `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}.${fileExtension(kind, parsed.mime)}`;
+  const file = new ExpoFile(Paths.cache, filename);
+  try {
+    if (file.exists) file.delete();
+    file.create();
+    file.write(parsed.base64, { encoding: "base64" });
+  } catch {
+    toast.error("Could not save the file.");
+    return;
+  }
+  try {
+    if (Platform.OS === "android") {
+      await Linking.openURL(file.contentUri);
+      return;
+    }
+    const result = await Share.share({ url: file.uri, title: filename });
+    if (result.action === Share.dismissedAction) return;
+  } catch {
+    toast.error("Could not open the file.");
+  }
+}
+
 function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
   const value = (uri || "").trim();
-  const isImage = value.startsWith("data:image/");
-  const isPdf = value.startsWith("data:application/pdf");
+  const parsed = value ? parseDataUrl(value) : null;
+  const kind = parsed ? fileKind(parsed.mime) : "other";
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const textBody =
+    parsed && kind === "text"
+      ? (() => {
+          try {
+            return decodeBase64Text(parsed.base64);
+          } catch {
+            return "";
+          }
+        })()
+      : "";
+  const canPreview = kind === "image" || kind === "pdf" || kind === "text" || kind === "docx";
+
   return (
     <View>
       <Text
@@ -69,34 +209,105 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
       >
         {label}
       </Text>
-      {isImage ? (
-        <Image
-          source={{ uri: value }}
-          resizeMode="contain"
-          style={{
-            width: "100%",
-            height: 180,
-            borderRadius: 10,
-            backgroundColor: colors.bgSurface,
-            borderWidth: 1,
-            borderColor: colors.border,
-          }}
-        />
-      ) : isPdf ? (
-        <View
-          style={{
-            height: 220,
-            borderRadius: 10,
-            overflow: "hidden",
-            borderWidth: 1,
-            borderColor: colors.border,
-          }}
-        >
-          <WebView originWhitelist={["*"]} source={{ uri: value }} />
-        </View>
-      ) : (
+      {!parsed ? (
         <Text style={{ color: colors.textMuted, fontSize: 13 }}>Not provided</Text>
+      ) : (
+        <View style={{ gap: 8 }}>
+          {kind === "image" ? (
+            <Image
+              source={{ uri: value }}
+              resizeMode="contain"
+              style={{
+                width: "100%",
+                height: 180,
+                borderRadius: 10,
+                backgroundColor: colors.bgSurface,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            />
+          ) : (
+            <Text style={{ color: colors.text, fontSize: 13 }}>{fileTypeLabel(kind)} attached</Text>
+          )}
+          {kind === "text" && textBody ? (
+            <Text style={{ color: colors.text, fontSize: 13 }} numberOfLines={6}>
+              {textBody}
+            </Text>
+          ) : null}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {canPreview ? (
+              <Pressable
+                onPress={() => setPreviewOpen(true)}
+                style={{
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: colors.accent,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                }}
+              >
+                <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+                  Preview
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              disabled={saving}
+              onPress={() => {
+                setSaving(true);
+                void downloadDataUrl(value, label).finally(() => setSaving(false));
+              }}
+              style={{
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                opacity: saving ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>
+                {saving ? "Saving…" : "Download"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
       )}
+      <Modal visible={previewOpen} animationType="slide" onRequestClose={() => setPreviewOpen(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["top", "bottom"]}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+            }}
+          >
+            <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>{label}</Text>
+            <Pressable onPress={() => setPreviewOpen(false)} hitSlop={8}>
+              <Text style={{ color: colors.accent, fontWeight: "700" }}>Close</Text>
+            </Pressable>
+          </View>
+          {kind === "image" ? (
+            <Image source={{ uri: value }} resizeMode="contain" style={{ flex: 1, backgroundColor: "#F4F7FB" }} />
+          ) : kind === "text" ? (
+            <ScrollView contentContainerStyle={{ padding: 16 }}>
+              <Text style={{ color: colors.text, fontSize: 14 }}>{textBody || "Empty file."}</Text>
+            </ScrollView>
+          ) : kind === "pdf" || kind === "docx" ? (
+            <WebView
+              originWhitelist={["*"]}
+              source={{ html: previewHtml(kind, parsed?.base64 || "") }}
+              style={{ flex: 1 }}
+            />
+          ) : (
+            <Text style={{ color: colors.textMuted, padding: 16 }}>
+              Preview is not available for this file. Use Download to open it.
+            </Text>
+          )}
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -181,6 +392,127 @@ async function photoDataUrl(): Promise<string | null> {
   return `data:image/jpeg;base64,${prepared.base64}`;
 }
 
+const BUSINESS_DOC_HTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { margin: 0; font-family: sans-serif; background: transparent; }
+  button {
+    width: 100%;
+    height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: #2F80ED;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<button type="button" id="choose">Choose file</button>
+<input id="file" type="file" accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,.doc,.docx,.txt" hidden />
+<script>
+  const input = document.getElementById("file");
+  function mimeFor(name, type) {
+    const given = (type || "").toLowerCase();
+    if (given) return given;
+    const lower = (name || "").toLowerCase();
+    if (lower.endsWith(".pdf")) return "application/pdf";
+    if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (lower.endsWith(".doc")) return "application/msword";
+    if (lower.endsWith(".txt")) return "text/plain";
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    return "";
+  }
+  function allowed(mime) {
+    return mime.indexOf("image/") === 0 ||
+      mime === "application/pdf" ||
+      mime === "application/msword" ||
+      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mime === "text/plain";
+  }
+  function send(payload) {
+    window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+  }
+  document.getElementById("choose").onclick = function () { input.click(); };
+  input.onchange = function () {
+    const file = input.files && input.files[0];
+    if (!file) {
+      send({ canceled: true });
+      return;
+    }
+    const mime = mimeFor(file.name, file.type);
+    if (!allowed(mime)) {
+      send({ error: "type" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+      let dataUrl = String(reader.result || "");
+      const comma = dataUrl.indexOf(",");
+      if (comma >= 0 && dataUrl.slice(0, 5) === "data:" && !file.type) {
+        dataUrl = "data:" + mime + ";base64," + dataUrl.slice(comma + 1);
+      }
+      if (dataUrl.length > 1500000) {
+        send({ error: "size" });
+        return;
+      }
+      send({ dataUrl: dataUrl });
+    };
+    reader.onerror = function () { send({ error: "read" }); };
+    reader.readAsDataURL(file);
+  };
+</script>
+</body>
+</html>`;
+
+type BusinessDocMessage = {
+  dataUrl?: string;
+  canceled?: boolean;
+  error?: string;
+};
+
+let openBusinessDocPicker: (() => void) | null = null;
+let deliverBusinessDoc: ((message: BusinessDocMessage) => void) | null = null;
+
+function businessDataUrl(): Promise<string | null> {
+  if (!openBusinessDocPicker) {
+    toast.error("Open the access screen, then choose the business document again.");
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    deliverBusinessDoc = (message) => {
+      deliverBusinessDoc = null;
+      if (message.canceled) {
+        resolve(null);
+        return;
+      }
+      if (message.error === "type") {
+        toast.error("Business document must be an image, PDF, Word document, or text file.");
+        resolve(null);
+        return;
+      }
+      if (message.error === "size") {
+        toast.error("Business document is too large.");
+        resolve(null);
+        return;
+      }
+      if (message.error || !message.dataUrl) {
+        toast.error("Could not read the file.");
+        resolve(null);
+        return;
+      }
+      resolve(message.dataUrl);
+    };
+    openBusinessDocPicker?.();
+  });
+}
+
 function FieldLabel({ children }: { children: string }) {
   return (
     <Text
@@ -228,7 +560,11 @@ export default function AccessCodesScreen({
   const [selectedZoneIds, setSelectedZoneIds] = useState<number[]>([]);
   const [inviteNote, setInviteNote] = useState("");
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [inviteAwaitingReview, setInviteAwaitingReview] = useState(false);
   const [inviteReadyToRefresh, setInviteReadyToRefresh] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "pending" | "approved" | "rejected"
+  >("all");
 
   const [networkQuery, setNetworkQuery] = useState("");
   const [target, setTarget] = useState<UniversalAccessTargetNetwork | null>(null);
@@ -237,6 +573,19 @@ export default function AccessCodesScreen({
   const [placeNote, setPlaceNote] = useState("");
   const [photo, setPhoto] = useState("");
   const [businessDoc, setBusinessDoc] = useState("");
+  const [docPickerOpen, setDocPickerOpen] = useState(false);
+
+  useEffect(() => {
+    openBusinessDocPicker = () => setDocPickerOpen(true);
+    return () => {
+      openBusinessDocPicker = null;
+      if (deliverBusinessDoc) {
+        const finish = deliverBusinessDoc;
+        deliverBusinessDoc = null;
+        finish({ canceled: true });
+      }
+    };
+  }, []);
 
   const profile = useMemo(
     () => ({
@@ -333,6 +682,7 @@ export default function AccessCodesScreen({
     setSelectedZoneIds([]);
     setInviteNote("");
     setGeneratedCode(null);
+    setInviteAwaitingReview(false);
     setInviteReadyToRefresh(false);
   }
 
@@ -372,8 +722,10 @@ export default function AccessCodesScreen({
       return;
     }
     setGeneratedCode(result.data.code ?? null);
+    const awaiting = result.data.status === "pending" && keyType === "private";
+    setInviteAwaitingReview(awaiting);
     setInviteReadyToRefresh(true);
-    toast.success("Access key generated.");
+    toast.success(awaiting ? "Sent for the user to review." : "Access key generated.");
     await reload();
   }
 
@@ -743,6 +1095,11 @@ export default function AccessCodesScreen({
                   />
                   {generatedCode ? (
                     <CopyableAccessKey code={generatedCode} />
+                  ) : null}
+                  {inviteAwaitingReview ? (
+                    <Text style={{ color: "#9A6410", fontSize: 13 }}>
+                      Sent for review. The selected user must accept before this key is added to their zones.
+                    </Text>
                   ) : null}
                   <Button
                     label={
@@ -1123,16 +1480,13 @@ export default function AccessCodesScreen({
                     size="sm"
                     fullWidth
                     onPress={() => {
-                      void photoDataUrl().then((url) => {
+                      void businessDataUrl().then((url) => {
                         if (url) setBusinessDoc(url);
                       });
                     }}
                   />
                   {businessDoc ? (
-                    <Image
-                      source={{ uri: businessDoc }}
-                      style={{ width: 120, height: 84, borderRadius: 8 }}
-                    />
+                    <ReviewDocument label="Business document" uri={businessDoc} />
                   ) : null}
                   <TextInput
                     value={placeNote}
@@ -1201,14 +1555,53 @@ export default function AccessCodesScreen({
                     </Text>
                   </Pressable>
                 </View>
-                {rows.length === 0 ? (
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  {(
+                    [
+                      ["all", "All"],
+                      ["pending", "Pending"],
+                      ["approved", "Approved"],
+                      ["rejected", "Rejected"],
+                    ] as const
+                  ).map(([value, label]) => {
+                    const active = statusFilter === value;
+                    return (
+                      <Pressable
+                        key={value}
+                        onPress={() => setStatusFilter(value)}
+                        style={{
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: active ? colors.accent : colors.border,
+                          backgroundColor: active ? colors.accent : "transparent",
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: active ? "#fff" : colors.textMuted,
+                            fontSize: 12,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {rows.filter((row) => statusFilter === "all" || row.status === statusFilter)
+                  .length === 0 ? (
                   <Text style={{ color: colors.textMuted }}>Nothing here yet.</Text>
                 ) : null}
-                {rows.map((row, index) => {
+                {rows
+                  .filter((row) => statusFilter === "all" || row.status === statusFilter)
+                  .map((row, index, visibleRows) => {
                   const actions = row.viewer_actions;
                   const showSenderReview =
                     row.viewer_role === "requester" && row.status === "pending";
-                  const isLast = index === rows.length - 1;
+                  const isLast = index === visibleRows.length - 1;
                   return (
                     <View
                       key={row.id}
@@ -1564,6 +1957,10 @@ export default function AccessCodesScreen({
               <Text style={{ color: colors.textMuted, fontSize: 13 }}>
                 Only photo ID and business document can be changed while pending.
               </Text>
+              {editPhoto ? <ReviewDocument label="Photo ID" uri={editPhoto} /> : null}
+              {editBusinessDoc ? (
+                <ReviewDocument label="Business document" uri={editBusinessDoc} />
+              ) : null}
               <Button
                 label={editPhoto ? "Replace photo ID" : "Add photo ID"}
                 variant="outline"
@@ -1581,7 +1978,7 @@ export default function AccessCodesScreen({
                 size="sm"
                 fullWidth
                 onPress={() => {
-                  void photoDataUrl().then((url) => {
+                  void businessDataUrl().then((url) => {
                     if (url) setEditBusinessDoc(url);
                   });
                 }}
@@ -1619,6 +2016,72 @@ export default function AccessCodesScreen({
                 onPress={() => setEditing(null)}
               />
             </Card>
+            </View>
+          </Pressable>
+        </Modal>
+
+        <Modal visible={docPickerOpen} transparent animationType="fade" onRequestClose={() => {
+          setDocPickerOpen(false);
+          deliverBusinessDoc?.({ canceled: true });
+          deliverBusinessDoc = null;
+        }}>
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(15, 44, 92, 0.45)",
+              justifyContent: "center",
+              padding: 24,
+            }}
+            onPress={() => {
+              setDocPickerOpen(false);
+              deliverBusinessDoc?.({ canceled: true });
+              deliverBusinessDoc = null;
+            }}
+          >
+            <View
+              onStartShouldSetResponder={() => true}
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 16,
+                padding: 16,
+                gap: 12,
+              }}
+            >
+              <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
+                Business document
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                Images, PDF, Word, or text.
+              </Text>
+              <View style={{ height: 48 }}>
+                <WebView
+                  originWhitelist={["*"]}
+                  source={{ html: BUSINESS_DOC_HTML }}
+                  onMessage={(event) => {
+                    let message: BusinessDocMessage = {};
+                    try {
+                      message = JSON.parse(event.nativeEvent.data) as BusinessDocMessage;
+                    } catch {
+                      message = { error: "read" };
+                    }
+                    setDocPickerOpen(false);
+                    const finish = deliverBusinessDoc;
+                    deliverBusinessDoc = null;
+                    finish?.(message);
+                  }}
+                />
+              </View>
+              <Button
+                label="Cancel"
+                size="sm"
+                fullWidth
+                variant="outline"
+                onPress={() => {
+                  setDocPickerOpen(false);
+                  deliverBusinessDoc?.({ canceled: true });
+                  deliverBusinessDoc = null;
+                }}
+              />
             </View>
           </Pressable>
         </Modal>

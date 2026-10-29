@@ -669,7 +669,7 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                   onPress={onClose}
                 />
               </View>
-              {/* <View style={{ flex: 1 }}>
+              <View style={{ flex: 1 }}>
                 <Button
                   label={busy ? "Applying…" : "Apply keys"}
                   size="sm"
@@ -677,7 +677,7 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                   disabled={busy}
                   onPress={() => void submitCodes()}
                 />
-              </View> */}
+              </View>
             </View>
           </ScrollView>
         </View>
