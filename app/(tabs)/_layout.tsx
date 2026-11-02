@@ -1,6 +1,5 @@
-import { useCallback, useMemo } from "react";
-import { Tabs } from "expo-router";
-import { useRouter, type Href } from "expo-router";
+import { useCallback } from "react";
+import { Tabs, useRouter, type Href } from "expo-router";
 import { FloatingTabBar } from "@/components/navigation/FloatingTabBar";
 import { useAuth } from "@/context/AuthContext";
 import { AlarmInboxProvider } from "@/context/AlarmInboxContext";
@@ -36,15 +35,6 @@ function GlobalSheets() {
 export default function TabsLayout() {
   const { user } = useAuth();
   useLocationSync(Boolean(user));
-
-  const isAdmin = useMemo(() => {
-    const role = String(user?.role ?? "").toLowerCase();
-    if (role) return role !== "user";
-    const regType = String(
-      user?.registrationType ?? user?.registration_type ?? "",
-    ).toUpperCase();
-    return regType !== "USER";
-  }, [user?.role, user?.registrationType, user?.registration_type]);
 
   return (
     <AlarmInboxProvider>
@@ -92,14 +82,7 @@ export default function TabsLayout() {
               href: "/(tabs)/access-admin",
             }}
           />
-          <Tabs.Screen
-            name="guest"
-            options={{
-              title: "Guest",
-              tabBarLabel: "Guest",
-              href: isAdmin ? null : "/(tabs)/guest",
-            }}
-          />
+          <Tabs.Screen name="guest" options={{ href: null }} />
           {/* Reachable from header actions, not shown in the tab pill */}
           <Tabs.Screen name="messages" options={{ href: null }} />
           <Tabs.Screen name="recent-services" options={{ href: null }} />

@@ -1185,11 +1185,30 @@ function GuestAccessPanel({
   zoneId,
   pane,
   onPaneChange,
+  isAdmin,
 }: {
   zoneId: string;
   pane: GuestPane;
   onPaneChange: (next: GuestPane) => void;
+  isAdmin: boolean;
 }) {
+  const options: { key: GuestPane; label: string }[] = [
+    ...(isAdmin
+      ? [
+          { key: "qr" as const, label: "Network QR" },
+          { key: "list" as const, label: "Guest list" },
+        ]
+      : []),
+    { key: "passes", label: "Passes" },
+  ];
+  const visiblePane = options.some((option) => option.key === pane)
+    ? pane
+    : options[0].key;
+
+  useEffect(() => {
+    if (visiblePane !== pane) onPaneChange(visiblePane);
+  }, [visiblePane, pane, onPaneChange]);
+
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -1198,16 +1217,12 @@ function GuestAccessPanel({
     >
       <View style={{ paddingHorizontal: 20, marginTop: 4 }}>
         <BookTabs
-          value={pane}
+          value={visiblePane}
           onChange={onPaneChange}
-          options={[
-            { key: "qr", label: "Network QR" },
-            { key: "list", label: "Guest list" },
-            { key: "passes", label: "Passes" },
-          ]}
+          options={options}
         />
         <Card style={{ gap: 12, marginTop: 0, ...bookSheetCorners }}>
-          {pane === "qr" ? (
+          {visiblePane === "qr" ? (
             zoneId ? (
               <NetworkAccessSection zoneId={zoneId} bare />
             ) : (
@@ -1217,8 +1232,8 @@ function GuestAccessPanel({
               </Text>
             )
           ) : null}
-          {pane === "list" ? <GuestListScreen embedded /> : null}
-          {pane === "passes" ? <GuestPassesScreen embedded /> : null}
+          {visiblePane === "list" ? <GuestListScreen embedded /> : null}
+          {visiblePane === "passes" ? <GuestPassesScreen embedded /> : null}
         </Card>
       </View>
     </ScrollView>
@@ -1238,9 +1253,11 @@ export default function AccessScreen() {
   }>();
   const paneParam = typeof params.pane === "string" ? params.pane : undefined;
   const [tab, setTab] = useState<Tab>(isAdmin ? "member" : "universal");
-  const [guestPane, setGuestPane] = useState<GuestPane>(
-    guestPaneFromParam(paneParam),
-  );
+  const [guestPane, setGuestPane] = useState<GuestPane>(() => {
+    const fromParam = guestPaneFromParam(paneParam);
+    if (!isAdmin && fromParam !== "passes") return "passes";
+    return fromParam;
+  });
 
   useEffect(() => {
     const gt = typeof params.gt === "string" ? params.gt.trim() : "";
@@ -1249,8 +1266,11 @@ export default function AccessScreen() {
     if (gt || tabParam === "guest" || mode === "guest") {
       setTab("guest");
     }
-    if (paneParam) setGuestPane(guestPaneFromParam(paneParam));
-  }, [params.gt, params.tab, params.mode, paneParam]);
+    if (paneParam) {
+      const next = guestPaneFromParam(paneParam);
+      if (isAdmin || next === "passes") setGuestPane(next);
+    }
+  }, [params.gt, params.tab, params.mode, paneParam, isAdmin]);
 
   const accountType = useMemo(
     () => normalizeAccountType(user?.accountType, user?.account_type),
@@ -1290,18 +1310,20 @@ export default function AccessScreen() {
 
   const tabOptions = [
     ...(isAdmin
-      ? [
-          { key: "member" as const, title: "Member invite" },
-          { key: "guest" as const, title: "Guest access" },
-        ]
+      ? [{ key: "member" as const, title: "Member invite" }]
       : []),
+    { key: "guest" as const, title: "Guest access" },
     { key: "universal" as const, title: "Zone Management" },
   ];
 
   const header = (
     <AppHeader
       title="Access"
-      subtitle={isAdmin ? "Invites, guest access, and zone keys" : "Universal access"}
+      subtitle={
+        isAdmin
+          ? "Invites, guest access, and zone keys"
+          : "Guest access and zone keys"
+      }
     />
   );
 
@@ -1327,11 +1349,12 @@ export default function AccessScreen() {
               </View>
             </ScrollView>
           ) : null}
-          {isAdmin && tab === "guest" ? (
+          {tab === "guest" ? (
             <GuestAccessPanel
               zoneId={effectiveZoneId}
               pane={guestPane}
               onPaneChange={setGuestPane}
+              isAdmin={isAdmin}
             />
           ) : null}
         </View>
