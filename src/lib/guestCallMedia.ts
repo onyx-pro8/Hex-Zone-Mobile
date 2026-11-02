@@ -28,6 +28,11 @@ let levelTimer: ReturnType<typeof setInterval> | null = null;
 let session = 0;
 const remoteElements: HTMLMediaElement[] = [];
 
+function closedOnPurpose(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /closed|abort|disconnect|cancel/i.test(message);
+}
+
 function stopLevels() {
   if (levelTimer) clearInterval(levelTimer);
   levelTimer = null;
@@ -52,16 +57,20 @@ export async function handleGuestCallSignal(
   /* Voice is the LiveKit room, not socket audio frames. */
 }
 
-export async function connectLiveKitCall(serverUrl: string, token: string): Promise<boolean> {
+export async function connectLiveKitCall(
+  serverUrl: string,
+  token: string,
+): Promise<"joined" | "cancelled" | "failed"> {
   await stopGuestCallMedia();
   const mine = session;
   if (Platform.OS !== "web") {
     const mic = await requestMicPermission();
-    if (mic !== "granted" || mine !== session) return false;
+    if (mine !== session) return "cancelled";
+    if (mic !== "granted") return "failed";
     const { AudioSession } = await import("@livekit/react-native");
     await AudioSession.startAudioSession();
   }
-  if (mine !== session) return false;
+  if (mine !== session) return "cancelled";
 
   const { Room, RoomEvent, Track } = await import("livekit-client");
   const next = new Room({
@@ -71,6 +80,8 @@ export async function connectLiveKitCall(serverUrl: string, token: string): Prom
       autoGainControl: true,
     },
   }) as unknown as LiveKitRoom;
+  // Keep the room reachable so hangup can close it before the mic publish finishes.
+  room = next;
 
   if (Platform.OS === "web") {
     next.on(RoomEvent.TrackSubscribed, (track) => {
@@ -84,22 +95,24 @@ export async function connectLiveKitCall(serverUrl: string, token: string): Prom
 
   try {
     await next.connect(serverUrl, token);
-    if (mine !== session) {
-      await next.disconnect();
-      return false;
-    }
+    if (mine !== session) return "cancelled";
     await next.localParticipant.setMicrophoneEnabled(true);
+    if (mine !== session) return "cancelled";
     if (Platform.OS === "web") await next.startAudio();
-  } catch {
-    try {
-      await next.disconnect();
-    } catch {
-      /* already closed */
+  } catch (error) {
+    if (mine !== session || closedOnPurpose(error)) return "cancelled";
+    if (room === next) {
+      room = null;
+      try {
+        await next.disconnect();
+      } catch {
+        /* already closed */
+      }
     }
-    return false;
+    return "failed";
   }
 
-  room = next;
+  if (mine !== session || room !== next) return "cancelled";
   levelTimer = setInterval(() => {
     if (room !== next) return;
     let level = 0;
@@ -108,7 +121,7 @@ export async function connectLiveKitCall(serverUrl: string, token: string): Prom
     });
     publishPartnerLevel(level);
   }, 80);
-  return true;
+  return "joined";
 }
 
 export async function stopGuestCallMedia(): Promise<void> {
@@ -125,10 +138,16 @@ export async function stopGuestCallMedia(): Promise<void> {
   const current = room;
   room = null;
   if (current) {
+    const { setLogLevel, LogLevel } = await import("livekit-client");
+    // Closing the room mid-publish makes LiveKit log "PC manager is closed".
+    // That is hangup, not a failed call.
+    setLogLevel(LogLevel.silent);
     try {
       await current.disconnect();
     } catch {
       /* ignore */
+    } finally {
+      setLogLevel(LogLevel.info);
     }
   }
   if (Platform.OS !== "web") {

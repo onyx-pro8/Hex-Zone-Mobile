@@ -331,7 +331,7 @@ export function GuestCallProvider({ children }: { children: ReactNode }) {
         }
         if (!serverUrl || !participantToken) return;
         const joined = await connectLiveKitCall(serverUrl, participantToken);
-        if (!joined) {
+        if (joined === "failed") {
           mediaCallRef.current = null;
           toast.error("The voice room could not be joined.", { title: "Call" });
         }
