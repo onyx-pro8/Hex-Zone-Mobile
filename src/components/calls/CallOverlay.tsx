@@ -12,7 +12,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Maximize2, Phone, PhoneOff } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useGuestCallOptional } from "@/context/GuestCallContext";
-import { subscribePartnerLevel, postCallAudio } from "@/lib/callAudioBridge";
+import { subscribePartnerLevel } from "@/lib/callAudioBridge";
 import { playConnected, playEnded, startRinging, stopRinging } from "@/lib/callSounds";
 import { resolveAvatarDisplayUri, useResolvedAvatarUri } from "@/lib/resolveAvatarUri";
 
@@ -41,7 +41,6 @@ function PartnerVoiceLine({ active }: { active: boolean }) {
       setLevel(0);
       return;
     }
-    postCallAudio({ type: "voice-start" });
     const unsubscribe = subscribePartnerLevel((next) => {
       levelRef.current = Math.max(levelRef.current, next);
     });

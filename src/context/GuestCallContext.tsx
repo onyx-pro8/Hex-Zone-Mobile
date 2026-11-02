@@ -21,11 +21,7 @@ import {
   type GuestCallRole,
   type GuestCallSession,
 } from "@/lib/guestCall";
-import {
-  handleGuestCallSignal,
-  startGuestCallMedia,
-  stopGuestCallMedia,
-} from "@/lib/guestCallMedia";
+import { connectLiveKitCall, stopGuestCallMedia } from "@/lib/guestCallMedia";
 import { CallAudioBridge, setMicErrorHandler } from "@/lib/callAudioBridge";
 import { ensureMicrophoneForCall } from "@/lib/micPermission";
 import { getStoredGuestSession, subscribeGuestSessionChanged } from "@/lib/storage";
@@ -243,30 +239,20 @@ export function GuestCallProvider({ children }: { children: ReactNode }) {
   );
 
   const beginMedia = useCallback(
-    async (next: GuestCallSession) => {
+    (next: GuestCallSession) => {
+      if (!next.callId || next.callId.startsWith("pending-") || next.callId.startsWith("queue-")) {
+        return;
+      }
+      if (mediaCallRef.current === next.callId) return;
+      mediaCallRef.current = next.callId;
       const asRole: GuestCallRole = next.isCaller
         ? next.callerRole
         : next.callerRole === "guest"
           ? "admin"
           : "guest";
-      setMicErrorHandler(null);
-      mediaCallRef.current = next.callId;
-      await startGuestCallMedia({
-        isOfferer: next.isCaller,
-        onSignal: (signal) => {
-          const live = sessionRef.current;
-          const callId =
-            live?.callId && !live.callId.startsWith("pending-")
-              ? live.callId
-              : next.callId;
-          if (!callId || callId.startsWith("pending-") || callId.startsWith("queue-")) {
-            return;
-          }
-          sendCallAs(asRole, {
-            type: "CALL_SIGNAL",
-            data: { call_id: callId, signal },
-          });
-        },
+      sendCallAs(asRole, {
+        type: "CALL_LIVEKIT",
+        data: { call_id: next.callId },
       });
     },
     [sendCallAs],
@@ -302,6 +288,10 @@ export function GuestCallProvider({ children }: { children: ReactNode }) {
           }
           setCallRequesting(false);
           const current = sessionRef.current;
+          if (code === "LIVEKIT_UNAVAILABLE") {
+            toast.error(envelope.error?.message || "Voice is unavailable.", { title: "Call" });
+            return;
+          }
           const fatal =
             code === "RECEIVER_OFFLINE" ||
             code === "CALL_FAILED" ||
@@ -325,23 +315,30 @@ export function GuestCallProvider({ children }: { children: ReactNode }) {
         lastHandledRef.current[asRole] = raw;
       }
 
-      if (ev.type === "CALL_SIGNAL") {
-        const signal = ev.data.signal;
-        if (signal && typeof signal === "object") {
-          await handleGuestCallSignal(
-            signal as Parameters<typeof handleGuestCallSignal>[0],
-            (out) => {
-              const callId = String(
-                ev.data.call_id ?? sessionRef.current?.callId ?? "",
-              );
-              if (!callId || callId.startsWith("pending-") || callId.startsWith("queue-")) return;
-              sendCallAs(asRole, {
-                type: "CALL_SIGNAL",
-                data: { call_id: callId, signal: out },
-              });
-            },
-          );
+      if (ev.type === "CALL_LIVEKIT") {
+        const serverUrl = String(ev.data.server_url ?? "").trim();
+        const participantToken = String(ev.data.participant_token ?? "").trim();
+        const callId = String(ev.data.call_id ?? "").trim();
+        const cur = sessionRef.current;
+        if (
+          cur &&
+          callId &&
+          cur.callId !== callId &&
+          !cur.callId.startsWith("pending-") &&
+          !cur.callId.startsWith("queue-")
+        ) {
+          return;
         }
+        if (!serverUrl || !participantToken) return;
+        const joined = await connectLiveKitCall(serverUrl, participantToken);
+        if (!joined) {
+          mediaCallRef.current = null;
+          toast.error("The voice room could not be joined.", { title: "Call" });
+        }
+        return;
+      }
+
+      if (ev.type === "CALL_SIGNAL") {
         return;
       }
 

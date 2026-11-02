@@ -1,5 +1,4 @@
 import { PermissionsAndroid, Platform } from "react-native";
-import { primeCallAudio, startAndWaitForCallMic } from "@/lib/callAudioBridge";
 
 export type MicPermissionResult = "granted" | "denied" | "blocked";
 
@@ -57,7 +56,5 @@ export async function ensureMicrophoneForCall(
   if (permission !== "granted") {
     return { ok: false, message: micDeniedMessage(permission, who) };
   }
-  primeCallAudio();
-  void startAndWaitForCallMic(10000);
   return { ok: true };
 }

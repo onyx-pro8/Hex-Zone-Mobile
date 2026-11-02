@@ -1,18 +1,11 @@
 /**
- * Guest↔admin voice.
- * Web uses WebRTC. Android and iOS play through the in-app audio page,
- * because this dev build has no native WebRTC module. Audio frames ride
- * the existing call socket to the other phone.
+ * Guest↔admin voice through LiveKit.
+ * The phone joins a room with a token the API mints for this call.
+ * Microphone only. Remote audio plays through the LiveKit audio session.
  */
 
 import { Platform } from "react-native";
-import {
-  isCallMicLive,
-  postCallAudio,
-  primeCallAudio,
-  setVoiceFrameHandler,
-  startAndWaitForCallMic,
-} from "@/lib/callAudioBridge";
+import { publishPartnerLevel } from "@/lib/callAudioBridge";
 import { requestMicPermission } from "@/lib/micPermission";
 
 type SignalPayload =
@@ -21,179 +14,129 @@ type SignalPayload =
   | { kind: "ice"; candidate: RTCIceCandidateInit }
   | { kind: "audio"; b64: string; level?: number };
 
-type PeerBundle = {
-  pc: RTCPeerConnection;
-  localStream: MediaStream | null;
+type LiveKitRoom = {
+  connect: (url: string, token: string) => Promise<void>;
+  disconnect: () => Promise<void>;
+  startAudio: () => Promise<void>;
+  localParticipant: { setMicrophoneEnabled: (enabled: boolean) => Promise<void> };
+  remoteParticipants: Map<string, { audioLevel?: number }>;
+  on: (event: string, cb: (track: { kind: string; attach: () => HTMLMediaElement }) => void) => void;
 };
 
-let active: PeerBundle | null = null;
+let room: LiveKitRoom | null = null;
+let levelTimer: ReturnType<typeof setInterval> | null = null;
+let session = 0;
+const remoteElements: HTMLMediaElement[] = [];
 
-function getRtcPeerConnection(): typeof RTCPeerConnection | null {
-  if (Platform.OS !== "web") return null;
-  const g = globalThis as typeof globalThis & {
-    RTCPeerConnection?: typeof RTCPeerConnection;
-  };
-  if (typeof g.RTCPeerConnection === "function") return g.RTCPeerConnection;
-  return null;
-}
-
-const callAudioConstraints: MediaTrackConstraints = {
-  echoCancellation: { ideal: true },
-  noiseSuppression: { ideal: true },
-  autoGainControl: { ideal: true },
-  channelCount: { ideal: 1 },
-};
-
-async function getUserMedia(): Promise<MediaStream | null> {
-  const nav = globalThis.navigator as
-    | (Navigator & {
-        mediaDevices?: { getUserMedia: (c: MediaStreamConstraints) => Promise<MediaStream> };
-      })
-    | undefined;
-  if (!nav?.mediaDevices?.getUserMedia) return null;
-  try {
-    return await nav.mediaDevices.getUserMedia({ audio: callAudioConstraints, video: false });
-  } catch {
-    try {
-      return await nav.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch {
-      return null;
-    }
-  }
-}
-
-/** Play and record together, on the speaker, without mixing in other apps. */
-async function setCallAudioRoute(active: boolean): Promise<void> {
-  if (Platform.OS === "web") return;
-  try {
-    // Loaded only when a call starts. A static expo-av import crashes the app
-    // on SDK 54, where the ExponentAV native module is no longer present.
-    const { setAudioModeAsync } = await import("expo-audio");
-    await setAudioModeAsync(
-      active
-        ? {
-            allowsRecording: true,
-            playsInSilentMode: true,
-            shouldPlayInBackground: false,
-            interruptionMode: "doNotMix",
-            shouldRouteThroughEarpiece: false,
-          }
-        : {
-            allowsRecording: false,
-            playsInSilentMode: false,
-            shouldPlayInBackground: false,
-            interruptionMode: "mixWithOthers",
-            shouldRouteThroughEarpiece: false,
-          },
-    );
-  } catch {
-    /* a route change must not take down the call */
-  }
+function stopLevels() {
+  if (levelTimer) clearInterval(levelTimer);
+  levelTimer = null;
+  publishPartnerLevel(0);
 }
 
 export function guestCallMediaAvailable(): boolean {
-  return Platform.OS !== "web" || getRtcPeerConnection() != null;
+  return true;
 }
 
-export async function startGuestCallMedia(opts: {
+export async function startGuestCallMedia(_opts: {
   isOfferer: boolean;
   onSignal: (signal: SignalPayload) => void;
 }): Promise<boolean> {
-  if (Platform.OS !== "web") {
-    await setCallAudioRoute(true);
-    setVoiceFrameHandler((b64, level) => {
-      opts.onSignal({ kind: "audio", b64, level });
-    });
-    if (!isCallMicLive()) {
-      const mic = await requestMicPermission();
-      if (mic !== "granted") {
-        setVoiceFrameHandler(null);
-        await setCallAudioRoute(false);
-        return false;
-      }
-      primeCallAudio();
-      void startAndWaitForCallMic(10000);
-    }
-    postCallAudio({ type: "voice-start" });
-    return true;
-  }
-  await stopGuestCallMedia();
-
-  const RTC = getRtcPeerConnection();
-  if (!RTC) return false;
-
-  const pc = new RTC({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  });
-  const localStream = await getUserMedia();
-  if (localStream) {
-    for (const track of localStream.getTracks()) {
-      pc.addTrack(track, localStream);
-    }
-  }
-
-  pc.onicecandidate = (ev) => {
-    if (ev.candidate) {
-      opts.onSignal({ kind: "ice", candidate: ev.candidate.toJSON() });
-    }
-  };
-
-  active = { pc, localStream };
-
-  if (opts.isOfferer) {
-    const offer = await pc.createOffer({ offerToReceiveAudio: true });
-    await pc.setLocalDescription(offer);
-    if (offer.sdp) {
-      opts.onSignal({ kind: "offer", sdp: offer.sdp });
-    }
-  }
   return true;
 }
 
 export async function handleGuestCallSignal(
-  signal: SignalPayload,
-  onSignal?: (signal: SignalPayload) => void,
+  _signal: SignalPayload,
+  _onSignal?: (signal: SignalPayload) => void,
 ): Promise<void> {
-  if (signal.kind === "audio") {
-    if (signal.b64) postCallAudio({ type: "voice-play", b64: signal.b64 });
-    return;
+  /* Voice is the LiveKit room, not socket audio frames. */
+}
+
+export async function connectLiveKitCall(serverUrl: string, token: string): Promise<boolean> {
+  await stopGuestCallMedia();
+  const mine = session;
+  if (Platform.OS !== "web") {
+    const mic = await requestMicPermission();
+    if (mic !== "granted" || mine !== session) return false;
+    const { AudioSession } = await import("@livekit/react-native");
+    await AudioSession.startAudioSession();
   }
-  const bundle = active;
-  if (!bundle) return;
-  const { pc } = bundle;
-  if (signal.kind === "offer") {
-    await pc.setRemoteDescription({ type: "offer", sdp: signal.sdp });
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    if (answer.sdp && onSignal) {
-      onSignal({ kind: "answer", sdp: answer.sdp });
+  if (mine !== session) return false;
+
+  const { Room, RoomEvent, Track } = await import("livekit-client");
+  const next = new Room({
+    audioCaptureDefaults: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  }) as unknown as LiveKitRoom;
+
+  if (Platform.OS === "web") {
+    next.on(RoomEvent.TrackSubscribed, (track) => {
+      if (track.kind !== Track.Kind.Audio) return;
+      const element = track.attach();
+      element.autoplay = true;
+      document.body.appendChild(element);
+      remoteElements.push(element);
+    });
+  }
+
+  try {
+    await next.connect(serverUrl, token);
+    if (mine !== session) {
+      await next.disconnect();
+      return false;
     }
-  } else if (signal.kind === "answer") {
-    await pc.setRemoteDescription({ type: "answer", sdp: signal.sdp });
-  } else if (signal.kind === "ice" && signal.candidate) {
+    await next.localParticipant.setMicrophoneEnabled(true);
+    if (Platform.OS === "web") await next.startAudio();
+  } catch {
     try {
-      await pc.addIceCandidate(signal.candidate);
+      await next.disconnect();
     } catch {
-      /* race with remote description */
+      /* already closed */
     }
+    return false;
   }
+
+  room = next;
+  levelTimer = setInterval(() => {
+    if (room !== next) return;
+    let level = 0;
+    next.remoteParticipants.forEach((participant) => {
+      level = Math.max(level, Number(participant.audioLevel) || 0);
+    });
+    publishPartnerLevel(level);
+  }, 80);
+  return true;
 }
 
 export async function stopGuestCallMedia(): Promise<void> {
-  setVoiceFrameHandler(null);
-  postCallAudio({ type: "voice-stop" });
-  await setCallAudioRoute(false);
-  const bundle = active;
-  active = null;
-  if (!bundle) return;
-  try {
-    bundle.localStream?.getTracks().forEach((t) => t.stop());
-  } catch {
-    /* ignore */
+  session += 1;
+  stopLevels();
+  for (const element of remoteElements.splice(0)) {
+    try {
+      element.pause();
+      element.remove();
+    } catch {
+      /* ignore */
+    }
   }
-  try {
-    bundle.pc.close();
-  } catch {
-    /* ignore */
+  const current = room;
+  room = null;
+  if (current) {
+    try {
+      await current.disconnect();
+    } catch {
+      /* ignore */
+    }
+  }
+  if (Platform.OS !== "web") {
+    try {
+      const { AudioSession } = await import("@livekit/react-native");
+      await AudioSession.stopAudioSession();
+    } catch {
+      /* a route change must not take down hangup */
+    }
   }
 }
