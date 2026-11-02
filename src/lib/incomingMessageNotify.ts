@@ -118,14 +118,7 @@ export async function notifyIncomingInboxMessage(
   viewerOwnerId: number,
 ): Promise<void> {
   if (!shouldNotifyInboxMessage(message, viewerOwnerId)) return;
-
-  const guestId = String(message.guest_id ?? "").trim();
-  if (guestId && notifiedIds.has(`guest-arrival:${guestId}`)) {
-    markNotified(`msg:${message.id}`);
-    return;
-  }
   if (!markNotified(`msg:${message.id}`)) return;
-  if (guestId) markNotified(`guest-arrival:${guestId}`);
 
   const broadcastName = readMessageBroadcastName(message);
 
@@ -139,60 +132,6 @@ export async function notifyIncomingInboxMessage(
       event: "NEW_MESSAGE",
       type: message.type,
       id: message.id,
-    },
-  });
-}
-
-export async function notifyGuestArrivalSocketEvent(raw: string): Promise<void> {
-  let parsed: {
-    type?: string;
-    guest_name?: string;
-    guest_id?: string;
-    zone_id?: string;
-    data?: Record<string, unknown>;
-  };
-  try {
-    parsed = JSON.parse(raw) as typeof parsed;
-  } catch {
-    return;
-  }
-
-  const type = String(parsed.type ?? "").trim();
-  if (type !== "unexpected_guest" && type !== "guest_is_here") return;
-
-  const nested =
-    parsed.data != null && typeof parsed.data === "object" && !Array.isArray(parsed.data)
-      ? parsed.data
-      : null;
-  const guestId = String(
-    nested?.guest_id ?? parsed.guest_id ?? "",
-  ).trim();
-  const guestName = String(
-    nested?.guest_name ?? parsed.guest_name ?? "Guest",
-  ).trim() || "Guest";
-  const zoneId = String(nested?.zone_id ?? parsed.zone_id ?? "").trim();
-
-  const dedupeKey = guestId
-    ? `guest-arrival:${guestId}`
-    : `guest-arrival:${type}:${guestName}:${zoneId}`;
-  if (!markNotified(dedupeKey)) return;
-
-  const isUnexpected = type === "unexpected_guest";
-  await presentLocalMessageNotification({
-    title: zoneId
-      ? `${zoneId} · ${isUnexpected ? "Guest access request" : "Expected guest"}`
-      : isUnexpected
-        ? "Guest access request"
-        : "Expected guest arrived",
-    body: isUnexpected
-      ? `${guestName} is requesting access and awaiting approval.`
-      : `${guestName} has arrived.`,
-    channelId: "messages",
-    data: {
-      event: type,
-      type: "PERMISSION",
-      guest_id: guestId,
-      zone_id: zoneId,
     },
   });
 }
