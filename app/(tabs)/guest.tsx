@@ -47,7 +47,7 @@ export default function GuestHubScreen() {
           ) : null}
 
           <View style={{ paddingHorizontal: 20 }}>
-            <GuestHubLinks includeAdminTools={false} />
+            <GuestHubLinks />
           </View>
         </ScrollView>
       </SafeAreaView>

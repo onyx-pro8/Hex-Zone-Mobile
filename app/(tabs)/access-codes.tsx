@@ -23,6 +23,7 @@ import { File as ExpoFile, Paths } from "expo-file-system";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
+import { BookTabs, bookSheetCorners } from "@/components/navigation/BookTabs";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -762,56 +763,12 @@ export default function AccessCodesScreen({
   }
 
   const pageMarkers = (
-    <View
-      style={{
-        flexDirection: "row",
-        flexWrap: "wrap",
-        alignSelf: "flex-start",
-        gap: 2,
-        marginBottom: -1,
-        zIndex: 2,
-      }}
-    >
-      {tabs.map((item) => {
-        const active = tab === item.key;
-        return (
-          <Pressable
-            key={item.key}
-            onPress={() => setTab(item.key)}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderTopLeftRadius: 10,
-              borderTopRightRadius: 10,
-              borderWidth: 1,
-              borderBottomWidth: active ? 0 : 1,
-              borderColor: colors.border,
-              backgroundColor: active ? colors.bgCard : colors.bgSurface,
-              marginBottom: active ? 0 : 1,
-            }}
-          >
-            <Text
-              style={{
-                color: active ? colors.accent : colors.textMuted,
-                fontWeight: "700",
-                fontSize: 12,
-              }}
-            >
-              {item.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <BookTabs
+      value={tab}
+      onChange={setTab}
+      options={tabs.map((item) => ({ key: item.key, label: item.label }))}
+    />
   );
-
-  // Flush page-marker sheet: square top-left so the first marker meets the card.
-  const sheetCardCorners = {
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 22,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-  } as const;
 
   const panel = (
     <>
@@ -851,7 +808,7 @@ export default function AccessCodesScreen({
                   style={{
                     gap: 12,
                     marginTop: 0,
-                    ...sheetCardCorners,
+                    ...bookSheetCorners,
                   }}
                 >
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
@@ -1122,7 +1079,7 @@ export default function AccessCodesScreen({
                   style={{
                     gap: 12,
                     marginTop: 0,
-                    ...sheetCardCorners,
+                    ...bookSheetCorners,
                   }}
                 >
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
@@ -1521,7 +1478,7 @@ export default function AccessCodesScreen({
                   style={{
                     gap: 10,
                     marginTop: 0,
-                    ...sheetCardCorners,
+                    ...bookSheetCorners,
                   }}
                 >
                 <View

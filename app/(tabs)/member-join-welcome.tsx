@@ -13,10 +13,10 @@ export default function MemberJoinWelcomeScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
           <ScreenHeader
-            title="Member join welcome"
-            subtitle="Message when invited members join"
+            title="Member welcome message"
+            subtitle="Greeting when an invited member joins"
             showBack
-            onBack={() => router.replace("/(tabs)/settings")}
+            onBack={() => router.replace("/(tabs)/message-templates")}
           />
           <ConfigForm section="memberJoin" />
         </ScrollView>

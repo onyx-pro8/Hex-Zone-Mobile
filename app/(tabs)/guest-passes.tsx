@@ -58,16 +58,80 @@ function isPassExpired(pass: GuestPass): boolean {
   return Number.isFinite(t) && t < Date.now();
 }
 
+function SheetPill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: active ? colors.accent : colors.border,
+        backgroundColor: active ? colors.accent : "transparent",
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+      }}
+    >
+      <Text
+        style={{
+          color: active ? "#fff" : colors.textMuted,
+          fontSize: 12,
+          fontWeight: "700",
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function FieldLabel({ children }: { children: string }) {
+  return (
+    <Text
+      style={{
+        color: colors.textMuted,
+        fontSize: 11,
+        fontWeight: "700",
+        letterSpacing: 0.6,
+        textTransform: "uppercase",
+        marginBottom: 6,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
+const sheetInput = {
+  borderWidth: 1,
+  borderColor: colors.border,
+  borderRadius: 12,
+  backgroundColor: "#fff",
+  paddingHorizontal: 12,
+  minHeight: 44,
+  color: colors.text,
+  fontSize: 14,
+} as const;
+
 function PassRow({
   pass,
   zoneId,
   isAdmin,
   onChanged,
+  plain = false,
 }: {
   pass: GuestPass;
   zoneId: string;
   isAdmin: boolean;
   onChanged: () => void;
+  plain?: boolean;
 }) {
   const expired = isPassExpired(pass);
   const used = Boolean(pass.used_by_guest_id);
@@ -88,8 +152,8 @@ function PassRow({
     onChanged();
   };
 
-  return (
-    <Card style={{ marginBottom: 10 }}>
+  const details = (
+    <>
       <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
         <Ticket size={22} color={colors.accent} />
         <View style={{ flex: 1 }}>
@@ -121,13 +185,51 @@ function PassRow({
           style={{ marginTop: 12 }}
         />
       ) : null}
-    </Card>
+    </>
   );
+
+  if (plain) {
+    return (
+      <View style={{ gap: 6 }}>
+        <Text style={{ color: colors.text, fontWeight: "800" }}>
+          {pass.guest_name?.trim() || pass.event_id}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          Event {pass.event_id}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          Expires {new Date(pass.expires_at).toLocaleString()}
+          {used ? " · Already used" : ""}
+        </Text>
+        <Text
+          style={{
+            color: colors.text,
+            fontSize: 12,
+            fontWeight: "700",
+            textTransform: "capitalize",
+          }}
+        >
+          {expired ? "expired" : pass.status.toLowerCase()}
+        </Text>
+        {isAdmin && pass.status === "ACCEPTED" && !expired ? (
+          <View style={{ flexDirection: "row", marginTop: 4 }}>
+            <Button label="Revoke" size="sm" tone="red" onPress={() => void onRevoke()} />
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  return <Card style={{ marginBottom: 10 }}>{details}</Card>;
 }
 
-export default function GuestPassesScreen() {
+export default function GuestPassesScreen({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}) {
   const isAdmin = useIsAdmin();
-  const onBack = useGuestManagementBack();
+  const onBack = useGuestManagementBack("passes");
   const {
     effectiveZoneId,
     candidateZoneIds,
@@ -142,6 +244,7 @@ export default function GuestPassesScreen() {
   const [guestName, setGuestName] = useState("");
   const [notes, setNotes] = useState("");
   const [expiresAt, setExpiresAt] = useState(() => isoFromNow(24));
+  const [expiryHours, setExpiryHours] = useState(24);
 
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
@@ -208,20 +311,169 @@ export default function GuestPassesScreen() {
   }, [effectiveZoneId, eventId, expiresAt, guestName, notes, load]);
 
   const showZonePicker = isAdmin && candidateZoneIds.length > 1;
+  const headerSubtitle = effectiveZoneId
+    ? `Event IDs are accepted as soon as you create them · ${effectiveZoneId}`
+    : "Event IDs are accepted as soon as you create them";
 
-  return (
-    <GradientBackground>
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScreenHeader
-          title="Guest passes"
-          subtitle={
-            effectiveZoneId
-              ? `New Event IDs are accepted immediately · ${effectiveZoneId}`
-              : "New Event IDs are accepted immediately"
-          }
-          showBack
-          onBack={onBack}
-        />
+  if (embedded) {
+    return (
+      <View style={{ gap: 12 }}>
+        <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+          A new Event ID is accepted immediately. Share it with your guest for arrival.
+        </Text>
+        {showZonePicker ? (
+          <View style={{ gap: 6 }}>
+            <FieldLabel>Network</FieldLabel>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {candidateZoneIds.map((zid) => (
+                <SheetPill
+                  key={zid}
+                  label={zid}
+                  active={zid === effectiveZoneId}
+                  onPress={() => setPickedZoneId(zid)}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+        {!effectiveZoneId ? (
+          zonesLoading ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Text style={{ color: colors.textMuted }}>
+              No zones are linked to this account yet.
+            </Text>
+          )
+        ) : (
+          <>
+            <View>
+              <FieldLabel>Event ID</FieldLabel>
+              <TextInput
+                placeholder="EVT-2026-GALA"
+                placeholderTextColor={colors.textMuted}
+                value={eventId}
+                onChangeText={setEventId}
+                autoCapitalize="none"
+                style={sheetInput}
+              />
+            </View>
+            <View>
+              <FieldLabel>Guest name</FieldLabel>
+              <TextInput
+                placeholder="Optional"
+                placeholderTextColor={colors.textMuted}
+                value={guestName}
+                onChangeText={setGuestName}
+                style={sheetInput}
+              />
+            </View>
+            <View>
+              <FieldLabel>Notes</FieldLabel>
+              <TextInput
+                placeholder="Optional"
+                placeholderTextColor={colors.textMuted}
+                value={notes}
+                onChangeText={setNotes}
+                style={sheetInput}
+              />
+            </View>
+            <View style={{ gap: 6 }}>
+              <FieldLabel>Expires</FieldLabel>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                {QUICK_EXPIRY.map((option) => (
+                  <SheetPill
+                    key={option.hours}
+                    label={option.label}
+                    active={expiryHours === option.hours}
+                    onPress={() => {
+                      setExpiryHours(option.hours);
+                      setExpiresAt(isoFromNow(option.hours));
+                    }}
+                  />
+                ))}
+              </View>
+              <TextInput
+                placeholder="Expires at (ISO)"
+                placeholderTextColor={colors.textMuted}
+                value={expiresAt}
+                onChangeText={(value) => {
+                  setExpiryHours(0);
+                  setExpiresAt(value);
+                }}
+                autoCapitalize="none"
+                style={sheetInput}
+              />
+            </View>
+            <Button
+              label={submitting ? "Creating…" : "Create guest pass"}
+              size="sm"
+              fullWidth
+              loading={submitting}
+              disabled={submitting}
+              onPress={() => void onCreate()}
+            />
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                Issued passes
+              </Text>
+              <Pressable
+                onPress={() => void load()}
+                disabled={loading}
+                hitSlop={8}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  opacity: loading ? 0.6 : 1,
+                }}
+              >
+                <RefreshCw size={14} color={colors.accent} />
+                <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+                  {loading ? "Refreshing…" : "Refresh"}
+                </Text>
+              </Pressable>
+            </View>
+            {loading && passes.length === 0 ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : passes.length === 0 ? (
+              <Text style={{ color: colors.textMuted }}>Nothing here yet.</Text>
+            ) : (
+              passes.map((item, index) => {
+                const isLast = index === passes.length - 1;
+                return (
+                  <View
+                    key={item.id}
+                    style={{
+                      paddingBottom: isLast ? 0 : 10,
+                      borderBottomWidth: isLast ? 0 : 1,
+                      borderBottomColor: colors.border,
+                    }}
+                  >
+                    <PassRow
+                      pass={item}
+                      zoneId={effectiveZoneId}
+                      isAdmin={isAdmin}
+                      plain
+                      onChanged={() => void load()}
+                    />
+                  </View>
+                );
+              })
+            )}
+          </>
+        )}
+      </View>
+    );
+  }
+
+  const body = (
+    <>
         {!effectiveZoneId ? (
           <View style={{ paddingHorizontal: 20 }}>
             <Card>
@@ -249,6 +501,7 @@ export default function GuestPassesScreen() {
           </View>
         ) : (
           <FlatList
+            style={{ flex: 1 }}
             data={passes}
             keyExtractor={(item) => item.id}
             ListHeaderComponent={
@@ -406,6 +659,19 @@ export default function GuestPassesScreen() {
             }
           />
         )}
+    </>
+  );
+
+  return (
+    <GradientBackground>
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <ScreenHeader
+          title="Guest passes"
+          subtitle={headerSubtitle}
+          showBack
+          onBack={onBack}
+        />
+        {body}
       </SafeAreaView>
     </GradientBackground>
   );
