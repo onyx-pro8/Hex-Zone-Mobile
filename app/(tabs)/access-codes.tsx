@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -50,6 +50,7 @@ import {
   Copy as CopyIcon,
   RefreshCw as RefreshIcon,
   Search,
+  X,
 } from "lucide-react-native";
 import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { copyToClipboard } from "@/lib/copyToClipboard";
@@ -188,6 +189,7 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
   const kind = parsed ? fileKind(parsed.mime) : "other";
   const [previewOpen, setPreviewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const insets = useSafeAreaInsets();
   const textBody =
     parsed && kind === "text"
       ? (() => {
@@ -277,8 +279,22 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
           </View>
         </View>
       )}
-      <Modal visible={previewOpen} animationType="slide" onRequestClose={() => setPreviewOpen(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["top", "bottom"]}>
+      <Modal
+        visible={previewOpen}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setPreviewOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#fff",
+            paddingTop: Math.max(insets.top, 12),
+            paddingBottom: Math.max(insets.bottom, 12),
+          }}
+        >
           <View
             style={{
               flexDirection: "row",
@@ -286,11 +302,37 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
               justifyContent: "space-between",
               paddingHorizontal: 16,
               paddingVertical: 12,
+              zIndex: 2,
+              backgroundColor: "#fff",
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>{label}</Text>
-            <Pressable onPress={() => setPreviewOpen(false)} hitSlop={8}>
-              <Text style={{ color: colors.accent, fontWeight: "700" }}>Close</Text>
+            <Text
+              style={{ color: colors.text, fontWeight: "800", fontSize: 16, flex: 1, marginRight: 12 }}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+            <Pressable
+              onPress={() => setPreviewOpen(false)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={`Close ${label} preview`}
+              style={{
+                minWidth: 72,
+                height: 36,
+                borderRadius: 18,
+                paddingHorizontal: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "row",
+                gap: 4,
+                backgroundColor: "rgba(47,128,237,0.12)",
+              }}
+            >
+              <X size={16} color={colors.accent} />
+              <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 14 }}>Close</Text>
             </Pressable>
           </View>
           {kind === "image" ? (
@@ -310,7 +352,7 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
               Preview is not available for this file. Use Download to open it.
             </Text>
           )}
-        </SafeAreaView>
+        </View>
       </Modal>
     </View>
   );
