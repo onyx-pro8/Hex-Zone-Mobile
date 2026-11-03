@@ -9,6 +9,7 @@ import { useRouter, type Href } from "expo-router";
 import { ChevronDown, ChevronUp, RefreshCw, Wrench } from "lucide-react-native";
 import { useRecentServices } from "@/hooks/useRecentServices";
 import { formatTopicPath } from "@/lib/servicePaTopics";
+import { formatServerDateTime } from "@/lib/serverDate";
 import type { Message } from "@/api/messages";
 import { colors } from "@/theme/colors";
 
@@ -175,7 +176,7 @@ export function RecentServicesSection({ zoneId, variant = "card" }: Props) {
               </View>
               <Text style={{ color: colors.textDim, fontSize: 10 }}>
                 {row.created_at
-                  ? new Date(row.created_at).toLocaleString()
+                  ? formatServerDateTime(row.created_at)
                   : "Just now"}
               </Text>
             </Pressable>

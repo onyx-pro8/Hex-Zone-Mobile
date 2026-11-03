@@ -51,6 +51,7 @@ import {
   Search,
 } from "lucide-react-native";
 import { copyToClipboard } from "@/lib/copyToClipboard";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -1575,7 +1576,7 @@ export default function AccessCodesScreen({
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                         {row.created_at
-                          ? new Date(row.created_at).toLocaleString()
+                          ? formatServerDateTime(row.created_at)
                           : "—"}
                       </Text>
                       <Text
@@ -1712,7 +1713,7 @@ export default function AccessCodesScreen({
               >
                 {detail?.status}
                 {detail?.created_at
-                  ? ` · ${new Date(detail.created_at).toLocaleString()}`
+                  ? ` · ${formatServerDateTime(detail.created_at)}`
                   : ""}
               </Text>
               {detail?.request_kind === "invite" &&

@@ -27,6 +27,7 @@ import {
   revokeGuestPass,
   type GuestPass,
 } from "@/api/guest";
+import { formatServerDateTime, parseServerDate } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -57,8 +58,8 @@ function inputStyle() {
 
 function isPassExpired(pass: GuestPass): boolean {
   if (pass.is_expired) return true;
-  const t = new Date(pass.expires_at).getTime();
-  return Number.isFinite(t) && t < Date.now();
+  const t = parseServerDate(pass.expires_at)?.getTime();
+  return t != null && Number.isFinite(t) && t < Date.now();
 }
 
 function SheetPill({
@@ -234,7 +235,7 @@ function PassRow({
             Event {pass.event_id}
           </Text>
           <Text style={{ color: colors.textDim, fontSize: 11, marginTop: 4 }}>
-            Expires {new Date(pass.expires_at).toLocaleString()}
+            Expires {formatServerDateTime(pass.expires_at)}
           </Text>
           {used ? (
             <Text style={{ color: colors.warning, fontSize: 11, marginTop: 4 }}>
@@ -260,7 +261,7 @@ function PassRow({
           Event {pass.event_id}
         </Text>
         <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-          Expires {new Date(pass.expires_at).toLocaleString()}
+          Expires {formatServerDateTime(pass.expires_at)}
           {used ? " · Already used" : ""}
         </Text>
         <Text

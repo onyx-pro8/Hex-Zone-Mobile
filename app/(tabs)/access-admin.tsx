@@ -13,6 +13,7 @@ import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import {
   Copy,
@@ -247,7 +248,7 @@ function QrPreview({ value, label }: { value: string | null; label?: string }) {
 
 function inviteExpiryLabel(expiresAt: string | null): string {
   if (!expiresAt) return "Single-use · does not expire";
-  return `Single-use · expires ${new Date(expiresAt).toLocaleString()}`;
+  return `Single-use · expires ${formatServerDateTime(expiresAt)}`;
 }
 
 function MemberInviteSection({
@@ -1064,7 +1065,7 @@ function GuestAccessSection({
                   style={{ color: colors.textDim, fontSize: 11, marginTop: 2 }}
                 >
                   {row.expires_at
-                    ? `Expires ${new Date(row.expires_at).toLocaleString()}`
+                    ? `Expires ${formatServerDateTime(row.expires_at)}`
                     : "No expiry"}
                   {row.max_uses != null
                     ? ` · ${row.use_count}/${row.max_uses} uses`

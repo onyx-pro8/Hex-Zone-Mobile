@@ -13,7 +13,10 @@ import {
   resolveMainDevicePlace,
 } from "@/lib/mainDeviceLocation";
 import { getOrCreateDeviceHid, getToken, rotateDeviceHid } from "@/lib/storage";
+import { parseServerDate } from "@/lib/serverDate";
 import type { AuthUser } from "@/api/auth";
+
+export { parseServerDate } from "@/lib/serverDate";
 
 /** Thrown when login succeeds but another device holds the active session. */
 export class DeviceSessionConflictError extends Error {
@@ -56,21 +59,6 @@ export type DeviceSyncResult =
   | { status: "ok"; deviceId?: number | string }
   | { status: "account-in-use" }
   | { status: "error"; message: string };
-
-/**
- * Server datetimes are UTC without a timezone suffix. Browsers treat that
- * form as local time, which makes a fresh check-in look an hour stale in
- * UTC+1 and marks a signed-in phone Offline.
- */
-export function parseServerDate(value?: string | null): Date | null {
-  if (!value) return null;
-  const raw = value.trim();
-  if (!raw) return null;
-  const hasZone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(raw);
-  const normalized = hasZone ? raw : `${raw.replace(" ", "T")}Z`;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
 function deviceLastSeenMs(device: DeviceRecord): number | null {
   const parsed = parseServerDate(

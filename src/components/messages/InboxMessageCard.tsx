@@ -26,6 +26,12 @@ import {
   SERVICE_MESSAGE_UI,
   UNKNOWN_MESSAGE_UI,
 } from "@/lib/messageWorkflow";
+import {
+  formatServerDate,
+  formatServerDateTime,
+  formatServerTime,
+  parseServerDate,
+} from "@/lib/serverDate";
 import { colors } from "@/theme/colors";
 
 type ChipTone =
@@ -140,26 +146,28 @@ export function useInboxClusterWidths(): {
 }
 
 export function formatBubbleHeaderDate(value: string | null | undefined): string {
-  if (!value) return "";
-  const t = new Date(value);
-  if (!Number.isFinite(t.getTime())) return value;
-  return t.toLocaleString(undefined, {
-    month: "numeric",
-    day: "numeric",
-    year: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatServerDateTime(
+    value,
+    {
+      month: "numeric",
+      day: "numeric",
+      year: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+    },
+    value ?? "",
+  );
 }
 
 export function formatBubbleTime(value: string | null | undefined): string {
-  if (!value) return "";
-  const t = new Date(value);
-  if (!Number.isFinite(t.getTime())) return value;
-  return t.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatServerTime(
+    value,
+    {
+      hour: "numeric",
+      minute: "2-digit",
+    },
+    value ?? "",
+  );
 }
 
 function startOfLocalDay(value: Date): number {
@@ -167,20 +175,18 @@ function startOfLocalDay(value: Date): number {
 }
 
 export function inboxDayKey(value: string | null | undefined): string {
-  if (!value) return "";
-  const t = new Date(value);
-  if (!Number.isFinite(t.getTime())) return "";
+  const t = parseServerDate(value);
+  if (!t) return "";
   return `${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`;
 }
 
 export function formatInboxDayLabel(value: string | null | undefined): string {
-  if (!value) return "";
-  const t = new Date(value);
-  if (!Number.isFinite(t.getTime())) return "";
+  const t = parseServerDate(value);
+  if (!t) return "";
   const diffDays = Math.round((startOfLocalDay(new Date()) - startOfLocalDay(t)) / 86_400_000);
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  return t.toLocaleDateString(undefined, {
+  return formatServerDate(value, {
     year: "numeric",
     month: "numeric",
     day: "numeric",

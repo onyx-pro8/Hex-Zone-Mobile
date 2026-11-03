@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { listEmergencyEvents, type EmergencyEvent } from "@/api/messageFeature";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -152,7 +153,7 @@ export default function EmergencyLogScreen() {
                           </Text>
                         </View>
                         <Text style={{ color: colors.textDim, fontSize: 11 }}>
-                          {new Date(item.createdAt).toLocaleString()}
+                          {formatServerDateTime(item.createdAt)}
                         </Text>
                       </View>
 

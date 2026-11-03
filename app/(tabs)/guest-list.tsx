@@ -25,6 +25,7 @@ import {
   rejectGuestRequest,
   type GuestRequest,
 } from "@/api/guest";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -220,7 +221,7 @@ export default function GuestListScreen({
                   {item.guest_name ?? "Guest"}
                 </Text>
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  {new Date(item.created_at).toLocaleString()}
+                  {formatServerDateTime(item.created_at)}
                 </Text>
                 <Text
                   style={{
@@ -392,7 +393,7 @@ export default function GuestListScreen({
                               marginTop: 2,
                             }}
                           >
-                            {new Date(item.created_at).toLocaleString()}
+                            {formatServerDateTime(item.created_at)}
                           </Text>
                         </View>
                       </View>
