@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -19,7 +20,9 @@ import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { useGuestManagementBack } from "@/hooks/useGuestManagementBack";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
+  clearExpiredGuestPasses,
   createGuestPass,
+  deleteGuestPass,
   listGuestPasses,
   revokeGuestPass,
   type GuestPass,
@@ -133,8 +136,11 @@ function PassRow({
   onChanged: () => void;
   plain?: boolean;
 }) {
+  const [busy, setBusy] = useState(false);
   const expired = isPassExpired(pass);
   const used = Boolean(pass.used_by_guest_id);
+  const canRevoke = isAdmin && pass.status === "ACCEPTED" && !expired;
+  const canDelete = expired;
   const tone = expired
     ? "danger"
     : pass.status === "ACCEPTED"
@@ -144,13 +150,77 @@ function PassRow({
         : "danger";
 
   const onRevoke = async () => {
-    const result = await revokeGuestPass(pass.id, zoneId);
-    if (result.error) {
-      toast.error(result.error, { title: "Action failed" });
-      return;
+    setBusy(true);
+    try {
+      const result = await revokeGuestPass(pass.id, zoneId);
+      if (result.error) {
+        toast.error(result.error, { title: "Action failed" });
+        return;
+      }
+      toast.success("Guest pass revoked.");
+      onChanged();
+    } finally {
+      setBusy(false);
     }
-    onChanged();
   };
+
+  const onDelete = () => {
+    const label = pass.guest_name?.trim() || pass.event_id;
+    Alert.alert(
+      "Delete expired pass",
+      `Remove “${label}” from issued passes? This frees the Event ID for reuse.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setBusy(true);
+              try {
+                const result = await deleteGuestPass(pass.id);
+                if (result.error) {
+                  toast.error(result.error, { title: "Could not delete pass" });
+                  return;
+                }
+                toast.success("Expired guest pass deleted.");
+                onChanged();
+              } finally {
+                setBusy(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const actions =
+    canRevoke || canDelete ? (
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: plain ? 4 : 12 }}>
+        {canRevoke ? (
+          <Button
+            label="Revoke"
+            size="sm"
+            tone="red"
+            variant={plain ? "primary" : "outline"}
+            disabled={busy}
+            loading={busy}
+            onPress={() => void onRevoke()}
+          />
+        ) : null}
+        {canDelete ? (
+          <Button
+            label="Delete"
+            size="sm"
+            tone="red"
+            disabled={busy}
+            loading={busy}
+            onPress={onDelete}
+          />
+        ) : null}
+      </View>
+    ) : null;
 
   const details = (
     <>
@@ -176,15 +246,7 @@ function PassRow({
           <Chip label={expired ? "EXPIRED" : pass.status} tone={tone} />
         </View>
       </View>
-      {isAdmin && pass.status === "ACCEPTED" && !expired ? (
-        <Button
-          label="Revoke"
-          size="sm"
-          variant="outline"
-          onPress={() => void onRevoke()}
-          style={{ marginTop: 12 }}
-        />
-      ) : null}
+      {actions}
     </>
   );
 
@@ -211,11 +273,7 @@ function PassRow({
         >
           {expired ? "expired" : pass.status.toLowerCase()}
         </Text>
-        {isAdmin && pass.status === "ACCEPTED" && !expired ? (
-          <View style={{ flexDirection: "row", marginTop: 4 }}>
-            <Button label="Revoke" size="sm" tone="red" onPress={() => void onRevoke()} />
-          </View>
-        ) : null}
+        {actions}
       </View>
     );
   }
@@ -239,12 +297,18 @@ export default function GuestPassesScreen({
   } = useEffectiveZoneId();
   const [passes, setPasses] = useState<GuestPass[]>([]);
   const [loading, setLoading] = useState(false);
+  const [clearingExpired, setClearingExpired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [eventId, setEventId] = useState("");
   const [guestName, setGuestName] = useState("");
   const [notes, setNotes] = useState("");
   const [expiresAt, setExpiresAt] = useState(() => isoFromNow(24));
   const [expiryHours, setExpiryHours] = useState(24);
+
+  const expiredCount = useMemo(
+    () => passes.filter((pass) => isPassExpired(pass)).length,
+    [passes],
+  );
 
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
@@ -265,6 +329,42 @@ export default function GuestPassesScreen({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const onClearExpired = useCallback(() => {
+    if (!effectiveZoneId || expiredCount === 0) return;
+    Alert.alert(
+      "Clear expired passes",
+      `Delete ${expiredCount} expired guest pass${expiredCount === 1 ? "" : "es"}? Event IDs will be freed for reuse.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear expired",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setClearingExpired(true);
+              try {
+                const result = await clearExpiredGuestPasses(effectiveZoneId);
+                if (result.error) {
+                  toast.error(result.error, { title: "Could not clear expired" });
+                  return;
+                }
+                const count = result.data?.deleted_count ?? 0;
+                toast.success(
+                  count === 0
+                    ? "No expired passes to clear."
+                    : `Deleted ${count} expired guest pass${count === 1 ? "" : "es"}.`,
+                );
+                void load();
+              } finally {
+                setClearingExpired(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }, [effectiveZoneId, expiredCount, load]);
 
   const onCreate = useCallback(async () => {
     if (!effectiveZoneId) {
@@ -417,27 +517,42 @@ export default function GuestPassesScreen({
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "space-between",
+                gap: 8,
               }}
             >
               <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                 Issued passes
               </Text>
-              <Pressable
-                onPress={() => void load()}
-                disabled={loading}
-                hitSlop={8}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  opacity: loading ? 0.6 : 1,
-                }}
-              >
-                <RefreshCw size={14} color={colors.accent} />
-                <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
-                  {loading ? "Refreshing…" : "Refresh"}
-                </Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                {expiredCount > 0 ? (
+                  <Pressable
+                    onPress={onClearExpired}
+                    disabled={clearingExpired || loading}
+                    hitSlop={8}
+                    style={{ opacity: clearingExpired || loading ? 0.6 : 1 }}
+                  >
+                    <Text style={{ color: colors.danger, fontSize: 12, fontWeight: "700" }}>
+                      {clearingExpired ? "Clearing…" : "Clear expired"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={() => void load()}
+                  disabled={loading}
+                  hitSlop={8}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    opacity: loading ? 0.6 : 1,
+                  }}
+                >
+                  <RefreshCw size={14} color={colors.accent} />
+                  <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+                    {loading ? "Refreshing…" : "Refresh"}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
             {loading && passes.length === 0 ? (
               <ActivityIndicator color={colors.accent} />
@@ -627,6 +742,35 @@ export default function GuestPassesScreen({
                     fullWidth
                   />
                 </Card>
+                {expiredCount > 0 ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                      {expiredCount} expired
+                    </Text>
+                    <Pressable
+                      onPress={onClearExpired}
+                      disabled={clearingExpired || loading}
+                      hitSlop={8}
+                      style={{ opacity: clearingExpired || loading ? 0.6 : 1 }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.danger,
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}
+                      >
+                        {clearingExpired ? "Clearing…" : "Clear expired"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
             }
             renderItem={({ item }) => (
