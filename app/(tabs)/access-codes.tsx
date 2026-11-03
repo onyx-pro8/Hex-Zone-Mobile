@@ -10,6 +10,7 @@ import {
   RefreshControl,
   ScrollView,
   Share,
+  StyleSheet,
   Text,
   TextInput,
   View,
@@ -1683,21 +1684,27 @@ export default function AccessCodesScreen({
           animationType="fade"
           onRequestClose={() => setDetail(null)}
         >
-          <Pressable
+          <View
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.45)",
               justifyContent: "center",
               padding: 20,
             }}
-            onPress={() => setDetail(null)}
           >
-            <View onStartShouldSetResponder={() => true}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setDetail(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Close request details"
+            />
             <Card padded={false}>
               <ScrollView
                 style={{ maxHeight: 560 }}
                 contentContainerStyle={{ gap: 10, padding: 18 }}
                 showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
               >
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
                 {detail?.request_kind === "place_access" ? "Request Key" : "Key Invitation"}
@@ -1888,8 +1895,7 @@ export default function AccessCodesScreen({
               <Button label="Close" size="sm" fullWidth variant="outline" onPress={() => setDetail(null)} />
               </ScrollView>
             </Card>
-            </View>
-          </Pressable>
+          </View>
         </Modal>
 
         <Modal
