@@ -49,11 +49,11 @@ import {
   deriveDeviceOnline,
   heartbeatCurrentDevice,
   isClientSessionHid,
-  parseServerDate,
   isSmartHomeHid,
   removeDevice,
   signOutDevice,
 } from "@/lib/deviceSync";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { getOrCreateDeviceHid } from "@/lib/storage";
 import { colors } from "@/theme/colors";
@@ -71,9 +71,7 @@ function zoneLabel(h3?: string | null): string | null {
 }
 
 function formatLastSeen(value?: string): string {
-  const parsed = parseServerDate(value);
-  if (!parsed) return "Never";
-  return parsed.toLocaleString();
+  return formatServerDateTime(value, undefined, "Never");
 }
 
 function generateSmartHomeHid(): string {

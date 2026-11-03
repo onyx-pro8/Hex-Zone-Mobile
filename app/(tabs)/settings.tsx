@@ -6,11 +6,9 @@ import {
   BookOpen,
   History,
   LogOut,
+  MessageSquareText,
   Ruler,
   Smartphone,
-  UserPlus,
-  Users,
-  Zap,
 } from "lucide-react-native";
 import { isSystemAdministrator } from "@/lib/accountLimits";
 import { GradientBackground } from "@/components/ui/GradientBackground";
@@ -50,41 +48,10 @@ export default function SettingsScreen() {
             title="Account settings"
             subtitle="Choose a category to manage"
             showBack
+            onBack={() => router.replace("/(tabs)")}
           />
 
           <View style={{ paddingHorizontal: 20 }}>
-            {isSystemAdmin ? (
-              <SettingsNavRow
-                icon={<Ruler size={18} color={colors.accent} />}
-                title="Zone size limit"
-                subtitle="Each zone and the account total"
-                onPress={() => router.push("/(tabs)/zone-size-limits")}
-              />
-            ) : null}
-            <SettingsNavRow
-              icon={<Zap size={18} color={colors.accent} />}
-              title="Quick alert messages"
-              subtitle="Preset text for Quick Alert buttons"
-              onPress={() => router.push("/(tabs)/quick-alert-messages")}
-            />
-            <SettingsNavRow
-              icon={<UserPlus size={18} color={colors.accent} />}
-              title="Member join welcome"
-              subtitle="Message when invited members join"
-              onPress={() => router.push("/(tabs)/member-join-welcome")}
-            />
-            <SettingsNavRow
-              icon={<Users size={18} color={colors.accent} />}
-              title="Guest management"
-              subtitle="Lists, schedules, passes & arrival copy"
-              onPress={() => router.push("/(tabs)/guest-management")}
-            />
-            <SettingsNavRow
-              icon={<History size={18} color={colors.accent} />}
-              title="Access history"
-              subtitle="Guest access permission messages"
-              onPress={() => router.push("/(tabs)/access-history")}
-            />
             <SettingsNavRow
               icon={<Bell size={18} color={colors.accent} />}
               title="Notification"
@@ -94,9 +61,29 @@ export default function SettingsScreen() {
             <SettingsNavRow
               icon={<Smartphone size={18} color={colors.accent} />}
               title="Device"
-              subtitle="Manage registered phones & hubs"
+              subtitle="Manage registered phones and hubs"
               onPress={() => router.push("/(tabs)/devices")}
             />
+            <SettingsNavRow
+              icon={<MessageSquareText size={18} color={colors.accent} />}
+              title="Message Template"
+              subtitle="Arrival, alert, and welcome copy"
+              onPress={() => router.push("/(tabs)/message-templates")}
+            />
+            <SettingsNavRow
+              icon={<History size={18} color={colors.accent} />}
+              title="Access history"
+              subtitle="Guest access permission messages"
+              onPress={() => router.push("/(tabs)/access-history")}
+            />
+            {isSystemAdmin ? (
+              <SettingsNavRow
+                icon={<Ruler size={18} color={colors.accent} />}
+                title="Zone size limit"
+                subtitle="Each zone and the account total"
+                onPress={() => router.push("/(tabs)/zone-size-limits")}
+              />
+            ) : null}
             <SettingsNavRow
               icon={<BookOpen size={18} color={colors.accent} />}
               title="APIs"

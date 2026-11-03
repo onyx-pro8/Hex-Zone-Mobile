@@ -53,10 +53,15 @@ function fingerprint(message: string, type: ToastType, title?: string): string {
   return `${type}|${title ?? ""}|${message}`;
 }
 
+/** Axios puts this on the wire when `timeout` elapses. Do not surface it. */
+function isClientTimeoutMessage(message: string): boolean {
+  return /^timeout of \d+ms exceeded$/i.test(message.trim());
+}
+
 /** Show a floating toast notification (preferred over Alert for user messages). */
 export function showToast(message: string, options: ToastOptions = {}): void {
   const trimmed = message.trim();
-  if (!trimmed) return;
+  if (!trimmed || isClientTimeoutMessage(trimmed)) return;
   const type = options.type ?? "info";
   const title = options.title?.trim() || undefined;
   const key = fingerprint(trimmed, type, title);

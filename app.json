@@ -30,6 +30,7 @@
         "NSCameraUsageDescription": "Safe Zone Patrol uses your camera to scan QR codes for zone access and member invites.",
         "NSPhotoLibraryUsageDescription": "Safe Zone Patrol uses your photo library so you can attach images to messages and update your profile photo.",
         "NSLocationWhenInUseUsageDescription": "Safe Zone Patrol uses your location to show the map around you and to anchor proximity-source zones.",
+        "NSMicrophoneUsageDescription": "Safe Zone Patrol uses the microphone so you can speak with a guest or an administrator.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -80,6 +81,8 @@
     },
     "plugins": [
       "expo-router",
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc",
       [
         "expo-notifications",
         {

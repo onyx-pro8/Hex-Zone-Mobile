@@ -14,9 +14,9 @@ export default function QuickAlertMessagesScreen() {
         <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
           <ScreenHeader
             title="Quick alert messages"
-            subtitle="Presets for Quick Alert buttons"
+            subtitle="Preset text for the alert buttons"
             showBack
-            onBack={() => router.replace("/(tabs)/settings")}
+            onBack={() => router.replace("/(tabs)/message-templates")}
           />
           <ConfigForm section="quickAlerts" />
         </ScrollView>

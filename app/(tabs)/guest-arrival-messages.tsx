@@ -5,8 +5,8 @@
  *   - "Expected (on schedule)"     → expected_arrival_message
  *   - "Unexpected (waiting copy)"  → unexpected_arrival_message
  *
- * Reached from the Access tab. Admin only. Leaving a field blank reverts that
- * phrase to the server default for new arrivals.
+ * Reached from Account settings → Message Template. Admin only. Leaving a
+ * field blank reverts that phrase to the server default for new arrivals.
  */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "expo-router";
@@ -29,7 +29,6 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
-import { useGuestManagementBack } from "@/hooks/useGuestManagementBack";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import {
   GUEST_ARRIVAL_MESSAGE_MAX_LEN,
@@ -68,14 +67,6 @@ function inputStyle() {
 export default function GuestArrivalMessagesScreen() {
   const router = useRouter();
   const isAdmin = useIsAdmin();
-  const guestMgmtBack = useGuestManagementBack();
-  const onBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
-    guestMgmtBack();
-  }, [router, guestMgmtBack]);
   const {
     effectiveZoneId,
     candidateZoneIds,
@@ -172,7 +163,7 @@ export default function GuestArrivalMessagesScreen() {
                 : "What guests see on check-in"
             }
             showBack
-            onBack={onBack}
+            onBack={() => router.replace("/(tabs)/message-templates")}
           />
 
           {!effectiveZoneId ? (

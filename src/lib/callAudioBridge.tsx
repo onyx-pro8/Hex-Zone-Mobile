@@ -57,7 +57,6 @@ const PAGE = `<!DOCTYPE html>
   var frameSeq = 0;
   var primed = false;
   var farRms = 0;
-  var speakHang = 0;
   var lpState = 0;
 
   function audio() {
@@ -119,7 +118,6 @@ const PAGE = `<!DOCTYPE html>
     }
     primed = false;
     farRms = 0;
-    speakHang = 0;
     lpState = 0;
   }
 
@@ -154,37 +152,37 @@ const PAGE = `<!DOCTYPE html>
     var step = Math.max(1, Math.round(inRate / outRate));
     var count = Math.floor(input.length / step);
     var pcm = new Int16Array(count);
-    var lpA = 0.35;
+    var lpA = Math.min(0.5, (6.2832 * 3200) / Math.max(inRate, outRate));
+    var filtered = new Float32Array(input.length);
     var rawEnergy = 0;
     for (var n = 0; n < input.length; n++) {
       lpState += lpA * ((input[n] || 0) - lpState);
-      input[n] = lpState;
+      filtered[n] = lpState;
       rawEnergy += lpState * lpState;
     }
     var rawRms = input.length ? Math.sqrt(rawEnergy / input.length) : 0;
-    farRms *= 0.68;
-    if (rawRms >= 0.016) speakHang = 4;
-    else if (speakHang > 0) speakHang -= 1;
-    var speaking = rawRms >= 0.016 || speakHang > 0;
-    var localTalk = rawRms > 0.045 && rawRms > farRms * 0.55;
-    var suppress = farRms > 0.03 && !localTalk;
-    var drive = 2.2;
-    if (!speaking || suppress) drive = 0;
-    else if (rawRms < 0.08) drive = Math.min(5, 0.14 / Math.max(rawRms, 0.02));
+    farRms *= 0.82;
+    // Duck a little while the speaker is louder than the mic.
+    // Do not mute the frame or run it through a hard clip — that
+    // replaced speech with silence and short chirps.
+    var gain = 1.15;
+    if (farRms > 0.06 && rawRms < farRms * 0.75) gain = 0.4;
     var energy = 0;
     var peak = 0;
     for (var i = 0; i < count; i++) {
       var sample = 0;
       var base = i * step;
-      for (var s = 0; s < step; s++) sample += input[base + s] || 0;
-      sample = Math.tanh((sample / step) * drive);
+      for (var s = 0; s < step; s++) sample += filtered[base + s] || 0;
+      sample = (sample / step) * gain;
+      if (sample > 1) sample = 1;
+      else if (sample < -1) sample = -1;
       var abs = sample < 0 ? -sample : sample;
       if (abs > peak) peak = abs;
       energy += sample * sample;
       pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
     }
     var rms = count ? Math.sqrt(energy / count) : 0;
-    var level = Math.max(0, Math.min(1, Math.max(peak * 1.6, rms * 6)));
+    var level = Math.max(0, Math.min(1, Math.max(peak, rms * 4)));
     var bytes = new Uint8Array(pcm.buffer);
     return { b64: bytesToB64(bytes), level: level };
   }
@@ -298,8 +296,10 @@ const PAGE = `<!DOCTYPE html>
     if (!c || !dest || !b64) return;
     if (c.state === "suspended") c.resume();
     var bin = atob(b64);
-    var bytes = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var even = bin.length - (bin.length % 2);
+    if (even < 2) return;
+    var bytes = new Uint8Array(even);
+    for (var i = 0; i < even; i++) bytes[i] = bin.charCodeAt(i) & 255;
     var pcm = new Int16Array(bytes.buffer);
     if (!pcm.length) return;
     var buffer = c.createBuffer(1, pcm.length, 8000);

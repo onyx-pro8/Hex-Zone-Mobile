@@ -46,7 +46,10 @@ import {
   generateZoneId,
   type LatLng,
 } from "@/lib/h3";
+import { ENHANCED_PLUS_MEMBER_LIMITS } from "@/lib/accountLimits";
 import { toast } from "@/lib/toast";
+
+const ORGANIZATION_LEVELS = [1, 2, 3, 4, 5] as const;
 import { colors } from "@/theme/colors";
 import { useBottomSafeInset } from "@/hooks/useBottomSafeInset";
 import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
@@ -83,7 +86,7 @@ const accountOptions: {
   {
     value: "ENHANCED_PLUS",
     title: "Organization",
-    lines: ["Unlimited devices", "Maximum controls"],
+    lines: ["Unlimited devices", "User capacity by level"],
   },
 ];
 
@@ -130,11 +133,14 @@ export default function SignupScreen() {
   const [communalValidated, setCommunalValidated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkingCredentials, setCheckingCredentials] = useState(false);
+  const [organizationLevel, setOrganizationLevel] = useState(1);
   const [registrationCode, setRegistrationCode] = useState("FREE");
   const [regCodeLoading, setRegCodeLoading] = useState(false);
 
   const isIndividual = accountType === "EXCLUSIVE";
   const isIndividualPro = accountType === "ENHANCED";
+  const isOrganizationAdmin =
+    accountType === "ENHANCED_PLUS" && registrationType === "ADMINISTRATOR";
   const isInviteFlow = Boolean(inviteToken);
 
   const loadRegistrationCode = useCallback(async () => {
@@ -302,6 +308,7 @@ export default function SignupScreen() {
           ? { communalId: communalId.trim().toUpperCase() }
           : {}),
         ...(joiningNetwork ? {} : { registrationCode: code }),
+        ...(isOrganizationAdmin ? { tierLevel: organizationLevel } : {}),
       });
       router.replace("/(auth)/login");
     } catch (err) {
@@ -711,6 +718,75 @@ export default function SignupScreen() {
                     </Text>
                   </View>
                 )}
+
+                {isOrganizationAdmin ? (
+                  <View
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                      marginTop: 4,
+                    }}
+                  >
+                    <Text style={labelStyle}>Organization level</Text>
+                    <Text
+                      style={{
+                        color: colors.textDim,
+                        fontSize: 11,
+                        lineHeight: 16,
+                        marginBottom: 12,
+                      }}
+                    >
+                      Choose how many users this organization can include
+                      (administrator and members).
+                    </Text>
+                    <View style={{ gap: 8 }}>
+                      {ORGANIZATION_LEVELS.map((level) => {
+                        const active = organizationLevel === level;
+                        const limit = ENHANCED_PLUS_MEMBER_LIMITS[level];
+                        return (
+                          <Pressable
+                            key={level}
+                            onPress={() => setOrganizationLevel(level)}
+                            style={{
+                              paddingVertical: 12,
+                              paddingHorizontal: 14,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: active ? colors.accent : colors.border,
+                              backgroundColor: active
+                                ? "rgba(47,128,237,0.1)"
+                                : "transparent",
+                              flexDirection: "row",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <Text
+                              style={{
+                                color: active ? colors.text : colors.textMuted,
+                                fontSize: 14,
+                                fontWeight: "600",
+                              }}
+                            >
+                              Level {level}
+                            </Text>
+                            <Text
+                              style={{
+                                color: colors.textDim,
+                                fontSize: 12,
+                              }}
+                            >
+                              {limit.toLocaleString()} users
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : null}
               </>
             ) : null}
 

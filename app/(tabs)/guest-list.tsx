@@ -25,13 +25,52 @@ import {
   rejectGuestRequest,
   type GuestRequest,
 } from "@/api/guest";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
-export default function GuestListScreen() {
+function SheetPill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: active ? colors.accent : colors.border,
+        backgroundColor: active ? colors.accent : "transparent",
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+      }}
+    >
+      <Text
+        style={{
+          color: active ? "#fff" : colors.textMuted,
+          fontSize: 12,
+          fontWeight: "700",
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export default function GuestListScreen({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}) {
   const isAdmin = useIsAdmin();
   const guestCall = useGuestCallOptional();
-  const onBack = useGuestManagementBack();
+  const onBack = useGuestManagementBack("list");
   const {
     effectiveZoneId,
     candidateZoneIds,
@@ -41,6 +80,9 @@ export default function GuestListScreen() {
   } = useEffectiveZoneId();
   const [requests, setRequests] = useState<GuestRequest[]>([]);
   const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "PENDING" | "APPROVED" | "REJECTED"
+  >("all");
 
   const load = useCallback(async () => {
     if (!effectiveZoneId) return;
@@ -86,15 +128,162 @@ export default function GuestListScreen() {
     return `Active and recent arrivals · ${effectiveZoneId}`;
   }, [effectiveZoneId]);
 
-  return (
-    <GradientBackground>
-      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <ScreenHeader
-          title="Guest list"
-          subtitle={headerSubtitle}
-          showBack
-          onBack={onBack}
-        />
+  if (embedded) {
+    const visible = requests.filter((item) =>
+      statusFilter === "all"
+        ? true
+        : item.approval_status.toUpperCase() === statusFilter,
+    );
+    return (
+      <View style={{ gap: 12 }}>
+        <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+          Pending and recent guest arrivals for this zone.
+        </Text>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Pressable
+            onPress={() => void load()}
+            disabled={loading}
+            hitSlop={8}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            <RefreshCw size={14} color={colors.accent} />
+            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: "700" }}>
+              {loading ? "Refreshing…" : "Refresh"}
+            </Text>
+          </Pressable>
+        </View>
+        {showZonePicker ? (
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {candidateZoneIds.map((zid) => (
+              <SheetPill
+                key={zid}
+                label={zid}
+                active={zid === effectiveZoneId}
+                onPress={() => setPickedZoneId(zid)}
+              />
+            ))}
+          </View>
+        ) : null}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          {(
+            [
+              ["all", "All"],
+              ["PENDING", "Pending"],
+              ["APPROVED", "Approved"],
+              ["REJECTED", "Rejected"],
+            ] as const
+          ).map(([value, label]) => (
+            <SheetPill
+              key={value}
+              label={label}
+              active={statusFilter === value}
+              onPress={() => setStatusFilter(value)}
+            />
+          ))}
+        </View>
+        {!effectiveZoneId ? (
+          zonesLoading ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Text style={{ color: colors.textMuted }}>
+              No zones are linked to this account yet.
+            </Text>
+          )
+        ) : loading && requests.length === 0 ? (
+          <ActivityIndicator color={colors.accent} />
+        ) : visible.length === 0 ? (
+          <Text style={{ color: colors.textMuted }}>Nothing here yet.</Text>
+        ) : (
+          visible.map((item, index) => {
+            const isLast = index === visible.length - 1;
+            return (
+              <View
+                key={item.id}
+                style={{
+                  gap: 6,
+                  paddingBottom: isLast ? 0 : 10,
+                  borderBottomWidth: isLast ? 0 : 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <Text style={{ color: colors.text, fontWeight: "800" }}>
+                  {item.guest_name ?? "Guest"}
+                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                  {formatServerDateTime(item.created_at)}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.text,
+                    fontSize: 12,
+                    fontWeight: "700",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {item.approval_status.toLowerCase()}
+                </Text>
+                {guestRequestShowsApprovalActions(item) ? (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      marginTop: 4,
+                    }}
+                  >
+                    <Button
+                      label="Approve"
+                      size="sm"
+                      tone="green"
+                      onPress={() => void onApprove(item.id)}
+                    />
+                    <Button
+                      label="Reject"
+                      size="sm"
+                      tone="red"
+                      onPress={() => void onReject(item.id)}
+                    />
+                    <Button
+                      label={guestCall?.callRequesting ? "Calling…" : "Call"}
+                      size="sm"
+                      tone="blue"
+                      loading={Boolean(guestCall?.callRequesting)}
+                      disabled={
+                        Boolean(guestCall?.session) ||
+                        Boolean(guestCall?.callRequesting)
+                      }
+                      onPress={() => {
+                        guestCall?.startAdminCall({
+                          guestId: item.guest_id,
+                          zoneId: item.zone_id || effectiveZoneId,
+                          guestName: item.guest_name,
+                          fullscreen: false,
+                        });
+                      }}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </View>
+    );
+  }
+
+  const body = (
+    <>
         {!effectiveZoneId ? (
           <View style={{ paddingHorizontal: 20 }}>
             <Card>
@@ -167,6 +356,7 @@ export default function GuestListScreen() {
               </View>
             ) : (
               <FlatList
+                style={{ flex: 1 }}
                 data={requests}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
@@ -203,7 +393,7 @@ export default function GuestListScreen() {
                               marginTop: 2,
                             }}
                           >
-                            {new Date(item.created_at).toLocaleString()}
+                            {formatServerDateTime(item.created_at)}
                           </Text>
                         </View>
                       </View>
@@ -286,6 +476,19 @@ export default function GuestListScreen() {
             )}
           </>
         )}
+    </>
+  );
+
+  return (
+    <GradientBackground>
+      <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        <ScreenHeader
+          title="Guest list"
+          subtitle={headerSubtitle}
+          showBack
+          onBack={onBack}
+        />
+        {body}
       </SafeAreaView>
     </GradientBackground>
   );

@@ -57,6 +57,8 @@ export type RegisterPayload = {
   phone?: string;
   address?: string;
   registrationCode?: string;
+  /** Organization (ENHANCED_PLUS) capacity level 1–5. */
+  tierLevel?: number;
 };
 
 type LegacyLoginResponse = {
@@ -79,6 +81,7 @@ type LegacyRegisterPayload = {
   phone?: string;
   address?: string;
   registration_code?: string;
+  tier_level?: number;
 };
 
 function toLegacyAccountType(accountType: AccountType): string {
@@ -106,6 +109,9 @@ function mapLegacyRegisterPayload(p: RegisterPayload): LegacyRegisterPayload {
     phone: p.phone,
     address: p.address,
     ...(code ? { registration_code: code } : {}),
+    ...(p.accountType === "ENHANCED_PLUS" && p.tierLevel != null
+      ? { tier_level: p.tierLevel }
+      : {}),
   };
 }
 

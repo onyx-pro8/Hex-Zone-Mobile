@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -10,12 +10,13 @@ import {
   RefreshControl,
   ScrollView,
   Share,
+  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -23,6 +24,7 @@ import { File as ExpoFile, Paths } from "expo-file-system";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
+import { BookTabs, bookSheetCorners } from "@/components/navigation/BookTabs";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -48,8 +50,11 @@ import {
   Copy as CopyIcon,
   RefreshCw as RefreshIcon,
   Search,
+  X,
 } from "lucide-react-native";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { copyToClipboard } from "@/lib/copyToClipboard";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -184,6 +189,7 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
   const kind = parsed ? fileKind(parsed.mime) : "other";
   const [previewOpen, setPreviewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const insets = useSafeAreaInsets();
   const textBody =
     parsed && kind === "text"
       ? (() => {
@@ -273,8 +279,22 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
           </View>
         </View>
       )}
-      <Modal visible={previewOpen} animationType="slide" onRequestClose={() => setPreviewOpen(false)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }} edges={["top", "bottom"]}>
+      <Modal
+        visible={previewOpen}
+        animationType="fade"
+        transparent
+        statusBarTranslucent
+        presentationStyle="overFullScreen"
+        onRequestClose={() => setPreviewOpen(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#fff",
+            paddingTop: Math.max(insets.top, 12),
+            paddingBottom: Math.max(insets.bottom, 12),
+          }}
+        >
           <View
             style={{
               flexDirection: "row",
@@ -282,11 +302,37 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
               justifyContent: "space-between",
               paddingHorizontal: 16,
               paddingVertical: 12,
+              zIndex: 2,
+              backgroundColor: "#fff",
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
             }}
           >
-            <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>{label}</Text>
-            <Pressable onPress={() => setPreviewOpen(false)} hitSlop={8}>
-              <Text style={{ color: colors.accent, fontWeight: "700" }}>Close</Text>
+            <Text
+              style={{ color: colors.text, fontWeight: "800", fontSize: 16, flex: 1, marginRight: 12 }}
+              numberOfLines={1}
+            >
+              {label}
+            </Text>
+            <Pressable
+              onPress={() => setPreviewOpen(false)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel={`Close ${label} preview`}
+              style={{
+                minWidth: 72,
+                height: 36,
+                borderRadius: 18,
+                paddingHorizontal: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                flexDirection: "row",
+                gap: 4,
+                backgroundColor: "rgba(47,128,237,0.12)",
+              }}
+            >
+              <X size={16} color={colors.accent} />
+              <Text style={{ color: colors.accent, fontWeight: "700", fontSize: 14 }}>Close</Text>
             </Pressable>
           </View>
           {kind === "image" ? (
@@ -306,7 +352,7 @@ function ReviewDocument({ label, uri }: { label: string; uri?: string }) {
               Preview is not available for this file. Use Download to open it.
             </Text>
           )}
-        </SafeAreaView>
+        </View>
       </Modal>
     </View>
   );
@@ -574,6 +620,14 @@ export default function AccessCodesScreen({
   const [photo, setPhoto] = useState("");
   const [businessDoc, setBusinessDoc] = useState("");
   const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const keyboardInset = useKeyboardBottomInset();
+
+  const scrollFocusedFieldIntoView = useCallback(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, Platform.OS === "android" ? 120 : 60);
+  }, []);
 
   useEffect(() => {
     openBusinessDocPicker = () => setDocPickerOpen(true);
@@ -762,56 +816,12 @@ export default function AccessCodesScreen({
   }
 
   const pageMarkers = (
-    <View
-      style={{
-        flexDirection: "row",
-        flexWrap: "wrap",
-        alignSelf: "flex-start",
-        gap: 2,
-        marginBottom: -1,
-        zIndex: 2,
-      }}
-    >
-      {tabs.map((item) => {
-        const active = tab === item.key;
-        return (
-          <Pressable
-            key={item.key}
-            onPress={() => setTab(item.key)}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderTopLeftRadius: 10,
-              borderTopRightRadius: 10,
-              borderWidth: 1,
-              borderBottomWidth: active ? 0 : 1,
-              borderColor: colors.border,
-              backgroundColor: active ? colors.bgCard : colors.bgSurface,
-              marginBottom: active ? 0 : 1,
-            }}
-          >
-            <Text
-              style={{
-                color: active ? colors.accent : colors.textMuted,
-                fontWeight: "700",
-                fontSize: 12,
-              }}
-            >
-              {item.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <BookTabs
+      value={tab}
+      onChange={setTab}
+      options={tabs.map((item) => ({ key: item.key, label: item.label }))}
+    />
   );
-
-  // Flush page-marker sheet: square top-left so the first marker meets the card.
-  const sheetCardCorners = {
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 22,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-  } as const;
 
   const panel = (
     <>
@@ -824,9 +834,19 @@ export default function AccessCodesScreen({
           ) : null}
 
           <ScrollView
+            ref={scrollRef}
             style={embedded ? { flex: 1 } : undefined}
             nestedScrollEnabled
-            contentContainerStyle={{ paddingBottom: embedded ? 40 : 120 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={{
+              paddingBottom:
+                Platform.OS === "android" && keyboardInset > 0
+                  ? keyboardInset + 24
+                  : embedded
+                    ? 40
+                    : 120,
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -851,7 +871,7 @@ export default function AccessCodesScreen({
                   style={{
                     gap: 12,
                     marginTop: 0,
-                    ...sheetCardCorners,
+                    ...bookSheetCorners,
                   }}
                 >
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
@@ -1079,6 +1099,7 @@ export default function AccessCodesScreen({
                     value={inviteNote}
                     editable={!inviteReadyToRefresh}
                     onChangeText={setInviteNote}
+                    onFocus={scrollFocusedFieldIntoView}
                     placeholder="Note"
                     placeholderTextColor={colors.textMuted}
                     multiline
@@ -1122,7 +1143,7 @@ export default function AccessCodesScreen({
                   style={{
                     gap: 12,
                     marginTop: 0,
-                    ...sheetCardCorners,
+                    ...bookSheetCorners,
                   }}
                 >
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
@@ -1491,6 +1512,7 @@ export default function AccessCodesScreen({
                   <TextInput
                     value={placeNote}
                     onChangeText={setPlaceNote}
+                    onFocus={scrollFocusedFieldIntoView}
                     placeholder="Note"
                     placeholderTextColor={colors.textMuted}
                     multiline
@@ -1521,7 +1543,7 @@ export default function AccessCodesScreen({
                   style={{
                     gap: 10,
                     marginTop: 0,
-                    ...sheetCardCorners,
+                    ...bookSheetCorners,
                   }}
                 >
                 <View
@@ -1618,7 +1640,7 @@ export default function AccessCodesScreen({
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                         {row.created_at
-                          ? new Date(row.created_at).toLocaleString()
+                          ? formatServerDateTime(row.created_at)
                           : "—"}
                       </Text>
                       <Text
@@ -1725,21 +1747,27 @@ export default function AccessCodesScreen({
           animationType="fade"
           onRequestClose={() => setDetail(null)}
         >
-          <Pressable
+          <View
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.45)",
               justifyContent: "center",
               padding: 20,
             }}
-            onPress={() => setDetail(null)}
           >
-            <View onStartShouldSetResponder={() => true}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setDetail(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Close request details"
+            />
             <Card padded={false}>
               <ScrollView
                 style={{ maxHeight: 560 }}
                 contentContainerStyle={{ gap: 10, padding: 18 }}
                 showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
               >
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
                 {detail?.request_kind === "place_access" ? "Request Key" : "Key Invitation"}
@@ -1755,7 +1783,7 @@ export default function AccessCodesScreen({
               >
                 {detail?.status}
                 {detail?.created_at
-                  ? ` · ${new Date(detail.created_at).toLocaleString()}`
+                  ? ` · ${formatServerDateTime(detail.created_at)}`
                   : ""}
               </Text>
               {detail?.request_kind === "invite" &&
@@ -1930,8 +1958,7 @@ export default function AccessCodesScreen({
               <Button label="Close" size="sm" fullWidth variant="outline" onPress={() => setDetail(null)} />
               </ScrollView>
             </Card>
-            </View>
-          </Pressable>
+          </View>
         </Modal>
 
         <Modal
@@ -2089,7 +2116,15 @@ export default function AccessCodesScreen({
   );
 
   if (embedded) {
-    return <View style={{ flex: 1 }}>{panel}</View>;
+    return (
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={12}
+      >
+        {panel}
+      </KeyboardAvoidingView>
+    );
   }
 
   return (

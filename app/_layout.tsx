@@ -1,4 +1,5 @@
 import "../global.css";
+import "@/lib/registerLiveKit";
 import { useEffect } from "react";
 import { LogBox } from "react-native";
 import { isRunningInExpoGo } from "expo";

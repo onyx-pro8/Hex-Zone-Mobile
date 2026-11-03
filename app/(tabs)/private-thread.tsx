@@ -12,6 +12,7 @@ import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
 import { getPrivateThread, type PrivateThreadMessage } from "@/api/messageFeature";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -119,7 +120,7 @@ export default function PrivateThreadScreen() {
                         marginTop: 4,
                       }}
                     >
-                      {new Date(item.createdAt).toLocaleString()}
+                      {formatServerDateTime(item.createdAt)}
                     </Text>
                   </View>
                 </View>

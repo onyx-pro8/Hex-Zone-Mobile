@@ -461,6 +461,21 @@ export async function revokeGuestPass(passId: string, zoneId: string) {
   });
 }
 
+export async function deleteGuestPass(passId: string) {
+  return request<{ id: string; zone_id: string; event_id: string; deleted: boolean }>({
+    method: "DELETE",
+    url: `/api/access/guest-passes/${encodeURIComponent(passId)}`,
+  });
+}
+
+export async function clearExpiredGuestPasses(zoneId: string) {
+  return request<{ deleted_ids: string[]; deleted_count: number }>({
+    method: "POST",
+    url: "/api/access/guest-passes/clear-expired",
+    data: { zone_id: zoneId },
+  });
+}
+
 /* ------------------------ Guest requests / list ------------------------- */
 
 export async function listGuestRequests(

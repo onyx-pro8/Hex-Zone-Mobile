@@ -1,21 +1,17 @@
 import { useCallback } from "react";
 import { useRouter } from "expo-router";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
 
 /**
- * Role-aware back target for guest-management stack screens.
- * Administrators return to the Guest management hub (reachable from
- * Account settings). Non-admins return to the Guest tab.
+ * Back target for guest list and passes when opened as their own screen.
+ * Returns to Access → Guest access.
  */
-export function useGuestManagementBack() {
+export function useGuestManagementBack(pane: "list" | "passes" = "list") {
   const router = useRouter();
-  const isAdmin = useIsAdmin();
 
   return useCallback(() => {
-    if (isAdmin) {
-      router.replace("/(tabs)/guest-management");
-      return;
-    }
-    router.replace("/(tabs)/guest");
-  }, [isAdmin, router]);
+    router.replace({
+      pathname: "/(tabs)/access-admin",
+      params: { tab: "guest", pane },
+    });
+  }, [pane, router]);
 }

@@ -13,6 +13,7 @@ import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import QRCode from "react-native-qrcode-svg";
 import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
+import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import {
   Copy,
@@ -23,6 +24,9 @@ import {
   X,
 } from "lucide-react-native";
 import AccessCodesScreen from "./access-codes";
+import GuestListScreen from "./guest-list";
+import GuestPassesScreen from "./guest-passes";
+import { BookTabs, bookSheetCorners } from "@/components/navigation/BookTabs";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
@@ -54,6 +58,7 @@ import { downloadInviteQrCsv } from "@/lib/inviteQrExport";
 import { colors } from "@/theme/colors";
 
 type Tab = "universal" | "member" | "guest";
+type GuestPane = "qr" | "list" | "passes";
 
 type ExpiryHours = number | null;
 
@@ -243,7 +248,7 @@ function QrPreview({ value, label }: { value: string | null; label?: string }) {
 
 function inviteExpiryLabel(expiresAt: string | null): string {
   if (!expiresAt) return "Single-use · does not expire";
-  return `Single-use · expires ${new Date(expiresAt).toLocaleString()}`;
+  return `Single-use · expires ${formatServerDateTime(expiresAt)}`;
 }
 
 function MemberInviteSection({
@@ -341,7 +346,7 @@ function MemberInviteSection({
   );
 
   return (
-    <Card glow style={{ gap: 14 }}>
+    <Card style={{ gap: 14 }}>
       <Text
         style={{
           color: colors.textMuted,
@@ -900,7 +905,7 @@ function GuestAccessSection({
   );
 
   return (
-    <Card glow style={{ gap: 14 }}>
+    <Card style={{ gap: 14 }}>
       <Text
         style={{
           color: colors.textMuted,
@@ -1060,7 +1065,7 @@ function GuestAccessSection({
                   style={{ color: colors.textDim, fontSize: 11, marginTop: 2 }}
                 >
                   {row.expires_at
-                    ? `Expires ${new Date(row.expires_at).toLocaleString()}`
+                    ? `Expires ${formatServerDateTime(row.expires_at)}`
                     : "No expiry"}
                   {row.max_uses != null
                     ? ` · ${row.use_count}/${row.max_uses} uses`
@@ -1081,7 +1086,13 @@ function GuestAccessSection({
   );
 }
 
-function NetworkAccessSection({ zoneId }: { zoneId: string }) {
+function NetworkAccessSection({
+  zoneId,
+  bare = false,
+}: {
+  zoneId: string;
+  bare?: boolean;
+}) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1112,27 +1123,31 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
 
   if (!zoneId) return null;
 
-  return (
-    <Card glow style={{ gap: 12 }}>
-      <Text
-        style={{
-          color: colors.textMuted,
-          fontSize: 11,
-          letterSpacing: 1,
-          textTransform: "uppercase",
-          fontWeight: "700",
-        }}
-      >
-        Network guest QR
-      </Text>
-      <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 18 }}>
-        One reusable link per network. Guests request access; an administrator must approve before
-        they can sign in. After approval they can use access messages (CHAT); map zones are optional.
+  const body = (
+    <>
+      {bare ? null : (
+        <Text
+          style={{
+            color: colors.textMuted,
+            fontSize: 11,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            fontWeight: "700",
+          }}
+        >
+          Network guest QR
+        </Text>
+      )}
+      <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+        One reusable link per network. Guests request access, and an administrator
+        approves them before they can sign in.
       </Text>
       {loading ? <ActivityIndicator color={colors.accent} /> : null}
       {url ? (
         <View style={{ alignItems: "center", gap: 10 }}>
-          <QRCode value={url} size={160} />
+          <View style={{ padding: 12, borderRadius: 16, backgroundColor: "#fff" }}>
+            <QRCode value={url} size={160} />
+          </View>
           <Pressable
             onPress={async () => {
               const ok = await copyToClipboard(url);
@@ -1146,8 +1161,83 @@ function NetworkAccessSection({ zoneId }: { zoneId: string }) {
           </Pressable>
         </View>
       ) : null}
-      <Button label="Refresh network QR" variant="secondary" onPress={() => void refresh()} />
-    </Card>
+      <Button
+        label={loading ? "Refreshing…" : "Refresh"}
+        size="sm"
+        fullWidth
+        variant={bare ? "primary" : "secondary"}
+        disabled={loading}
+        onPress={() => void refresh()}
+      />
+    </>
+  );
+
+  if (bare) return body;
+  return <Card style={{ gap: 12 }}>{body}</Card>;
+}
+
+function guestPaneFromParam(value: string | undefined): GuestPane {
+  if (value === "list" || value === "guestList") return "list";
+  if (value === "passes") return "passes";
+  return "qr";
+}
+
+function GuestAccessPanel({
+  zoneId,
+  pane,
+  onPaneChange,
+  isAdmin,
+}: {
+  zoneId: string;
+  pane: GuestPane;
+  onPaneChange: (next: GuestPane) => void;
+  isAdmin: boolean;
+}) {
+  const options: { key: GuestPane; label: string }[] = [
+    ...(isAdmin
+      ? [
+          { key: "qr" as const, label: "Network QR" },
+          { key: "list" as const, label: "Guest list" },
+        ]
+      : []),
+    { key: "passes", label: "Passes" },
+  ];
+  const visiblePane = options.some((option) => option.key === pane)
+    ? pane
+    : options[0].key;
+
+  useEffect(() => {
+    if (visiblePane !== pane) onPaneChange(visiblePane);
+  }, [visiblePane, pane, onPaneChange]);
+
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      nestedScrollEnabled
+      contentContainerStyle={{ paddingBottom: 110 }}
+    >
+      <View style={{ paddingHorizontal: 20, marginTop: 4 }}>
+        <BookTabs
+          value={visiblePane}
+          onChange={onPaneChange}
+          options={options}
+        />
+        <Card style={{ gap: 12, marginTop: 0, ...bookSheetCorners }}>
+          {visiblePane === "qr" ? (
+            zoneId ? (
+              <NetworkAccessSection zoneId={zoneId} bare />
+            ) : (
+              <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
+                No zone is linked to this account yet. Create a zone, then come back
+                for the guest access link.
+              </Text>
+            )
+          ) : null}
+          {visiblePane === "list" ? <GuestListScreen embedded /> : null}
+          {visiblePane === "passes" ? <GuestPassesScreen embedded /> : null}
+        </Card>
+      </View>
+    </ScrollView>
   );
 }
 
@@ -1155,14 +1245,20 @@ export default function AccessScreen() {
   const { user } = useAuth();
   const { effectiveZoneId } = useEffectiveZoneId();
   const isAdmin = String(user?.role ?? "").toLowerCase() === "administrator";
-  const [tab, setTab] = useState<Tab>(isAdmin ? "member" : "universal");
-
   const params = useLocalSearchParams<{
     gt?: string;
     zid?: string;
     tab?: string;
     mode?: string;
+    pane?: string;
   }>();
+  const paneParam = typeof params.pane === "string" ? params.pane : undefined;
+  const [tab, setTab] = useState<Tab>(isAdmin ? "member" : "universal");
+  const [guestPane, setGuestPane] = useState<GuestPane>(() => {
+    const fromParam = guestPaneFromParam(paneParam);
+    if (!isAdmin && fromParam !== "passes") return "passes";
+    return fromParam;
+  });
 
   useEffect(() => {
     const gt = typeof params.gt === "string" ? params.gt.trim() : "";
@@ -1171,7 +1267,11 @@ export default function AccessScreen() {
     if (gt || tabParam === "guest" || mode === "guest") {
       setTab("guest");
     }
-  }, [params.gt, params.tab, params.mode]);
+    if (paneParam) {
+      const next = guestPaneFromParam(paneParam);
+      if (isAdmin || next === "passes") setGuestPane(next);
+    }
+  }, [params.gt, params.tab, params.mode, paneParam, isAdmin]);
 
   const accountType = useMemo(
     () => normalizeAccountType(user?.accountType, user?.account_type),
@@ -1211,44 +1311,36 @@ export default function AccessScreen() {
 
   const tabOptions = [
     ...(isAdmin
-      ? [
-          { key: "member" as const, title: "Member invite" },
-          { key: "guest" as const, title: "Guest access" },
-        ]
+      ? [{ key: "member" as const, title: "Member invite" }]
       : []),
+    { key: "guest" as const, title: "Guest access" },
     { key: "universal" as const, title: "Zone Management" },
   ];
+
+  const header = (
+    <AppHeader
+      title="Access"
+      subtitle={
+        isAdmin
+          ? "Invites, guest access, and zone keys"
+          : "Guest access and zone keys"
+      }
+    />
+  );
 
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        {tab === "universal" ? (
-          <View style={{ flex: 1 }}>
-            <AppHeader
-              title="Access"
-              subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
-            />
-            <AccessTabs
-              tab={tab}
-              onChange={setTab}
-              options={tabOptions}
-            />
+        <View style={{ flex: 1 }}>
+          {header}
+          <AccessTabs tab={tab} onChange={setTab} options={tabOptions} />
+          {tab === "universal" ? (
             <View style={{ flex: 1, paddingBottom: 90 }}>
               <AccessCodesScreen embedded />
             </View>
-          </View>
-        ) : (
-          <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
-            <AppHeader
-              title="Access"
-              subtitle={isAdmin ? "Universal access & QR invites" : "Universal access"}
-            />
-            <AccessTabs
-              tab={tab}
-              onChange={setTab}
-              options={tabOptions}
-            />
-            {isAdmin && tab === "member" ? (
+          ) : null}
+          {isAdmin && tab === "member" ? (
+            <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
               <View style={{ paddingHorizontal: 20, gap: 16 }}>
                 <MemberInviteSection
                   disabled={memberInviteDisabled}
@@ -1256,14 +1348,17 @@ export default function AccessScreen() {
                   isSystemAdmin={isSystemAdmin}
                 />
               </View>
-            ) : null}
-            {isAdmin && tab === "guest" ? (
-              <View style={{ paddingHorizontal: 20, gap: 16 }}>
-                <NetworkAccessSection zoneId={effectiveZoneId} />
-              </View>
-            ) : null}
-          </ScrollView>
-        )}
+            </ScrollView>
+          ) : null}
+          {tab === "guest" ? (
+            <GuestAccessPanel
+              zoneId={effectiveZoneId}
+              pane={guestPane}
+              onPaneChange={setGuestPane}
+              isAdmin={isAdmin}
+            />
+          ) : null}
+        </View>
       </SafeAreaView>
     </GradientBackground>
   );
