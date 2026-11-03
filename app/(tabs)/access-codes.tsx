@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -51,6 +51,7 @@ import {
   RefreshCw as RefreshIcon,
   Search,
 } from "lucide-react-native";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { formatServerDateTime } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
@@ -577,6 +578,14 @@ export default function AccessCodesScreen({
   const [photo, setPhoto] = useState("");
   const [businessDoc, setBusinessDoc] = useState("");
   const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const keyboardInset = useKeyboardBottomInset();
+
+  const scrollFocusedFieldIntoView = useCallback(() => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, Platform.OS === "android" ? 120 : 60);
+  }, []);
 
   useEffect(() => {
     openBusinessDocPicker = () => setDocPickerOpen(true);
@@ -783,9 +792,19 @@ export default function AccessCodesScreen({
           ) : null}
 
           <ScrollView
+            ref={scrollRef}
             style={embedded ? { flex: 1 } : undefined}
             nestedScrollEnabled
-            contentContainerStyle={{ paddingBottom: embedded ? 40 : 120 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={{
+              paddingBottom:
+                Platform.OS === "android" && keyboardInset > 0
+                  ? keyboardInset + 24
+                  : embedded
+                    ? 40
+                    : 120,
+            }}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -1038,6 +1057,7 @@ export default function AccessCodesScreen({
                     value={inviteNote}
                     editable={!inviteReadyToRefresh}
                     onChangeText={setInviteNote}
+                    onFocus={scrollFocusedFieldIntoView}
                     placeholder="Note"
                     placeholderTextColor={colors.textMuted}
                     multiline
@@ -1450,6 +1470,7 @@ export default function AccessCodesScreen({
                   <TextInput
                     value={placeNote}
                     onChangeText={setPlaceNote}
+                    onFocus={scrollFocusedFieldIntoView}
                     placeholder="Note"
                     placeholderTextColor={colors.textMuted}
                     multiline
@@ -2053,7 +2074,15 @@ export default function AccessCodesScreen({
   );
 
   if (embedded) {
-    return <View style={{ flex: 1 }}>{panel}</View>;
+    return (
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={12}
+      >
+        {panel}
+      </KeyboardAvoidingView>
+    );
   }
 
   return (
