@@ -77,10 +77,8 @@ export function ZonesPageHeader({
 }: Props) {
   const insets = useSafeAreaInsets();
   const [shapesLayer, setShapesLayer] = useState<MapZoneLayer | null>(null);
-  const [listTab, setListTab] = useState<"mine" | "accessed">("mine");
   const mineLayers = layers.filter((layer) => !isAccessedZone(layer.raw));
-  const accessedLayers = layers.filter((layer) => isAccessedZone(layer.raw));
-  const visibleLayers = listTab === "mine" ? mineLayers : accessedLayers;
+  const visibleLayers = mineLayers;
 
   const shapes = shapesLayer ? listZoneShapes(shapesLayer) : [];
 
@@ -192,37 +190,9 @@ export function ZonesPageHeader({
             onPress={() => onListOpenChange(false)}
           />
           <View style={[styles.dropdown, { marginTop: insets.top + 72 }]}>
-            <View style={styles.tabRow}>
-              <Pressable
-                onPress={() => setListTab("mine")}
-                style={[styles.tab, listTab === "mine" ? styles.tabActive : null]}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    listTab === "mine" ? styles.tabTextActive : null,
-                  ]}
-                >
-                  Mine ({mineLayers.length})
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setListTab("accessed")}
-                style={[
-                  styles.tab,
-                  listTab === "accessed" ? styles.tabActive : null,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.tabText,
-                    listTab === "accessed" ? styles.tabTextActive : null,
-                  ]}
-                >
-                  Accessed ({accessedLayers.length})
-                </Text>
-              </Pressable>
-            </View>
+            <Text style={styles.dropdownTitle}>
+              Mine ({mineLayers.length})
+            </Text>
             {loadingList && visibleLayers.length === 0 ? (
               <ActivityIndicator
                 color={colors.accent}
@@ -231,18 +201,14 @@ export function ZonesPageHeader({
             ) : null}
             {!loadingList && visibleLayers.length === 0 ? (
               <Text style={styles.emptyText}>
-                {listError
-                  ? "Could not load zones."
-                  : listTab === "mine"
-                    ? "No zones yet."
-                    : "No accessed zones yet."}
+                {listError ? "Could not load zones." : "No zones yet."}
               </Text>
             ) : null}
             <ScrollView
               style={{ maxHeight: 280 }}
               keyboardShouldPersistTaps="handled"
             >
-              {listTab === "mine" && networkCommunalIds.length > 0 ? (
+              {networkCommunalIds.length > 0 ? (
                 <View style={{ marginBottom: 8 }}>
                   <Text style={styles.sectionLabel}>
                     Communal IDs ({networkCommunalIds.length})
@@ -305,9 +271,7 @@ export function ZonesPageHeader({
                   })}
                 </View>
               ) : null}
-              {listTab === "mine" &&
-              visibleLayers.length > 0 &&
-              networkCommunalIds.length > 0 ? (
+              {visibleLayers.length > 0 && networkCommunalIds.length > 0 ? (
                 <Text style={styles.sectionLabel}>Zones</Text>
               ) : null}
               {visibleLayers.map((layer) => {
@@ -547,32 +511,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 14,
     elevation: 12,
-  },
-  tabRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 10,
-  },
-  tab: {
-    flex: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 8,
-    alignItems: "center",
-    backgroundColor: "#F7FAFE",
-  },
-  tabActive: {
-    borderColor: colors.accent,
-    backgroundColor: "rgba(47,128,237,0.12)",
-  },
-  tabText: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  tabTextActive: {
-    color: colors.accentDeep ?? colors.accent,
   },
   dropdownTitle: {
     color: colors.textMuted,
