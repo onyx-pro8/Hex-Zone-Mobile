@@ -60,6 +60,37 @@ export type UniversalAccessRequestRow = {
   viewer_actions?: UniversalAccessViewerActions;
 };
 
+/** List/detail heading: Invite · user, or Incoming/Outgoing Request · user. */
+export function formatUniversalAccessRequestHeading(
+  row: Pick<
+    UniversalAccessRequestRow,
+    | "request_kind"
+    | "viewer_role"
+    | "username"
+    | "member_name"
+    | "network_admin_username"
+    | "network_admin_name"
+  >,
+): string {
+  const memberLabel = (row.username || row.member_name || "").trim();
+  const adminLabel = (
+    row.network_admin_username ||
+    row.network_admin_name ||
+    ""
+  ).trim();
+
+  if (row.request_kind === "invite") {
+    const other =
+      row.viewer_role === "invitee" ? adminLabel : memberLabel;
+    return other ? `Invite · ${other}` : "Invite";
+  }
+
+  const outgoing = row.viewer_role === "requester";
+  const kind = outgoing ? "Outgoing Request" : "Incoming Request";
+  const other = outgoing ? adminLabel : memberLabel;
+  return other ? `${kind} · ${other}` : kind;
+}
+
 export type UniversalAccessTargetNetwork = {
   network_id: string;
   admin_id: number;

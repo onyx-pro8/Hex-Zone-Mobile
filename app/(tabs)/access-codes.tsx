@@ -32,6 +32,7 @@ import {
   createInviteUniversalAccessRequest,
   createPlaceAccessUniversalRequest,
   deleteUniversalAccessRequest,
+  formatUniversalAccessRequestHeading,
   getUniversalAccessRequest,
   listShareableUniversalZones,
   listUniversalAccessRequests,
@@ -1656,8 +1657,7 @@ export default function AccessCodesScreen({
                       }}
                     >
                       <Text style={{ color: colors.text, fontWeight: "800" }}>
-                        {row.request_kind === "place_access" ? "Request Key" : "Key Invitation"}
-                        {row.key_type ? ` · ${row.key_type}` : ""}
+                        {formatUniversalAccessRequestHeading(row)}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                         {row.created_at
@@ -1791,8 +1791,7 @@ export default function AccessCodesScreen({
                 nestedScrollEnabled
               >
               <Text style={{ color: colors.text, fontWeight: "800", fontSize: 16 }}>
-                {detail?.request_kind === "place_access" ? "Request Key" : "Key Invitation"}
-                {detail?.key_type ? ` · ${detail.key_type}` : ""}
+                {detail ? formatUniversalAccessRequestHeading(detail) : ""}
               </Text>
               <Text
                 style={{
