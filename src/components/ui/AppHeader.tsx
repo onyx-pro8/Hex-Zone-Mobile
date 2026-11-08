@@ -43,7 +43,7 @@ export function AppHeader({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const displayName = (user?.name ?? "").trim() || "Account";
-  const displayEmail = (user?.email ?? "").trim() || "—";
+  const displayUsername = (user?.username ?? "").trim() || "—";
   /**
    * Icon slots match glyph size so gaps between icons equal the gap from
    * bell edge → avatar edge. Avatar keeps a larger tap target.
@@ -131,7 +131,7 @@ export function AppHeader({
                     {displayName}
                   </Text>
                   <Text style={styles.menuEmail} numberOfLines={1}>
-                    {displayEmail}
+                    {displayUsername}
                   </Text>
                 </View>
               </View>

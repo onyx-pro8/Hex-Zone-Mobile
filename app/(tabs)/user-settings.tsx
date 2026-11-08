@@ -44,21 +44,29 @@ import {
   primeAvatarDisplayCache,
 } from "@/lib/resolveAvatarUri";
 import { colors } from "@/theme/colors";
+import { normalizeUsername, validateUsernameFormat } from "@/lib/username";
+import { checkUsernameAvailable } from "@/api/auth";
 
 function Field({
   label,
   value,
   onChangeText,
+  onBlur,
   placeholder,
   keyboardType,
   autoCapitalize,
+  editable = true,
+  hint,
 }: {
   label: string;
   value: string;
-  onChangeText: (v: string) => void;
+  onChangeText?: (v: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   keyboardType?: "default" | "email-address";
   autoCapitalize?: "none" | "words" | "sentences";
+  editable?: boolean;
+  hint?: string | null;
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -76,22 +84,28 @@ function Field({
       <TextInput
         value={value}
         onChangeText={onChangeText}
+        onBlur={onBlur}
         placeholder={placeholder}
         placeholderTextColor={colors.textDim}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         autoCorrect={false}
+        editable={editable}
+        selectTextOnFocus={editable}
         style={{
-          backgroundColor: colors.bgSurface,
+          backgroundColor: editable ? colors.bgSurface : "#EEF2F7",
           borderWidth: 1,
           borderColor: colors.border,
           borderRadius: 12,
           paddingHorizontal: 14,
           paddingVertical: 12,
-          color: colors.text,
+          color: editable ? colors.text : colors.textDim,
           fontSize: 15,
         }}
       />
+      {hint ? (
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>{hint}</Text>
+      ) : null}
     </View>
   );
 }
@@ -184,6 +198,7 @@ export default function UserSettingsScreen() {
 
   const [name, setName] = useState((user?.name ?? "").trim());
   const [email, setEmail] = useState((user?.email ?? "").trim());
+  const [username, setUsername] = useState((user?.username ?? "").trim());
   const [accountType, setAccountType] = useState<NormalizedAccountType>(
     normalizeAccountType(user?.accountType, user?.account_type),
   );
@@ -199,8 +214,11 @@ export default function UserSettingsScreen() {
   const [identitySaved, setIdentitySaved] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [usernameHint, setUsernameHint] = useState<string | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   /** When true, ignore profile avatar_url sync so a fresh upload stays visible. */
   const keepLocalAvatarPreview = useRef(false);
+  const usernameCheckSeq = useRef(0);
   const [hostedAvatarLabel, setHostedAvatarLabel] = useState<string | null>(
     null,
   );
@@ -208,6 +226,7 @@ export default function UserSettingsScreen() {
   useEffect(() => {
     setName((user?.name ?? "").trim());
     setEmail((user?.email ?? "").trim());
+    setUsername((user?.username ?? "").trim());
     setAccountType(normalizeAccountType(user?.accountType, user?.account_type));
     if (keepLocalAvatarPreview.current) return;
     setAvatarUrl(user?.avatar_url ?? null);
@@ -220,10 +239,54 @@ export default function UserSettingsScreen() {
     user?.id,
     user?.name,
     user?.email,
+    user?.username,
     user?.accountType,
     user?.account_type,
     user?.avatar_url,
   ]);
+
+  // If profile has no username yet, refresh so the server can auto-assign one.
+  useEffect(() => {
+    if (!user?.id) return;
+    if ((user.username ?? "").trim()) return;
+    void refreshUser();
+  }, [user?.id, user?.username, refreshUser]);
+
+  const validateUsernameOnFinish = async (
+    raw: string,
+  ): Promise<{ ok: boolean; message: string | null }> => {
+    const trimmed = normalizeUsername(raw);
+    const seq = ++usernameCheckSeq.current;
+    if (!trimmed) {
+      setUsernameHint(null);
+      setCheckingUsername(false);
+      return { ok: false, message: "Username is required." };
+    }
+    const formatError = validateUsernameFormat(trimmed);
+    if (formatError) {
+      setUsernameHint(formatError);
+      setCheckingUsername(false);
+      return { ok: false, message: formatError };
+    }
+    const current = normalizeUsername(user?.username ?? "");
+    if (trimmed === current) {
+      setUsernameHint(null);
+      setCheckingUsername(false);
+      return { ok: true, message: null };
+    }
+    setCheckingUsername(true);
+    const res = await checkUsernameAvailable(trimmed);
+    if (seq !== usernameCheckSeq.current) {
+      return { ok: false, message: "Username check was interrupted." };
+    }
+    setCheckingUsername(false);
+    if (res.error) {
+      setUsernameHint(res.error);
+      return { ok: false, message: res.error };
+    }
+    setUsernameHint(null);
+    return { ok: true, message: null };
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -298,9 +361,10 @@ export default function UserSettingsScreen() {
       toast.error("Not signed in.");
       return;
     }
-    const trimmedEmail = email.trim();
-    if (!trimmedEmail || !trimmedEmail.includes("@")) {
-      toast.error("Enter a valid email address.");
+    const trimmedUsername = normalizeUsername(username);
+    const check = await validateUsernameOnFinish(trimmedUsername);
+    if (!check.ok) {
+      toast.error(check.message || "Invalid username.");
       return;
     }
     const { first_name, last_name } = splitName(name);
@@ -310,7 +374,7 @@ export default function UserSettingsScreen() {
     const payload: Parameters<typeof updateOwnerProfile>[1] = {
       first_name,
       last_name,
-      email: trimmedEmail,
+      username: trimmedUsername,
     };
     // Prefer hosted URL / thin path; never re-POST a huge local data URL.
     // Empty string clears; omit when we only have an unsaved local preview.
@@ -453,15 +517,32 @@ export default function UserSettingsScreen() {
                 autoCapitalize="words"
               />
               <Field
-                label="Email"
-                value={email}
+                label="Username"
+                value={username}
                 onChangeText={(v) => {
-                  setEmail(v);
+                  setUsername(v.replace(/\s+/g, "").toLowerCase());
+                  setUsernameHint(null);
                   setProfileSaved(false);
                 }}
+                onBlur={() => {
+                  void validateUsernameOnFinish(username);
+                }}
+                placeholder="johndoe1"
+                autoCapitalize="none"
+                hint={
+                  checkingUsername
+                    ? "Checking username…"
+                    : usernameHint
+                }
+              />
+              <Field
+                label="Email"
+                value={email}
+                editable={false}
                 placeholder="you@example.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                hint="Private login email — not shown publicly."
               />
 
               <View style={{ gap: 6 }}>

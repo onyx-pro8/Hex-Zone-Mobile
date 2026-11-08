@@ -600,7 +600,7 @@ export default function AccessCodesScreen({
   const [editBusinessDoc, setEditBusinessDoc] = useState("");
 
   const [keyType, setKeyType] = useState<"private" | "public">("private");
-  const [inviteeEmail, setInviteeEmail] = useState("");
+  const [inviteeUsername, setInviteeUsername] = useState("");
   const [invitee, setInvitee] = useState<UniversalAccessInvitee | null>(null);
   const [inviteeMatches, setInviteeMatches] = useState<UniversalAccessInvitee[]>([]);
   const [selectedZoneIds, setSelectedZoneIds] = useState<number[]>([]);
@@ -650,6 +650,7 @@ export default function AccessCodesScreen({
         ?? (user as { last_name?: string } | null)?.last_name
         ?? ""),
       email: String(user?.email ?? ""),
+      username: String(user?.username ?? ""),
       address: String((user as { address?: string } | null)?.address ?? ""),
     }),
     [user],
@@ -689,11 +690,12 @@ export default function AccessCodesScreen({
       setInviteeMatches([]);
       return;
     }
-    if (invitee && invitee.email === inviteeEmail.trim()) {
+    const selectedHandle = (invitee?.username || invitee?.email || "").trim();
+    if (invitee && selectedHandle === inviteeUsername.trim()) {
       setInviteeMatches([]);
       return;
     }
-    const query = inviteeEmail.trim();
+    const query = inviteeUsername.trim();
     if (query.length < 2) {
       setInviteeMatches([]);
       return;
@@ -704,7 +706,7 @@ export default function AccessCodesScreen({
       });
     }, 250);
     return () => clearTimeout(timer);
-  }, [invitee, inviteeEmail, keyType, inviteReadyToRefresh]);
+  }, [invitee, inviteeUsername, keyType, inviteReadyToRefresh]);
 
   useEffect(() => {
     if (target && target.network_id === networkQuery.trim()) {
@@ -731,7 +733,7 @@ export default function AccessCodesScreen({
   function resetInviteForm() {
     setKeyType("private");
     setInvitee(null);
-    setInviteeEmail("");
+    setInviteeUsername("");
     setInviteeMatches([]);
     setSelectedZoneIds([]);
     setInviteNote("");
@@ -766,7 +768,10 @@ export default function AccessCodesScreen({
     setSubmitting(true);
     const result = await createInviteUniversalAccessRequest({
       key_type: keyType,
-      invitee_email: keyType === "private" ? invitee?.email : undefined,
+      invitee_username:
+        keyType === "private"
+          ? invitee?.username || inviteeUsername.trim() || undefined
+          : undefined,
       zone_ids: selectedZoneIds,
       note: inviteNote.trim(),
     });
@@ -886,7 +891,7 @@ export default function AccessCodesScreen({
                           setKeyType(value);
                           if (value === "public") {
                             setInvitee(null);
-                            setInviteeEmail("");
+                            setInviteeUsername("");
                           }
                         }}
                         style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
@@ -921,7 +926,7 @@ export default function AccessCodesScreen({
                   </View>
                   {keyType === "private" ? (
                     <View style={{ zIndex: inviteeMatches.length > 0 ? 20 : 1 }}>
-                      <FieldLabel>Invitee email</FieldLabel>
+                      <FieldLabel>Invitee username</FieldLabel>
                       <View
                         style={{
                           flexDirection: "row",
@@ -953,15 +958,17 @@ export default function AccessCodesScreen({
                           />
                         )}
                         <TextInput
-                          value={inviteeEmail}
+                          value={inviteeUsername}
                           editable={!inviteReadyToRefresh}
                           onChangeText={(value) => {
-                            setInviteeEmail(value);
+                            setInviteeUsername(
+                              value.replace(/\s+/g, "").toLowerCase(),
+                            );
                             setInvitee(null);
                           }}
                           autoCapitalize="none"
-                          keyboardType="email-address"
-                          placeholder="Search other-network users…"
+                          autoCorrect={false}
+                          placeholder="Search by username…"
                           placeholderTextColor={colors.textMuted}
                           style={{
                             flex: 1,
@@ -1028,8 +1035,15 @@ export default function AccessCodesScreen({
                               <Pressable
                                 key={match.id}
                                 onPress={() => {
-                                  setInvitee(match);
-                                  setInviteeEmail(match.email);
+                                  const handle = (
+                                    match.username ||
+                                    ""
+                                  )
+                                    .trim()
+                                    .toLowerCase();
+                                  if (!handle) return;
+                                  setInvitee({ ...match, username: handle });
+                                  setInviteeUsername(handle);
                                   setInviteeMatches([]);
                                 }}
                                 style={{
@@ -1047,7 +1061,7 @@ export default function AccessCodesScreen({
                                     fontSize: 13,
                                   }}
                                 >
-                                  {match.email}
+                                  @{match.username || "unknown"}
                                 </Text>
                                 <Text
                                   style={{
@@ -1286,7 +1300,10 @@ export default function AccessCodesScreen({
                                 }}
                                 numberOfLines={1}
                               >
-                                {match.admin_name} · {match.admin_email}
+                                {match.admin_name}
+                                {match.admin_username
+                                  ? ` · @${match.admin_username}`
+                                  : ""}
                               </Text>
                             </Pressable>
                           );
@@ -1443,9 +1460,13 @@ export default function AccessCodesScreen({
                     )}
                   </View>
                   <View>
-                    <FieldLabel>Network admin email</FieldLabel>
+                    <FieldLabel>Network admin username</FieldLabel>
                     <TextInput
-                      value={target?.admin_email ?? ""}
+                      value={
+                        target?.admin_username
+                          ? `@${target.admin_username}`
+                          : target?.admin_name ?? ""
+                      }
                       editable={false}
                       style={{
                         borderWidth: 1,
@@ -1461,7 +1482,7 @@ export default function AccessCodesScreen({
                   {[
                     ["First name", profile.firstName],
                     ["Last name", profile.lastName],
-                    ["Email", profile.email],
+                    ["Username", profile.username ? `@${profile.username}` : ""],
                     ["Address", profile.address],
                   ].map(([label, value]) => (
                     <View key={label}>
@@ -1788,7 +1809,7 @@ export default function AccessCodesScreen({
               </Text>
               {detail?.request_kind === "invite" &&
               detail?.key_type === "private" &&
-              detail?.email ? (
+              (detail?.username || detail?.member_name) ? (
                 <View>
                   <Text
                     style={{
@@ -1801,8 +1822,12 @@ export default function AccessCodesScreen({
                   >
                     Invited user
                   </Text>
-                  <Text style={{ color: colors.text }}>{detail.email}</Text>
-                  {detail.member_name ? (
+                  <Text style={{ color: colors.text }}>
+                    {detail.username
+                      ? `@${detail.username}`
+                      : detail.member_name}
+                  </Text>
+                  {detail.member_name && detail.username ? (
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                       {detail.member_name}
                     </Text>
@@ -1852,7 +1877,7 @@ export default function AccessCodesScreen({
                           detail.member_name ||
                           "—"}
                       </Text>
-                      {detail.email ? ` · ${detail.email}` : ""}
+                      {detail.username ? ` · @${detail.username}` : ""}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
                       {detail.address || "No address"}

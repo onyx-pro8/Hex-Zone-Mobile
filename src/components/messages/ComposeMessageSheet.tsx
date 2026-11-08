@@ -1290,7 +1290,7 @@ export function ComposeMessageSheet({
                 ) : (
                   <>
                     <TextInput
-                      placeholder="Search by name or email"
+                      placeholder="Search by name or username"
                       placeholderTextColor={colors.textDim}
                       value={privateSearchQuery}
                       onChangeText={(text) => {

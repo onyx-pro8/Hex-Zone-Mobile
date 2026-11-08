@@ -62,7 +62,7 @@ function ownerLabel(device: DeviceRecord): string {
   const owner = device.owner;
   if (!owner) return "—";
   const full = `${owner.first_name ?? ""} ${owner.last_name ?? ""}`.trim();
-  return full || owner.email?.trim() || (owner.id != null ? `User ${owner.id}` : "—");
+  return full || owner.username?.trim() || (owner.id != null ? `User ${owner.id}` : "—");
 }
 
 function zoneLabel(h3?: string | null): string | null {

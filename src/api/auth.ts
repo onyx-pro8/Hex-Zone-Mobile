@@ -16,6 +16,7 @@ export type AuthUser = {
   id: string | number;
   name?: string;
   email?: string;
+  username?: string;
   accountType?: AccountType;
   registrationType?: RegistrationType;
   accountOwnerId?: number;
@@ -384,6 +385,39 @@ export async function checkEmailAvailable(email: string) {
   };
 }
 
+export type UsernameAvailableResult = {
+  username: string;
+  available: boolean;
+  message: string;
+};
+
+/**
+ * Public check used after the user finishes editing a username.
+ * Returns `{ available: true }` when the username can be claimed.
+ */
+export async function checkUsernameAvailable(username: string) {
+  const trimmed = username.trim().toLowerCase();
+  const result = await request<UsernameAvailableResult>({
+    method: "GET",
+    url: "/utils/username-available",
+    params: { username: trimmed },
+  });
+  if (result.error || !result.data) {
+    return {
+      data: null,
+      error: result.error ?? "Could not verify username availability.",
+      loading: false,
+    };
+  }
+  return {
+    data: result.data,
+    error: result.data.available
+      ? null
+      : result.data.message || "Username is already taken",
+    loading: false,
+  };
+}
+
 export function normalizeUser(raw: AuthUser | null): AuthUser | null {
   if (!raw) return null;
   const first = raw.first_name ?? "";
@@ -414,9 +448,14 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
       ? Number(raw.id)
       : undefined);
   const mapCenter = normalizeMapCenter(raw.mapCenter ?? raw.map_center ?? null);
+  const username =
+    typeof raw.username === "string" && raw.username.trim()
+      ? raw.username.trim().toLowerCase()
+      : undefined;
   return {
     ...raw,
     name: fullName,
+    username,
     accountType: normalizedAccountType,
     account_type: raw.account_type ?? normalizedAccountType.toLowerCase(),
     registrationType,

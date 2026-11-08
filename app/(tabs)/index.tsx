@@ -329,7 +329,7 @@ export default function MessagesScreen() {
         const name =
           row.name ||
           `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() ||
-          row.email ||
+          row.username ||
           "";
         if (name) names[id] = name;
         const avatar =

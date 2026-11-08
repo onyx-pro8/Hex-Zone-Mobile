@@ -13,7 +13,8 @@ export type UniversalAccessZone = {
 export type UniversalAccessInvitee = {
   id: number;
   name: string;
-  email: string;
+  username?: string;
+  email?: string;
   network_id?: string;
 };
 
@@ -33,6 +34,7 @@ export type UniversalAccessRequestRow = {
   member_name: string;
   first_name?: string;
   last_name?: string;
+  username?: string;
   email: string;
   address?: string;
   country?: string;
@@ -46,6 +48,7 @@ export type UniversalAccessRequestRow = {
   reject_reason: string;
   network_id: string;
   network_admin_name: string;
+  network_admin_username?: string;
   network_admin_email?: string;
   created_at?: string | null;
   code?: string | null;
@@ -60,7 +63,8 @@ export type UniversalAccessRequestRow = {
 export type UniversalAccessTargetNetwork = {
   network_id: string;
   admin_id: number;
-  admin_email: string;
+  admin_username?: string;
+  admin_email?: string;
   admin_name: string;
   zones: UniversalAccessZone[];
 };
@@ -117,6 +121,7 @@ export async function getUniversalAccessRequest(id: number) {
 
 export async function createInviteUniversalAccessRequest(payload: {
   key_type: "private" | "public";
+  invitee_username?: string;
   invitee_email?: string;
   zone_ids: number[];
   note?: string;

@@ -227,7 +227,8 @@ export async function syncCurrentDevice(
   const platformLabel = options?.platformLabel ?? "Mobile";
   try {
     const localHid = await getOrCreateDeviceHid();
-    const display = user.name?.trim() || user.email?.trim() || platformLabel;
+    const display =
+      user.name?.trim() || user.username?.trim() || platformLabel;
     const ownerId = String(user.id ?? "").trim();
 
     if (options?.forceTakeover) {

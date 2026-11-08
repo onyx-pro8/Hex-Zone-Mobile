@@ -49,7 +49,7 @@ type Filter = "same-zone" | "all" | "admins";
 
 function MemberAvatar({ member }: { member: Member }) {
   const uri = useResolvedAvatarUri(member.avatar_url);
-  const initials = initialsForUser(member.name, member.email);
+  const initials = initialsForUser(member.name, member.username ?? member.email);
   const isOnline = member.online === true;
 
   return (
@@ -144,12 +144,12 @@ function MemberRow({
             </Text>
             {isSelf ? <Chip label="You" tone="default" /> : null}
           </View>
-          {member.email ? (
+          {member.username ? (
             <Text
               style={{ color: colors.textMuted, fontSize: 13, marginTop: 2 }}
               numberOfLines={1}
             >
-              {member.email}
+              @{member.username}
             </Text>
           ) : null}
           {member.address ? (
@@ -304,12 +304,12 @@ function ManageMemberModal({
             >
               {member.name}
             </Text>
-            {member.email ? (
+            {member.username ? (
               <Text
                 style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}
                 numberOfLines={1}
               >
-                {member.email}
+                @{member.username}
               </Text>
             ) : null}
           </View>
