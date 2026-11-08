@@ -797,8 +797,8 @@ export default function AccessCodesScreen({
       toast.error("Select at least one zone.");
       return;
     }
-    if (!photo || !businessDoc) {
-      toast.error("Photo ID and business document are required.");
+    if (!photo) {
+      toast.error("Photo ID is required.");
       return;
     }
     setSubmitting(true);
@@ -2042,8 +2042,8 @@ export default function AccessCodesScreen({
                 disabled={busyId === editing?.id}
                 onPress={() => {
                   if (!editing) return;
-                  if (!editPhoto || !editBusinessDoc) {
-                    toast.error("Photo ID and business document are required.");
+                  if (!editPhoto) {
+                    toast.error("Photo ID is required.");
                     return;
                   }
                   setBusyId(editing.id);
