@@ -18,6 +18,7 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   formatPhotonLabel,
   formatPhotonPlaceCategory,
@@ -174,6 +175,7 @@ export function AddressSuggestionDock({ children }: { children: ReactNode }) {
   const rootRef = useRef<View>(null);
   const [frame, setFrame] = useState<AnchorRect | null>(null);
   const keyboardInset = useKeyboardBottomInset();
+  const insets = useSafeAreaInsets();
 
   const updateFrame = useCallback(() => {
     rootRef.current?.measureInWindow((x, y, width, height) => {
@@ -193,26 +195,43 @@ export function AddressSuggestionDock({ children }: { children: ReactNode }) {
   const overlay = useMemo(() => {
     if (!payload || !frame || payload.suggestions.length === 0) return null;
     const gap = 6;
-    const belowTop = payload.anchor.y + payload.anchor.height - frame.y + gap;
-    const spaceBelow = frame.height - belowTop;
-    const spaceAbove = payload.anchor.y - frame.y - gap;
-    const placeAbove = spaceBelow < 150 && spaceAbove > spaceBelow;
+    const edgePad = 8;
+    // Keep the list below the status bar / notch even when the dock
+    // itself starts at window y=0 (e.g. signup without SafeAreaView).
+    const minTop = Math.max(edgePad, insets.top - frame.y);
+    const maxBottom = frame.height - edgePad;
+
+    const anchorTop = payload.anchor.y - frame.y;
+    const belowTop = anchorTop + payload.anchor.height + gap;
+    const aboveBottom = anchorTop - gap;
+    const spaceBelow = maxBottom - belowTop;
+    const spaceAbove = aboveBottom - minTop;
+    const minUsable = 72;
+    const preferred = 220;
+
+    let placeAbove = spaceBelow < 150 && spaceAbove > spaceBelow;
+    if (placeAbove && spaceAbove < minUsable && spaceBelow >= minUsable) {
+      placeAbove = false;
+    } else if (!placeAbove && spaceBelow < minUsable && spaceAbove >= minUsable) {
+      placeAbove = true;
+    }
+
     let maxHeight = Math.min(
-      260,
+      preferred,
       Math.max(0, placeAbove ? spaceAbove : spaceBelow),
     );
-    let top = placeAbove
-      ? payload.anchor.y - frame.y - gap - maxHeight
-      : belowTop;
+    // Pin to the field (just above or just below) instead of stretching
+    // into the status-bar region when there is extra room.
+    let top = placeAbove ? aboveBottom - maxHeight : belowTop;
 
-    if (top < 8) {
-      maxHeight = Math.max(0, maxHeight - (8 - top));
-      top = 8;
+    if (top < minTop) {
+      maxHeight = Math.max(0, maxHeight - (minTop - top));
+      top = minTop;
     }
-    if (top + maxHeight > frame.height - 8) {
-      maxHeight = frame.height - 8 - top;
+    if (top + maxHeight > maxBottom) {
+      maxHeight = maxBottom - top;
     }
-    if (maxHeight < 72 || payload.anchor.width < 40) return null;
+    if (maxHeight < minUsable || payload.anchor.width < 40) return null;
 
     return (
       <View
@@ -236,7 +255,7 @@ export function AddressSuggestionDock({ children }: { children: ReactNode }) {
         />
       </View>
     );
-  }, [payload, frame]);
+  }, [payload, frame, insets.top]);
 
   return (
     <SuggestionDockContext.Provider value={api}>
