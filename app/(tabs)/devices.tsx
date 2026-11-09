@@ -3,11 +3,13 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Keyboard,
   Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -27,6 +29,7 @@ import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { useAuth } from "@/context/AuthContext";
 import {
   createDevice,
@@ -382,8 +385,24 @@ function AddSmartHomeModal({
   onClose: () => void;
   onSubmit: () => void;
 }) {
+  const { height: windowHeight } = useWindowDimensions();
+  const keyboardInset = useKeyboardBottomInset();
+  const keyboardOpen = keyboardInset > 0;
+  const reservedTop = keyboardOpen
+    ? Math.max(96, Math.round(windowHeight * 0.18))
+    : 0;
+  const sheetMaxHeight = Math.min(
+    windowHeight * 0.88,
+    Math.max(220, windowHeight - keyboardInset - reservedTop),
+  );
+
+  const handleClose = () => {
+    Keyboard.dismiss();
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <View
         style={{
           flex: 1,
@@ -391,7 +410,16 @@ function AddSmartHomeModal({
           justifyContent: "flex-end",
         }}
       >
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <Pressable
+          style={{ flex: 1 }}
+          onPress={() => {
+            if (keyboardInset > 0) {
+              Keyboard.dismiss();
+              return;
+            }
+            handleClose();
+          }}
+        />
         <View
           style={{
             backgroundColor: colors.bgElevated,
@@ -399,11 +427,14 @@ function AddSmartHomeModal({
             borderTopRightRadius: 20,
             borderWidth: 1,
             borderColor: colors.border,
-            maxHeight: "88%",
+            maxHeight: sheetMaxHeight,
+            marginBottom: keyboardInset,
             paddingBottom: 24,
           }}
         >
-          <View
+          <Pressable
+            accessible={false}
+            onPress={Keyboard.dismiss}
             style={{
               paddingHorizontal: 20,
               paddingTop: 18,
@@ -420,10 +451,11 @@ function AddSmartHomeModal({
               Each hub has its own webhook and the zones that should trigger it.
               Copy the Network ID and API key onto the device.
             </Text>
-          </View>
+          </Pressable>
           <ScrollView
             contentContainerStyle={{ padding: 20, gap: 14 }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             <Input
               label="Device name"
@@ -543,7 +575,7 @@ function AddSmartHomeModal({
             <Button
               label="Cancel"
               variant="ghost"
-              onPress={onClose}
+              onPress={handleClose}
               disabled={submitting}
               fullWidth
             />

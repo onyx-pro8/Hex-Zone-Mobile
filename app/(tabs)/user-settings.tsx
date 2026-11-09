@@ -432,7 +432,8 @@ export default function UserSettingsScreen() {
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
         <ScrollView
           contentContainerStyle={{ paddingBottom: 110 }}
-          keyboardShouldPersistTaps="always"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <ScreenHeader
             title="User settings"

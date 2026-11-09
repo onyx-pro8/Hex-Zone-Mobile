@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import {
+  Keyboard,
   Pressable,
   ScrollView,
   Text,
@@ -65,6 +66,7 @@ export function CommunalIdsAttachField({ builder, onPickerOpenChange }: Props) {
   };
 
   const closePicker = () => {
+    Keyboard.dismiss();
     setPickerOpen(false);
     onPickerOpenChange?.(false);
     inputRef.current?.blur();
@@ -233,6 +235,7 @@ export function CommunalIdsAttachField({ builder, onPickerOpenChange }: Props) {
 
           <ScrollView
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             style={{ maxHeight: 360 }}
           >
             {rows.length === 0 ? (

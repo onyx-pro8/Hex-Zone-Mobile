@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -666,6 +667,7 @@ export function ComposeMessageSheet({
   );
 
   const closeAll = useCallback(() => {
+    Keyboard.dismiss();
     setReceiversModalOpen(false);
     onClose();
   }, [onClose]);
@@ -1073,32 +1075,39 @@ export function ComposeMessageSheet({
             paddingTop: 24,
             gap: 12,
             paddingBottom: Math.max(bottomInset, 16) + 12,
-            flexGrow: 1,
+            flex: 1,
             flexShrink: 1,
+            maxHeight: "100%",
           }}
         >
-          <View style={{ alignItems: "center", paddingBottom: 10 }}>
+          <Pressable
+            accessible={false}
+            onPress={Keyboard.dismiss}
+            style={{ alignItems: "center", paddingBottom: 10 }}
+          >
             <View
               style={{
                 width: 40, height: 4, borderRadius: 2,
                 backgroundColor: colors.borderStrong,
               }}
             />
-          </View>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: "700" }}>
-            Compose message
-          </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            Sending as {selfBroadcastName}
-          </Text>
+          </Pressable>
+          <Pressable accessible={false} onPress={Keyboard.dismiss}>
+            <Text style={{ color: colors.text, fontSize: 18, fontWeight: "700" }}>
+              Compose message
+            </Text>
+            <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+              Sending as {selfBroadcastName}
+            </Text>
+          </Pressable>
 
           <ScrollView
             ref={composeScrollRef}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
-            keyboardDismissMode="interactive"
-            style={{ flexGrow: 1, flexShrink: 1, minHeight: 160 }}
-            contentContainerStyle={{ paddingBottom: 16 }}
+            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+            style={{ flexGrow: 1, flexShrink: 1, minHeight: 120 }}
+            contentContainerStyle={{ paddingBottom: 16, flexGrow: 0 }}
           >
             <Text
               style={{
@@ -1419,8 +1428,9 @@ export function ComposeMessageSheet({
               onChangeText={setDraft}
               onFocus={scrollComposeFieldIntoView}
               multiline
+              scrollEnabled
               style={{
-                marginTop: 16, minHeight: 100,
+                marginTop: 16, minHeight: 100, maxHeight: 160,
                 backgroundColor: colors.bgCard,
                 borderWidth: 1, borderColor: colors.border,
                 borderRadius: 14, padding: 14,

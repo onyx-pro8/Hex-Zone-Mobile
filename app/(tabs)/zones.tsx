@@ -1200,7 +1200,8 @@ export default function DashboardScreen() {
           />
         </View>
         <ScrollView
-          keyboardShouldPersistTaps="always"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           nestedScrollEnabled
           scrollEnabled={detailScrollEnabled}
           contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 28 }}

@@ -1118,6 +1118,7 @@ export default function AccessCodesScreen({
                     placeholder="Note"
                     placeholderTextColor={colors.textMuted}
                     multiline
+                    scrollEnabled
                     style={{
                       borderWidth: 1,
                       borderColor: colors.border,
@@ -1126,6 +1127,7 @@ export default function AccessCodesScreen({
                       paddingVertical: 10,
                       color: colors.text,
                       minHeight: 72,
+                      maxHeight: 160,
                       textAlignVertical: "top",
                     }}
                   />
@@ -1538,6 +1540,7 @@ export default function AccessCodesScreen({
                     placeholder="Note"
                     placeholderTextColor={colors.textMuted}
                     multiline
+                    scrollEnabled
                     style={{
                       borderWidth: 1,
                       borderColor: colors.border,
@@ -1546,6 +1549,7 @@ export default function AccessCodesScreen({
                       paddingVertical: 10,
                       color: colors.text,
                       minHeight: 72,
+                      maxHeight: 160,
                       textAlignVertical: "top",
                     }}
                   />

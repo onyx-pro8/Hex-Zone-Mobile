@@ -60,6 +60,7 @@ function inputStyle() {
     color: colors.text,
     fontSize: 14,
     minHeight: 72,
+    maxHeight: 160,
     textAlignVertical: "top" as const,
   } as const;
 }
@@ -203,6 +204,7 @@ export default function GuestArrivalMessagesScreen() {
             <ScrollView
               contentContainerStyle={{ padding: 20, gap: 14, paddingBottom: 120 }}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               refreshControl={
                 <RefreshControl
                   refreshing={loading}
