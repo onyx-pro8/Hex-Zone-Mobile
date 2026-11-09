@@ -103,8 +103,10 @@ function Field({
           color: editable ? colors.text : colors.textDim,
           fontSize: 15,
           minHeight: multiline ? 64 : 44,
+          maxHeight: multiline ? 160 : undefined,
           textAlignVertical: multiline ? "top" : "center",
         }}
+        scrollEnabled={multiline ? true : undefined}
       />
     </View>
   );

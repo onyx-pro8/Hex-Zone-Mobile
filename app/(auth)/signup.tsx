@@ -370,7 +370,7 @@ export default function SignupScreen() {
             flexGrow: 1,
             paddingBottom: 24,
           }}
-          keyboardShouldPersistTaps="always"
+          keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
           {step === 3 && keyboardInset === 0 ? (

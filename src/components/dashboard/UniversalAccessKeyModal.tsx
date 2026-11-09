@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +17,7 @@ import {
   sendUniversalAccessKey,
   type UniversalAccessKeyRow,
 } from "@/api/universalAccess";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { copyToClipboard } from "@/lib/copyToClipboard";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
@@ -59,6 +61,7 @@ type Props = {
 };
 
 export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
+  const keyboardInset = useKeyboardBottomInset();
   const [privateKeys, setPrivateKeys] = useState<UniversalAccessKeyRow[]>([]);
   const [publicQuery, setPublicQuery] = useState("");
   const [suggestions, setSuggestions] = useState<UniversalAccessKeyRow[]>([]);
@@ -131,7 +134,10 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
       visible={open}
       transparent
       animationType="fade"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        Keyboard.dismiss();
+        onClose();
+      }}
     >
       <View
         style={{
@@ -141,6 +147,17 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
           padding: 20,
         }}
       >
+        <Pressable
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
+          onPress={() => {
+            if (keyboardInset > 0) {
+              Keyboard.dismiss();
+              return;
+            }
+            Keyboard.dismiss();
+            onClose();
+          }}
+        />
         <View
           style={{
             maxHeight: "85%",
@@ -151,7 +168,9 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
             overflow: "hidden",
           }}
         >
-          <View
+          <Pressable
+            accessible={false}
+            onPress={Keyboard.dismiss}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -172,14 +191,22 @@ export function UniversalAccessKeyModal({ open, onClose, onActivated }: Props) {
                 Universal access keys
               </Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={8} accessibilityLabel="Close">
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                onClose();
+              }}
+              hitSlop={8}
+              accessibilityLabel="Close"
+            >
               <X size={18} color={colors.textMuted} />
             </Pressable>
-          </View>
+          </Pressable>
 
           <ScrollView
             contentContainerStyle={{ padding: 16, gap: 16 }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
             {loading ? (
               <ActivityIndicator color={colors.accent} />

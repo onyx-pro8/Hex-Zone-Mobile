@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   FlatList,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react-native";
 import type { SavedZone } from "@/api/zones";
 import { PublicZoneMapPreviewModal } from "@/components/dashboard/PublicZoneMapPreviewModal";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 import { colors } from "@/theme/colors";
 
 type Props = {
@@ -69,11 +71,22 @@ export function PublicZonesMultiSelect({
   onOpenChange,
 }: Props) {
   const { height: windowHeight } = useWindowDimensions();
+  const keyboardInset = useKeyboardBottomInset();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [previewZoneId, setPreviewZoneId] = useState<number | null>(null);
+  const keyboardOpen = keyboardInset > 0;
+  const reservedTop = keyboardOpen
+    ? Math.max(96, Math.round(windowHeight * 0.18))
+    : 0;
+  const sheetMaxHeight = Math.min(
+    windowHeight * 0.72,
+    520,
+    Math.max(220, windowHeight - keyboardInset - reservedTop),
+  );
 
   const setDropdownOpen = (next: boolean) => {
+    if (!next) Keyboard.dismiss();
     setOpen(next);
     onOpenChange?.(next);
   };
@@ -107,6 +120,7 @@ export function PublicZonesMultiSelect({
   }, [query, zones]);
 
   const closeDropdown = () => {
+    Keyboard.dismiss();
     setDropdownOpen(false);
     setQuery("");
   };
@@ -224,11 +238,18 @@ export function PublicZonesMultiSelect({
               ...StyleFill,
               backgroundColor: "rgba(15, 44, 92, 0.35)",
             }}
-            onPress={closeDropdown}
+            onPress={() => {
+              if (keyboardInset > 0) {
+                Keyboard.dismiss();
+                return;
+              }
+              closeDropdown();
+            }}
           />
           <View
             style={{
-              maxHeight: Math.min(windowHeight * 0.72, 520),
+              maxHeight: sheetMaxHeight,
+              marginBottom: keyboardInset,
               borderTopLeftRadius: 18,
               borderTopRightRadius: 18,
               backgroundColor: "#FFFFFF",
@@ -237,7 +258,9 @@ export function PublicZonesMultiSelect({
               paddingBottom: 12,
             }}
           >
-            <View
+            <Pressable
+              accessible={false}
+              onPress={Keyboard.dismiss}
               style={{
                 paddingHorizontal: 16,
                 paddingTop: 14,
@@ -252,6 +275,8 @@ export function PublicZonesMultiSelect({
                   color: colors.text,
                   fontSize: 16,
                   fontWeight: "700",
+                  flex: 1,
+                  marginRight: 12,
                 }}
               >
                 Select network primary zones
@@ -259,7 +284,7 @@ export function PublicZonesMultiSelect({
               <Pressable onPress={closeDropdown} hitSlop={10}>
                 <X size={18} color={colors.textMuted} />
               </Pressable>
-            </View>
+            </Pressable>
 
             <View
               style={{
@@ -300,6 +325,7 @@ export function PublicZonesMultiSelect({
               data={filtered}
               keyExtractor={(item) => String(item.id)}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               style={{ flexGrow: 0 }}
               contentContainerStyle={{ paddingBottom: 8 }}
               ListEmptyComponent={

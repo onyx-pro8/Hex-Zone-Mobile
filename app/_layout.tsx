@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { GuestCallProvider } from "@/context/GuestCallContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { CallOverlay } from "@/components/calls/CallOverlay";
+import { PendingGuestRequestsHost } from "@/components/guest/PendingGuestRequestsHost";
 import { ToastHost } from "@/components/ui/ToastHost";
 import { devLog } from "@/lib/devConsole";
 import { ensureAndroidChannels } from "@/lib/notifications";
@@ -79,6 +80,7 @@ export default function RootLayout() {
             <GuestCallProvider>
               <StatusBar style="dark" backgroundColor={colors.bg} />
               <ProtectedShell />
+              <PendingGuestRequestsHost />
               <CallOverlay />
               <ToastHost primary />
             </GuestCallProvider>

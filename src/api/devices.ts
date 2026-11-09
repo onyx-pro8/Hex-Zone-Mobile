@@ -5,6 +5,7 @@ export type PushPlatform = "FCM" | "APNS" | "EXPO";
 export type DeviceOwner = {
   id?: number | string;
   email?: string;
+  username?: string;
   first_name?: string;
   last_name?: string;
   role?: string;

@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Easing,
@@ -15,6 +15,10 @@ import { ToastHost } from "@/components/ui/ToastHost";
 import { colors } from "@/theme/colors";
 
 const SLIDE_MS = 280;
+/** Keep a dismissible dimmed region above the sheet when the keyboard is open. */
+const MIN_BACKDROP_RATIO = 0.18;
+const MIN_BACKDROP_PX = 96;
+const MIN_SHEET_HEIGHT = 220;
 
 type BottomSheetProps = {
   visible: boolean;
@@ -42,7 +46,8 @@ function resolveMaxHeight(
  *
  * When the keyboard is open the sheet is lifted by the keyboard height and
  * capped so it stays on screen — otherwise focused inputs sit behind the
- * keyboard (iOS Modal does not honor adjustResize).
+ * keyboard (iOS Modal does not honor adjustResize). A minimum backdrop is
+ * always reserved so the sheet + keyboard cannot trap the UI full-screen.
  */
 export function BottomSheet({
   visible,
@@ -62,7 +67,8 @@ export function BottomSheet({
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
     const showSub = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardHeight(event.endCoordinates.height);
+      const next = Math.max(0, event.endCoordinates?.height ?? 0);
+      setKeyboardHeight(next);
     });
     const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
     return () => {
@@ -72,7 +78,10 @@ export function BottomSheet({
   }, []);
 
   useEffect(() => {
-    if (!visible) setKeyboardHeight(0);
+    if (!visible) {
+      setKeyboardHeight(0);
+      Keyboard.dismiss();
+    }
   }, [visible]);
 
   useEffect(() => {
@@ -90,10 +99,29 @@ export function BottomSheet({
     wasVisible.current = visible;
   }, [visible, windowHeight, translateY]);
 
-  const requestedMax = resolveMaxHeight(maxHeight, windowHeight);
-  const available = Math.max(220, windowHeight - keyboardHeight);
-  const sheetMaxHeight = Math.min(requestedMax, available);
   const keyboardOpen = keyboardHeight > 0;
+  const minBackdrop = keyboardOpen
+    ? Math.max(MIN_BACKDROP_PX, Math.round(windowHeight * MIN_BACKDROP_RATIO))
+    : 0;
+  const requestedMax = resolveMaxHeight(maxHeight, windowHeight);
+  const available = Math.max(
+    MIN_SHEET_HEIGHT,
+    windowHeight - keyboardHeight - minBackdrop,
+  );
+  const sheetMaxHeight = Math.min(requestedMax, available);
+
+  const handleBackdropPress = useCallback(() => {
+    if (keyboardHeight > 0) {
+      Keyboard.dismiss();
+      return;
+    }
+    onClose();
+  }, [keyboardHeight, onClose]);
+
+  const handleRequestClose = useCallback(() => {
+    Keyboard.dismiss();
+    onClose();
+  }, [onClose]);
 
   return (
     <Modal
@@ -102,13 +130,13 @@ export function BottomSheet({
       animationType="none"
       presentationStyle="overFullScreen"
       statusBarTranslucent
-      onRequestClose={onClose}
+      onRequestClose={handleRequestClose}
     >
       <View style={[styles.root, { backgroundColor: overlayColor }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close"
-          onPress={onClose}
+          onPress={handleBackdropPress}
           style={styles.backdrop}
         />
         <Animated.View
@@ -116,6 +144,8 @@ export function BottomSheet({
             styles.sheet,
             {
               maxHeight: sheetMaxHeight,
+              // Bound height while keyboard is open so nested ScrollViews can
+              // scroll, but never consume the reserved backdrop above.
               ...(keyboardOpen ? { height: sheetMaxHeight } : null),
               marginBottom: keyboardHeight,
               transform: [{ translateY }],
@@ -123,7 +153,9 @@ export function BottomSheet({
             contentStyle,
           ]}
         >
-          {children}
+          <View style={keyboardOpen ? styles.sheetBodyKeyboard : styles.sheetBody}>
+            {children}
+          </View>
         </Animated.View>
         {fullScreenOverlay ? (
           <View style={styles.fullScreenOverlay} pointerEvents="box-none">
@@ -151,6 +183,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: colors.border,
     width: "100%",
+    overflow: "hidden",
+  },
+  sheetBody: {
+    width: "100%",
+  },
+  sheetBodyKeyboard: {
+    width: "100%",
+    flex: 1,
   },
   fullScreenOverlay: {
     ...StyleSheet.absoluteFillObject,

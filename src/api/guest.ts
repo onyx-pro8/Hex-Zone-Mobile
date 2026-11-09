@@ -480,11 +480,18 @@ export async function clearExpiredGuestPasses(zoneId: string) {
 
 export async function listGuestRequests(
   zoneId: string,
+  options?: { pendingOnly?: boolean; status?: string },
 ): Promise<ApiResult<GuestRequest[]>> {
   const result = await request<unknown>({
     method: "GET",
     url: "/api/access/guest-requests",
-    params: { zone_id: zoneId },
+    params: {
+      zone_id: zoneId,
+      ...(options?.pendingOnly ? { pending_only: true } : {}),
+      ...(options?.status?.trim()
+        ? { status: options.status.trim() }
+        : {}),
+    },
   });
   if (result.error) {
     return { data: [], error: result.error, loading: false };

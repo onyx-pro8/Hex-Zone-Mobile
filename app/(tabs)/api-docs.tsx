@@ -334,7 +334,7 @@ export default function ApiDocsScreen() {
                 }}
               >
                 {token
-                  ? `Live requests send your bearer token automatically${user?.email ? ` as ${user.email}` : ""}.`
+                  ? `Live requests send your bearer token automatically${user?.username ? ` as @${user.username}` : ""}.`
                   : "Public endpoints can still be tested. Sign in to call authenticated routes."}
               </Text>
             </Card>

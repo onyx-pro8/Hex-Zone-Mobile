@@ -3,6 +3,7 @@ import { request } from "./client";
 export type Member = {
   id: string;
   name: string;
+  username?: string;
   email?: string;
   first_name?: string;
   last_name?: string;
@@ -22,7 +23,7 @@ function normalizeMember(raw: unknown): Member | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
   const id = row.id;
-  const name = row.name ?? row.first_name ?? row.email;
+  const name = row.name ?? row.first_name ?? row.username ?? row.email;
   if (id == null || (typeof name !== "string" && name == null)) return null;
 
   let location: Member["location"] = null;
@@ -42,7 +43,11 @@ function normalizeMember(raw: unknown): Member | null {
       typeof name === "string"
         ? name
         : `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() ||
-          String(row.email ?? "Member"),
+          String(row.username ?? row.email ?? "Member"),
+    username:
+      typeof row.username === "string" && row.username.trim()
+        ? row.username.trim().toLowerCase()
+        : undefined,
     email: typeof row.email === "string" ? row.email : undefined,
     first_name:
       typeof row.first_name === "string" ? row.first_name : undefined,
@@ -160,6 +165,7 @@ export async function setMemberRole(
 export type OwnerProfileUpdate = {
   first_name?: string;
   last_name?: string;
+  username?: string;
   email?: string;
   /** Pricing tier (private, private_plus, exclusive, enhanced, enhanced_plus). */
   account_type?: string;

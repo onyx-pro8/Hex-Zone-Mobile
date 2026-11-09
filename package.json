@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
+    "start": "node init && expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "build:icons": "node scripts/build-icons.js",
+    "build:icons": "node init && node scripts/build-icons.js",
     "logs:android": "adb logcat *:S ReactNativeJS:V ReactNative:V ExpoModules:V AndroidRuntime:E"
   },
   "dependencies": {

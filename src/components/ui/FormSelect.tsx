@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   FlatList,
+  Keyboard,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
 } from "react-native";
 import { Check, ChevronDown } from "lucide-react-native";
 import { colors, radius } from "@/theme/colors";
+import { useKeyboardBottomInset } from "@/hooks/useKeyboardBottomInset";
 
 export type FormSelectOption<T extends string | number = string> = {
   value: T;
@@ -49,7 +52,20 @@ export function FormSelect<T extends string | number>({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const { height: windowHeight } = useWindowDimensions();
-  const listHeight = Math.min(420, Math.round(windowHeight * 0.5));
+  const keyboardInset = useKeyboardBottomInset();
+  const keyboardOpen = keyboardInset > 0;
+  const reservedTop = keyboardOpen
+    ? Math.max(96, Math.round(windowHeight * 0.18))
+    : 0;
+  const sheetBudget = Math.max(
+    220,
+    windowHeight - keyboardInset - reservedTop,
+  );
+  const listHeight = Math.min(
+    420,
+    Math.round(windowHeight * 0.5),
+    Math.max(160, sheetBudget - (searchable ? 140 : 90)),
+  );
   const selected = useMemo(
     () => options.find((o) => o.value === value) ?? options[0],
     [options, value],
@@ -63,6 +79,7 @@ export function FormSelect<T extends string | number>({
   }, [options, query, searchable]);
 
   function close() {
+    Keyboard.dismiss();
     setOpen(false);
     setQuery("");
   }
@@ -105,9 +122,29 @@ export function FormSelect<T extends string | number>({
         onRequestClose={close}
       >
         <View style={styles.backdrop}>
-          <Pressable style={StyleSheet.absoluteFillObject} onPress={close} />
-          <View style={styles.sheet}>
-            <Text style={styles.sheetTitle}>{label}</Text>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => {
+              if (keyboardInset > 0) {
+                Keyboard.dismiss();
+                return;
+              }
+              close();
+            }}
+          />
+          <View
+            style={[
+              styles.sheet,
+              {
+                maxHeight: sheetBudget,
+                marginBottom: keyboardInset,
+                paddingBottom: Platform.OS === "ios" ? 28 : 20,
+              },
+            ]}
+          >
+            <Pressable accessible={false} onPress={Keyboard.dismiss}>
+              <Text style={styles.sheetTitle}>{label}</Text>
+            </Pressable>
             {searchable ? (
               <TextInput
                 value={query}
@@ -124,6 +161,7 @@ export function FormSelect<T extends string | number>({
               keyExtractor={(opt) => String(opt.value)}
               style={{ height: listHeight }}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
               initialNumToRender={30}
               windowSize={10}
               ListEmptyComponent={<Text style={styles.empty}>No matches.</Text>}
@@ -210,7 +248,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 28,
     gap: 8,
   },
   sheetTitle: {
