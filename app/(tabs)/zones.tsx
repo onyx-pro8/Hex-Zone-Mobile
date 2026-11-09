@@ -39,6 +39,7 @@ import { ZonesPageHeader } from "@/components/dashboard/ZonesPageHeader";
 import { UniversalAccessKeyModal } from "@/components/dashboard/UniversalAccessKeyModal";
 import { Input } from "@/components/ui/Input";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { BottomSheetScrollView } from "@/components/ui/BottomSheetScrollView";
 import {
   FLOATING_FAB_SIZE,
   useFloatingFabBottom,
@@ -1199,11 +1200,10 @@ export default function DashboardScreen() {
             }}
           />
         </View>
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          nestedScrollEnabled
+        <BottomSheetScrollView
           scrollEnabled={detailScrollEnabled}
+          keyboardBottomGap={72}
+          style={detailScrollEnabled ? { flex: 1 } : undefined}
           contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 28 }}
         >
           <Text
@@ -1468,7 +1468,7 @@ export default function DashboardScreen() {
               {builder.status}
             </Text>
           ) : null}
-        </ScrollView>
+        </BottomSheetScrollView>
       </BottomSheet>
     </View>
   );

@@ -16,6 +16,7 @@ import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { ImagePlus, Send, Users, X } from "lucide-react-native";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { BottomSheetScrollView } from "@/components/ui/BottomSheetScrollView";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { FormSelect } from "@/components/ui/FormSelect";
@@ -312,12 +313,10 @@ export function ComposeMessageSheet({
   const [receiversModalOpen, setReceiversModalOpen] = useState(false);
   const [guestOptions, setGuestOptions] = useState<GuestComposeOption[]>([]);
   const [loadingComposeMeta, setLoadingComposeMeta] = useState(false);
-  const composeScrollRef = useRef<ScrollView>(null);
+  const composeFocusScrollRef = useRef<(() => void) | null>(null);
 
   const scrollComposeFieldIntoView = useCallback(() => {
-    requestAnimationFrame(() => {
-      composeScrollRef.current?.scrollToEnd({ animated: true });
-    });
+    composeFocusScrollRef.current?.();
   }, []);
 
   const composeZoneId = useMemo(
@@ -1101,11 +1100,9 @@ export function ComposeMessageSheet({
             </Text>
           </Pressable>
 
-          <ScrollView
-            ref={composeScrollRef}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-            keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          <BottomSheetScrollView
+            focusScrollRef={composeFocusScrollRef}
+            keyboardBottomGap={64}
             style={{ flexGrow: 1, flexShrink: 1, minHeight: 120 }}
             contentContainerStyle={{ paddingBottom: 16, flexGrow: 0 }}
           >
@@ -1481,7 +1478,7 @@ export function ComposeMessageSheet({
                 {composeStatus}
               </Text>
             ) : null}
-          </ScrollView>
+          </BottomSheetScrollView>
 
           <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
             <Button label="Cancel" variant="secondary" onPress={closeAll} style={{ flex: 1 }} />

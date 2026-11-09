@@ -8,6 +8,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Eye, EyeOff } from "lucide-react-native";
+import { useBottomSheetScrollOnFocus } from "@/components/ui/BottomSheetScrollView";
 import { colors } from "@/theme/colors";
 
 type InputProps = TextInputProps & {
@@ -34,6 +35,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
 ) {
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
+  const scrollBoardOnFocus = useBottomSheetScrollOnFocus();
 
   const borderColor = error
     ? colors.danger
@@ -76,6 +78,7 @@ export const Input = forwardRef<TextInput, InputProps>(function Input(
           {...rest}
           onFocus={(e) => {
             setFocused(true);
+            scrollBoardOnFocus();
             rest.onFocus?.(e);
           }}
           onBlur={(e) => {
