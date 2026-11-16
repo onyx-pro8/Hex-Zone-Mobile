@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   Text,
   TextInput,
@@ -16,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
 import { ProfileAvatarButton } from "@/components/ui/ProfileAvatarButton";
 import { AvatarUploadModal } from "@/components/settings/AvatarUploadModal";
+import { SubscriptionSection } from "@/components/settings/SubscriptionSection";
 import { useAuth } from "@/context/AuthContext";
 import {
   getRemoteAppSettings,
@@ -30,12 +30,8 @@ import {
 } from "@/lib/appSettings";
 import { toast } from "@/lib/toast";
 import {
-  ADMIN_ASSIGNABLE_ACCOUNT_TYPES,
   accountTypeLabel,
-  canEditOwnAccountType,
-  isSystemAdministrator,
   normalizeAccountType,
-  toApiAccountType,
   type NormalizedAccountType,
 } from "@/lib/accountLimits";
 import {
@@ -128,48 +124,6 @@ function SectionTitle({ children }: { children: string }) {
   );
 }
 
-function TypeChip({
-  label,
-  active,
-  disabled,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  disabled?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={{
-        minWidth: "47%",
-        flexGrow: 1,
-        paddingVertical: 11,
-        paddingHorizontal: 10,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: active ? colors.accent : colors.border,
-        backgroundColor: active ? colors.accent : colors.bgSurface,
-        alignItems: "center",
-        opacity: disabled && !active ? 0.55 : 1,
-      }}
-    >
-      <Text
-        style={{
-          color: active ? "#fff" : colors.text,
-          fontWeight: "700",
-          fontSize: 12,
-          textAlign: "center",
-        }}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 function splitName(full: string): { first_name: string; last_name: string } {
   const parts = full.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { first_name: "Member", last_name: "User" };
@@ -184,17 +138,6 @@ export default function UserSettingsScreen() {
   const router = useRouter();
   const { user, refreshUser, setUserAvatar } = useAuth();
   const settings = useAppSettings();
-  const isSystemAdmin = isSystemAdministrator({
-    accountType: user?.accountType,
-    legacyAccountType: user?.account_type,
-    role: user?.role,
-  });
-  const canEditAccountType = canEditOwnAccountType({
-    role: user?.role,
-    accountType: user?.accountType,
-    legacyAccountType: user?.account_type,
-  });
-  const accountTypeOptions = ADMIN_ASSIGNABLE_ACCOUNT_TYPES;
 
   const [name, setName] = useState((user?.name ?? "").trim());
   const [email, setEmail] = useState((user?.email ?? "").trim());
@@ -307,12 +250,16 @@ export default function UserSettingsScreen() {
   }, []);
 
   const accountName = name.trim() || (user?.name ?? "").trim();
+  const roleLabel = String(user?.role ?? "").toLowerCase() === "administrator"
+    ? "Administrator"
+    : "User";
   const accountTypeHint = useMemo(() => {
-    if (isSystemAdmin) {
-      return "As system administrator you can assign any pricing tier, including Private.";
+    const planName = accountTypeLabel(accountType);
+    if (accountType === "EXCLUSIVE") {
+      return `${planName} (free, user role). Upgrade in Subscription — account type changes automatically after payment.`;
     }
-    return `Your account type is ${accountTypeLabel(accountType)}. Only the system administrator can change it.`;
-  }, [accountType, isSystemAdmin]);
+    return `${planName} · ${roleLabel}. Account type is set by your subscription; it is not edited here.`;
+  }, [accountType, roleLabel]);
 
   const clearAvatar = () => {
     keepLocalAvatarPreview.current = false;
@@ -385,10 +332,6 @@ export default function UserSettingsScreen() {
     } else if (avatarUrl && !avatarUrl.startsWith("data:")) {
       payload.avatar_url = avatarUrl;
     }
-    if (canEditAccountType) {
-      payload.account_type = toApiAccountType(accountType);
-    }
-
     const res = await updateOwnerProfile(user.id, payload);
     if (res.error) {
       toast.error(res.error);
@@ -556,32 +499,20 @@ export default function UserSettingsScreen() {
                     textTransform: "uppercase",
                   }}
                 >
-                  Role
+                  Account type
                 </Text>
-                <Text style={{ color: colors.textDim, fontSize: 11 }}>
-                  {accountTypeHint}
-                </Text>
-                <View
+                <Text
                   style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    gap: 8,
+                    color: colors.text,
+                    fontSize: 15,
+                    fontWeight: "700",
                   }}
                 >
-                  {accountTypeOptions.map((option) => (
-                    <TypeChip
-                      key={option.value}
-                      label={option.label}
-                      active={accountType === option.value}
-                      disabled={!canEditAccountType}
-                      onPress={() => {
-                        if (!canEditAccountType) return;
-                        setAccountType(option.value);
-                        setProfileSaved(false);
-                      }}
-                    />
-                  ))}
-                </View>
+                  {accountTypeLabel(accountType)}
+                </Text>
+                <Text style={{ color: colors.textDim, fontSize: 11, lineHeight: 16 }}>
+                  {accountTypeHint}
+                </Text>
               </View>
 
               <Button
@@ -640,6 +571,9 @@ export default function UserSettingsScreen() {
                 fullWidth
               />
             </Card>
+
+            <SectionTitle>Subscription</SectionTitle>
+            <SubscriptionSection />
 
           </View>
         </ScrollView>

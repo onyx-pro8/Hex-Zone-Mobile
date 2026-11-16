@@ -14,6 +14,15 @@ export const ENHANCED_PLUS_MEMBER_LIMITS: Record<number, number> = {
   5: 2500,
 };
 
+/** Organization smart-home hub caps by level. */
+export const ENHANCED_PLUS_DEVICE_LIMITS: Record<number, number> = {
+  1: 25,
+  2: 50,
+  3: 100,
+  4: 250,
+  5: 500,
+};
+
 export const FAMILY_MEMBER_LIMIT = 10;
 
 export function normalizeAccountType(
@@ -48,12 +57,19 @@ export function normalizeTierLevel(tierLevel?: number | string | null): number |
   return level in ENHANCED_PLUS_MEMBER_LIMITS ? level : null;
 }
 
-export function getDeviceLimit(type: NormalizedAccountType): number {
+export function getDeviceLimit(
+  type: NormalizedAccountType,
+  tierLevel?: number | string | null,
+): number {
   if (type === "PRIVATE") return 1;
   if (type === "PRIVATE_PLUS") return 10;
   if (type === "EXCLUSIVE") return 0; // Individual: smart-home disabled
   if (type === "ENHANCED") return 1;
-  return Number.POSITIVE_INFINITY; // ENHANCED_PLUS
+  if (type === "ENHANCED_PLUS") {
+    const level = normalizeTierLevel(tierLevel) ?? 1;
+    return ENHANCED_PLUS_DEVICE_LIMITS[level] ?? ENHANCED_PLUS_DEVICE_LIMITS[1];
+  }
+  return Number.POSITIVE_INFINITY;
 }
 
 /**
