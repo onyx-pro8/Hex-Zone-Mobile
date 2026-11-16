@@ -83,3 +83,22 @@ export async function createBillingPortalSession() {
     url: "/subscription/portal",
   });
 }
+
+export type ConfirmCheckoutResult = {
+  ok: boolean;
+  status: string;
+  payment_status?: string;
+  message: string;
+  plan: SubscriptionPlan;
+  account_type: string;
+  role: string;
+  tier_level: number | null;
+};
+
+export async function confirmSubscriptionCheckout(sessionId: string) {
+  return request<ConfirmCheckoutResult>({
+    method: "POST",
+    url: "/subscription/confirm",
+    data: { session_id: sessionId },
+  });
+}

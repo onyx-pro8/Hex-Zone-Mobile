@@ -33,6 +33,8 @@ void SystemUI.setBackgroundColorAsync(colors.bg);
 void ensureAndroidChannels();
 
 const PUBLIC_ROOT_SEGMENTS = new Set(["access", "join", "guest"]);
+/** Stripe return deep link — keep signed-in users on this screen. */
+const AUTHED_ROOT_SEGMENTS = new Set(["subscription"]);
 
 function ProtectedShell() {
   const { token, user, initializing, loading } = useAuth();
@@ -52,10 +54,20 @@ function ProtectedShell() {
       typeof firstSegment === "string" &&
       PUBLIC_ROOT_SEGMENTS.has(firstSegment);
     if (onPublicLanding) return;
+    const onSubscriptionReturn =
+      typeof firstSegment === "string" &&
+      AUTHED_ROOT_SEGMENTS.has(firstSegment);
     const sessionReady = Boolean(token && user);
     if (!sessionReady && inTabsGroup) {
       router.replace("/(auth)/welcome");
-    } else if (sessionReady && !loading && (inAuthGroup || firstSegment == null)) {
+    } else if (!sessionReady && onSubscriptionReturn) {
+      router.replace("/(auth)/welcome");
+    } else if (
+      sessionReady &&
+      !loading &&
+      (inAuthGroup || firstSegment == null) &&
+      !onSubscriptionReturn
+    ) {
       router.replace("/(tabs)");
     }
   }, [token, user, loading, segments, initializing, router]);
