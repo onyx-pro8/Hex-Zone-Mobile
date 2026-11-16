@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -19,6 +19,7 @@ import {
   type SubscriptionOverview,
   type SubscriptionPlan,
 } from "@/api/subscription";
+import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
 
@@ -235,6 +236,7 @@ function PlanPickRow({
 }
 
 export function SubscriptionSection() {
+  const { refreshUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
@@ -268,21 +270,20 @@ export function SubscriptionSection() {
             )?.plan_key || "enhanced";
       setSelectedPlanKey(next);
     }
+    // After Stripe Checkout returns, role/account_type may have changed.
+    await refreshUser();
     setLoading(false);
-  }, []);
+  }, [refreshUser]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Tabs keep this screen mounted — always dismiss the picker when leaving
-  // so it cannot sit above the global compose BottomSheet.
+  // Reload when the screen is focused (e.g. back from Stripe) and dismiss
+  // the picker when leaving so it cannot cover the compose sheet.
   useFocusEffect(
     useCallback(() => {
+      void load();
       return () => {
         setPickerOpen(false);
       };
-    }, []),
+    }, [load]),
   );
 
   const paidPlans = useMemo(
@@ -316,7 +317,7 @@ export function SubscriptionSection() {
 
   const onCheckout = async () => {
     if (!overview?.can_manage_billing) {
-      toast.error("Only the network administrator can change the plan.");
+      toast.error("Only the account holder can change the plan.");
       return;
     }
     if (!overview.stripe_configured) {
@@ -342,7 +343,7 @@ export function SubscriptionSection() {
 
   const onPortal = async () => {
     if (!overview?.can_manage_billing) {
-      toast.error("Only the network administrator can manage billing.");
+      toast.error("Only the account holder can manage billing.");
       return;
     }
     if (!overview.stripe_configured) {
@@ -399,8 +400,13 @@ export function SubscriptionSection() {
           </Text>
           {!overview.can_manage_billing ? (
             <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4 }}>
-              Plan is managed by the network administrator. Limits below are
-              shared across the whole network.
+              Plan is managed by the account holder. Limits below are shared
+              across the whole network.
+            </Text>
+          ) : overview.plan.plan_key === "exclusive" ? (
+            <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4 }}>
+              Free Individual account. Upgrade below — your account type updates
+              automatically after payment (no manual selection).
             </Text>
           ) : null}
         </View>
@@ -418,7 +424,11 @@ export function SubscriptionSection() {
         {overview.can_manage_billing ? (
           <View style={{ gap: 10, marginTop: 4 }}>
             <Button
-              label="Upgrade / change plan"
+              label={
+                overview.plan.plan_key === "exclusive"
+                  ? "Upgrade plan"
+                  : "Change plan"
+              }
               onPress={() => setPickerOpen(true)}
               disabled={busy}
               fullWidth
