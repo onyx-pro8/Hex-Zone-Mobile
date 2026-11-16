@@ -144,6 +144,7 @@ export function BottomSheet({
             styles.sheet,
             {
               maxHeight: sheetMaxHeight,
+              minHeight: MIN_SHEET_HEIGHT,
               // Bound height while keyboard is open so nested ScrollViews can
               // scroll, but never consume the reserved backdrop above.
               ...(keyboardOpen ? { height: sheetMaxHeight } : null),
@@ -153,7 +154,13 @@ export function BottomSheet({
             contentStyle,
           ]}
         >
-          <View style={keyboardOpen ? styles.sheetBodyKeyboard : styles.sheetBody}>
+          <View
+            style={
+              keyboardOpen
+                ? styles.sheetBodyKeyboard
+                : [styles.sheetBody, { maxHeight: sheetMaxHeight }]
+            }
+          >
             {children}
           </View>
         </Animated.View>

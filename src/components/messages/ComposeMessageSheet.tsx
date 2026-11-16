@@ -1074,9 +1074,10 @@ export function ComposeMessageSheet({
             paddingTop: 24,
             gap: 12,
             paddingBottom: Math.max(bottomInset, 16) + 12,
-            flex: 1,
-            flexShrink: 1,
-            maxHeight: "100%",
+            // Do not use flex:1 here — BottomSheet only sets maxHeight when the
+            // keyboard is closed, so flex:1 collapses the panel to 0 height
+            // (dimmed backdrop only, no sheet content).
+            width: "100%",
           }}
         >
           <Pressable
@@ -1103,7 +1104,7 @@ export function ComposeMessageSheet({
           <BottomSheetScrollView
             focusScrollRef={composeFocusScrollRef}
             keyboardBottomGap={64}
-            style={{ flexGrow: 1, flexShrink: 1, minHeight: 120 }}
+            style={{ maxHeight: 420 }}
             contentContainerStyle={{ paddingBottom: 16, flexGrow: 0 }}
           >
             <Text

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button";
 import { AddressAutocompleteInput } from "@/components/ui/AddressAutocompleteInput";
 import { ProfileAvatarButton } from "@/components/ui/ProfileAvatarButton";
 import { AvatarUploadModal } from "@/components/settings/AvatarUploadModal";
+import { SubscriptionSection } from "@/components/settings/SubscriptionSection";
 import { useAuth } from "@/context/AuthContext";
 import {
   getRemoteAppSettings,
@@ -640,6 +641,9 @@ export default function UserSettingsScreen() {
                 fullWidth
               />
             </Card>
+
+            <SectionTitle>Subscription</SectionTitle>
+            <SubscriptionSection />
 
           </View>
         </ScrollView>
