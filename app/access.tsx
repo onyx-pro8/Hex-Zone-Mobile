@@ -33,6 +33,7 @@ import { useAuth } from "@/context/AuthContext";
 import {
   exchangeGuestSession,
   pollGuestAccessSession,
+  previewGuestQrToken,
   submitAnonymousGuestPermission,
 } from "@/api/guestPublic";
 import { getOrCreateDeviceHid, setStoredGuestSession } from "@/lib/storage";
@@ -115,6 +116,7 @@ export default function GuestAccessScreen() {
 
   const [guestName, setGuestName] = useState("");
   const [eventId, setEventId] = useState(eidFromQuery);
+  const [eventIdLocked, setEventIdLocked] = useState(Boolean(eidFromQuery));
   const [position, setPosition] = useState<
     { lat: number; lng: number } | null
   >(null);
@@ -131,7 +133,26 @@ export default function GuestAccessScreen() {
 
   useEffect(() => {
     setEventId(eidFromQuery);
+    setEventIdLocked(Boolean(eidFromQuery));
   }, [eidFromQuery]);
+
+  /* Resolve Event ID from opaque gt (pass QR omits eid from the URL). */
+  useEffect(() => {
+    if (!gt || eidFromQuery) return;
+    let cancelled = false;
+    void (async () => {
+      const preview = await previewGuestQrToken(gt);
+      if (cancelled) return;
+      if (!preview.ok) return;
+      const eid = (preview.data.event_id ?? "").trim();
+      if (!eid) return;
+      setEventId(eid);
+      setEventIdLocked(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gt, eidFromQuery]);
 
   /* Prefill guest name from the signed-in member account when present. */
   useEffect(() => {
@@ -450,6 +471,8 @@ export default function GuestAccessScreen() {
     setFormError(null);
     try {
       const hid = await getOrCreateDeviceHid();
+      // Pass-bound QRs omit eid in the URL; Event ID may be shown locked from preview.
+      // Server still trusts the opaque gt when both are present.
       const body: Parameters<typeof submitAnonymousGuestPermission>[0] = {
         guest_name: name,
         device_id: hid,
@@ -631,18 +654,22 @@ export default function GuestAccessScreen() {
                   </View>
 
                   <View>
-                    <Text style={labelStyle}>Event id (optional)</Text>
+                    <Text style={labelStyle}>
+                      {eventIdLocked ? "Event id" : "Event id (optional)"}
+                    </Text>
                     <TextInput
                       value={eventId}
                       onChangeText={setEventId}
-                      editable={!eidFromQuery}
+                      editable={!eventIdLocked}
                       placeholder={
-                        eidFromQuery ? "Set from link" : "e.g. EVT-2026-GALA"
+                        eventIdLocked
+                          ? "From invitation"
+                          : "e.g. EVT-2026-GALA"
                       }
                       placeholderTextColor={colors.textDim}
                       style={{
                         ...inputStyle,
-                        opacity: eidFromQuery ? 0.7 : 1,
+                        opacity: eventIdLocked ? 0.7 : 1,
                       }}
                     />
                   </View>
