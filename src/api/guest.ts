@@ -18,6 +18,19 @@ export type GuestPass = {
   created_at: string;
   updated_at: string;
   is_expired?: boolean;
+  /** Admin-only: pass has a linked QR token. Always false for members. */
+  has_qr?: boolean;
+  url?: string | null;
+  path_with_query?: string | null;
+};
+
+export type GuestPassQrLink = {
+  id: string;
+  zone_id: string;
+  event_id: string;
+  path_with_query: string;
+  url: string | null;
+  token_suffix?: string | null;
 };
 
 export type CreateGuestPassBody = {
@@ -473,6 +486,14 @@ export async function clearExpiredGuestPasses(zoneId: string) {
     method: "POST",
     url: "/api/access/guest-passes/clear-expired",
     data: { zone_id: zoneId },
+  });
+}
+
+/** Network admin only — members receive 403. */
+export async function getGuestPassQrLink(passId: string) {
+  return request<GuestPassQrLink>({
+    method: "GET",
+    url: `/api/access/guest-passes/${encodeURIComponent(passId)}/qr-link`,
   });
 }
 

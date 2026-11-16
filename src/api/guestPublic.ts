@@ -216,6 +216,53 @@ export type AnonymousGuestPermissionResult =
     }
   | { ok: false; errorCode?: string; message: string };
 
+export type GuestQrTokenPreview = {
+  zone_id: string;
+  event_id: string | null;
+  is_network_access: boolean;
+  has_event_id: boolean;
+};
+
+/** Public: resolve Event ID / zone from opaque gt for the check-in form. */
+export async function previewGuestQrToken(
+  guestQrToken: string,
+): Promise<{ ok: true; data: GuestQrTokenPreview } | { ok: false; message: string }> {
+  const gt = guestQrToken.trim();
+  if (!gt) return { ok: false, message: "Missing guest QR token." };
+  try {
+    const res = await guestAxios.get<unknown>("/api/access/qr-tokens/preview", {
+      params: { guest_qr_token: gt },
+      validateStatus: () => true,
+    });
+    if (res.status >= 400) {
+      const { code, message } = readErrorBody(res.data);
+      return { ok: false, message: mapGuestAccessErrorCode(code, message) };
+    }
+    const data = unwrapEnvelope(res.data);
+    const row =
+      data && typeof data === "object" && !Array.isArray(data)
+        ? (data as Record<string, unknown>)
+        : {};
+    const zone_id = readString(row, ["zone_id", "zoneId"]) ?? "";
+    const event_id = readString(row, ["event_id", "eventId"]) ?? null;
+    const is_network_access = Boolean(row.is_network_access ?? row.isNetworkAccess);
+    if (!zone_id) return { ok: false, message: "Invalid guest QR preview." };
+    return {
+      ok: true,
+      data: {
+        zone_id,
+        event_id,
+        is_network_access,
+        has_event_id: Boolean(event_id) || Boolean(row.has_event_id),
+      },
+    };
+  } catch (err) {
+    const ax = err as AxiosError;
+    const { message } = readErrorBody(ax.response?.data);
+    return { ok: false, message: message || "Could not preview guest QR." };
+  }
+}
+
 export async function submitAnonymousGuestPermission(
   body: AnonymousGuestPermissionBody,
 ): Promise<AnonymousGuestPermissionResult> {

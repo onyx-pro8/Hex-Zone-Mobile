@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
   Text,
@@ -10,7 +11,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { RefreshCw, Ticket } from "lucide-react-native";
+import QRCode from "react-native-qrcode-svg";
+import { QrCode, RefreshCw, Ticket, X } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Card } from "@/components/ui/Card";
@@ -23,10 +25,13 @@ import {
   clearExpiredGuestPasses,
   createGuestPass,
   deleteGuestPass,
+  getGuestPassQrLink,
   listGuestPasses,
   revokeGuestPass,
+  toAccessDeepLink,
   type GuestPass,
 } from "@/api/guest";
+import { alertCopyResult, copyToClipboard } from "@/lib/copyToClipboard";
 import { formatServerDateTime, parseServerDate } from "@/lib/serverDate";
 import { toast } from "@/lib/toast";
 import { colors } from "@/theme/colors";
@@ -129,17 +134,20 @@ function PassRow({
   zoneId,
   isAdmin,
   onChanged,
+  onShowQr,
   plain = false,
 }: {
   pass: GuestPass;
   zoneId: string;
   isAdmin: boolean;
   onChanged: () => void;
+  onShowQr?: (pass: GuestPass) => void;
   plain?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const expired = isPassExpired(pass);
   const used = Boolean(pass.used_by_guest_id);
+  const canShowQr = isAdmin && !expired && pass.status !== "REVOKED";
   const canRevoke = isAdmin && pass.status === "ACCEPTED" && !expired;
   const canDelete = expired;
   const tone = expired
@@ -197,8 +205,17 @@ function PassRow({
   };
 
   const actions =
-    canRevoke || canDelete ? (
+    canShowQr || canRevoke || canDelete ? (
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: plain ? 4 : 12 }}>
+        {canShowQr ? (
+          <Button
+            label="Show QR"
+            size="sm"
+            variant={plain ? "primary" : "outline"}
+            disabled={busy}
+            onPress={() => onShowQr?.(pass)}
+          />
+        ) : null}
         {canRevoke ? (
           <Button
             label="Revoke"
@@ -395,7 +412,9 @@ export default function GuestPassesScreen({
         throw new Error(result.error ?? "Could not create guest pass.");
       }
       toast.success(
-        `Guest pass is active. Share Event ID ${result.data.event_id} with your guest.`,
+        isAdmin
+          ? `Guest pass ${result.data.event_id} is active. Open Show QR to share the unique check-in link.`
+          : `Guest pass ${result.data.event_id} is active. Your network admin can share the QR code.`,
       );
       setEventId("");
       setGuestName("");
@@ -409,18 +428,129 @@ export default function GuestPassesScreen({
     } finally {
       setSubmitting(false);
     }
-  }, [effectiveZoneId, eventId, expiresAt, guestName, notes, load]);
+  }, [effectiveZoneId, eventId, expiresAt, guestName, notes, load, isAdmin]);
+
+  const [qrPass, setQrPass] = useState<GuestPass | null>(null);
+  const [qrUrl, setQrUrl] = useState("");
+  const [qrLoading, setQrLoading] = useState(false);
+
+  const onShowQr = useCallback(async (pass: GuestPass) => {
+    if (!isAdmin) return;
+    setQrPass(pass);
+    setQrUrl("");
+    setQrLoading(true);
+    try {
+      const res = await getGuestPassQrLink(pass.id);
+      if (res.error || !res.data) {
+        throw new Error(res.error ?? "Could not load pass QR.");
+      }
+      const next =
+        toAccessDeepLink(res.data.path_with_query) ||
+        String(res.data.url ?? "").trim();
+      if (!next) {
+        throw new Error("Could not build the guest pass QR link.");
+      }
+      setQrUrl(next);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not load pass QR.");
+      setQrPass(null);
+    } finally {
+      setQrLoading(false);
+    }
+  }, [isAdmin]);
+
+  const qrModal = (
+    <Modal
+      visible={Boolean(qrPass)}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setQrPass(null)}
+    >
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.55)",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: colors.bgCard,
+            borderRadius: 16,
+            padding: 16,
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+              <QrCode size={18} color={colors.accent} />
+              <Text style={{ color: colors.text, fontWeight: "700", flex: 1 }}>
+                {qrPass?.event_id ?? "Guest pass QR"}
+              </Text>
+            </View>
+            <Pressable onPress={() => setQrPass(null)} hitSlop={8}>
+              <X size={18} color={colors.textMuted} />
+            </Pressable>
+          </View>
+          <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18 }}>
+            Unique check-in QR for this Event ID. The Event ID is not printed in the
+            link — the server resolves it from the opaque token.
+          </Text>
+          {qrLoading ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : qrUrl ? (
+            <View style={{ alignItems: "center", gap: 10 }}>
+              <View style={{ padding: 12, borderRadius: 16, backgroundColor: "#fff" }}>
+                <QRCode value={qrUrl} size={180} />
+              </View>
+              <Text
+                style={{ color: colors.textDim, fontSize: 11 }}
+                numberOfLines={3}
+                selectable
+              >
+                {qrUrl}
+              </Text>
+              <Button
+                label="Copy link"
+                size="sm"
+                fullWidth
+                onPress={() => {
+                  void copyToClipboard(qrUrl).then((result) =>
+                    alertCopyResult(result, qrUrl),
+                  );
+                }}
+              />
+            </View>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
 
   const showZonePicker = isAdmin && candidateZoneIds.length > 1;
   const headerSubtitle = effectiveZoneId
-    ? `Event IDs are accepted as soon as you create them · ${effectiveZoneId}`
-    : "Event IDs are accepted as soon as you create them";
+    ? isAdmin
+      ? `All network Event IDs · Show QR to share · ${effectiveZoneId}`
+      : `Your Event IDs · Admin shares the QR · ${effectiveZoneId}`
+    : isAdmin
+      ? "All network Event IDs · Show QR to share"
+      : "Your Event IDs · Admin shares the QR";
 
   if (embedded) {
     return (
       <View style={{ gap: 12 }}>
+        {qrModal}
         <Text style={{ color: colors.textMuted, fontSize: 13, lineHeight: 18 }}>
-          A new Event ID is accepted immediately. Share it with your guest for arrival.
+          {isAdmin
+            ? "Each new Event ID mints a unique guest QR (no Event ID in the link). Only you can open Show QR."
+            : "Create Event IDs you need. You can see your list here; only the network admin can view QR codes."}
         </Text>
         {showZonePicker ? (
           <View style={{ gap: 6 }}>
@@ -577,6 +707,7 @@ export default function GuestPassesScreen({
                       isAdmin={isAdmin}
                       plain
                       onChanged={() => void load()}
+                      onShowQr={(p) => void onShowQr(p)}
                     />
                   </View>
                 );
@@ -690,8 +821,9 @@ export default function GuestPassesScreen({
                     </Text>
                   </View>
                   <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                    A new Event ID is accepted immediately. Share it with your
-                    guest for arrival.
+                    {isAdmin
+                      ? "A new Event ID is accepted immediately and gets a unique QR (Event ID stays off the link)."
+                      : "A new Event ID is accepted immediately. Only the network admin can view and share the QR."}
                   </Text>
                   <TextInput
                     placeholder="Event ID (required, e.g. EVT-2026-GALA)"
@@ -780,6 +912,7 @@ export default function GuestPassesScreen({
                 zoneId={effectiveZoneId}
                 isAdmin={isAdmin}
                 onChanged={() => void load()}
+                onShowQr={(p) => void onShowQr(p)}
               />
             )}
             contentContainerStyle={{
@@ -810,6 +943,7 @@ export default function GuestPassesScreen({
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
+        {qrModal}
         <ScreenHeader
           title="Guest passes"
           subtitle={headerSubtitle}
