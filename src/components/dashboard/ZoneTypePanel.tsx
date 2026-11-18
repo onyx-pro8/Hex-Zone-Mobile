@@ -331,14 +331,37 @@ export function ZoneTypePanel({
               </Pressable>
             ))}
           </View>
-        ) : builder.communalExists === false ? (
-          <Text style={{ color: colors.success, fontSize: 12 }}>
-            Communal ID not registered yet — tap Save to register it.
-          </Text>
         ) : (
-          <Text style={hintStyle}>
-            Validate an existing ID, or Generate a candidate and tap Save.
-          </Text>
+          <View style={{ gap: 10 }}>
+            <Text style={hintStyle}>
+              {builder.communalExists === false
+                ? "Candidate ready — tap Save Communal ID below to register it."
+                : "Generate a candidate (or type an ID), then Save to create it."}
+            </Text>
+            <Pressable
+              onPress={() => {
+                void (async () => {
+                  const ok = await builder.save();
+                  if (ok) onShowOnMap?.();
+                })();
+              }}
+              disabled={!builder.canSave || builder.saving}
+              style={{
+                paddingVertical: 14,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: colors.accent,
+                opacity: !builder.canSave || builder.saving ? 0.5 : 1,
+              }}
+            >
+              <Text
+                style={{ color: "#fff", fontWeight: "800", fontSize: 14 }}
+              >
+                {builder.saving ? "Saving…" : "Save Communal ID"}
+              </Text>
+            </Pressable>
+          </View>
         )}
       </View>
     );
