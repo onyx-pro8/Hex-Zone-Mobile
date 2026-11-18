@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
   SafeAreaView,
@@ -131,6 +132,9 @@ export default function DashboardScreen() {
   const canChoosePrimaryTier =
     isAdmin && accountType !== "EXCLUSIVE";
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  /** Bound scroll height — do not use flex:1 (collapses under maxHeight-only sheets). */
+  const detailScrollMaxHeight = Math.max(280, Math.round(windowHeight * 0.72) - 48);
   const builder = useZoneBuilder(ownerZoneId || undefined, {
     currentUserId: user?.id != null ? String(user.id) : undefined,
     currentUserName: user?.name?.trim() || undefined,
@@ -1203,8 +1207,13 @@ export default function DashboardScreen() {
         <BottomSheetScrollView
           scrollEnabled={detailScrollEnabled}
           keyboardBottomGap={72}
-          style={detailScrollEnabled ? { flex: 1 } : undefined}
-          contentContainerStyle={{ padding: 16, gap: 14, paddingBottom: 28 }}
+          style={{ maxHeight: detailScrollMaxHeight }}
+          contentContainerStyle={{
+            padding: 16,
+            gap: 14,
+            paddingBottom: 28,
+            flexGrow: 0,
+          }}
         >
           <Text
             style={{

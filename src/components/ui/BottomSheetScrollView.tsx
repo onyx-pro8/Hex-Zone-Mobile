@@ -47,11 +47,16 @@ type Props = ScrollViewProps & {
 /**
  * ScrollView for BottomSheet forms: when the keyboard opens (or focus moves),
  * scrolls so the focused input and trailing actions stay tappable.
+ *
+ * Do not pass `flex: 1` in `style`. BottomSheet only sets `maxHeight` when the
+ * keyboard is closed, so flex children collapse to 0 height (empty white panel).
+ * Prefer an explicit `maxHeight` instead.
  */
 export const BottomSheetScrollView = forwardRef<ScrollView, Props>(
   function BottomSheetScrollView(
     {
       children,
+      style,
       contentContainerStyle,
       keyboardBottomGap = 48,
       focusScrollRef,
@@ -108,6 +113,18 @@ export const BottomSheetScrollView = forwardRef<ScrollView, Props>(
     const basePad =
       typeof flattened?.paddingBottom === "number" ? flattened.paddingBottom : 0;
 
+    // Strip flex:1 / flexGrow:1 from style — they collapse under maxHeight-only
+    // BottomSheet panels (see ComposeMessageSheet / zones detail sheet).
+    const flatStyle = StyleSheet.flatten(style) as ViewStyle | undefined;
+    const safeStyle: StyleProp<ViewStyle> = flatStyle
+      ? (() => {
+          const next = { ...flatStyle };
+          if (next.flex === 1) delete next.flex;
+          if (next.flexGrow === 1) delete next.flexGrow;
+          return next;
+        })()
+      : style;
+
     return (
       <BottomSheetScrollContext.Provider value={api}>
         <ScrollView
@@ -120,6 +137,7 @@ export const BottomSheetScrollView = forwardRef<ScrollView, Props>(
             trackScroll(event);
             onScroll?.(event);
           }}
+          style={safeStyle}
           contentContainerStyle={
             [
               contentContainerStyle,
