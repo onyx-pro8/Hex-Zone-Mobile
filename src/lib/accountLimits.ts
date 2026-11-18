@@ -99,8 +99,9 @@ export function getSecondaryZoneLimit(type: NormalizedAccountType): number {
 /**
  * Invited Individual (invited by Family/Organization account holder):
  * secondary zones follow the member workflow (typically up to 2).
- * Solo Individual (self sign-up or system-admin invite): also up to 2 secondaries
- * after selecting a Communal ID primary.
+ * Solo Individual (self sign-up or system-admin invite): also up to 2 secondaries.
+ * Optional Communal ID at signup may add a calculated primary; without it there
+ * is no primary.
  */
 export const INVITED_MEMBER_SECONDARY_ZONE_LIMIT = 2;
 

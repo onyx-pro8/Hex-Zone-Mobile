@@ -200,10 +200,11 @@ export default function JoinScreen() {
     if (
       current === 5 &&
       isNewNetworkAdmin &&
-      (!communalId.trim() || !communalValidated)
+      communalId.trim() &&
+      !communalValidated
     ) {
       toast.error(
-        "Select and validate a Communal ID. Its zones become your primary zone.",
+        "Validate your Communal ID, or clear it to continue without a primary zone.",
       );
       return false;
     }
@@ -236,7 +237,9 @@ export default function JoinScreen() {
         ...(isNewNetworkAdmin
           ? {
               zone_id: zoneId.trim(),
-              communal_id: communalId.trim().toUpperCase(),
+              ...(communalId.trim() && communalValidated
+                ? { communal_id: communalId.trim().toUpperCase() }
+                : {}),
             }
           : {}),
       });
@@ -573,7 +576,7 @@ export default function JoinScreen() {
                     {isFamilyMemberInvite
                       ? "Joins the family account · Home address is shared with the administrator"
                       : isNewNetworkAdmin
-                        ? "Communal ID primary · Up to 2 secondary zones · No member invites · No smart-home hubs"
+                        ? "Optional Communal ID primary · Up to 2 secondary zones · No member invites · No smart-home hubs"
                         : "Up to 2 secondary zones · No member invites · No smart-home hubs"}
                   </Text>
                   {preview?.zone_id && !isNewNetworkAdmin ? (
