@@ -61,7 +61,7 @@ export function getDeviceLimit(
   type: NormalizedAccountType,
   tierLevel?: number | string | null,
 ): number {
-  if (type === "PRIVATE") return 1;
+  if (type === "PRIVATE") return Number.POSITIVE_INFINITY; // System admin: unlimited
   if (type === "PRIVATE_PLUS") return 10;
   if (type === "EXCLUSIVE") return 0; // Individual: smart-home disabled
   if (type === "ENHANCED") return 1;
@@ -231,7 +231,7 @@ export function canEditOwnAccountType(params: {
 export function deviceLimitDescription(type: NormalizedAccountType): string {
   switch (type) {
     case "PRIVATE":
-      return "Private accounts allow 1 smart-home hub. Phones and browsers register separately as login sessions and do not use that slot.";
+      return "Private (system admin) accounts have unlimited smart-home hubs. Phones and browsers register separately as login sessions.";
     case "PRIVATE_PLUS":
       return "Private+ accounts allow 10 smart-home hubs. Phones and browsers are separate login sessions; only one phone or browser session can be active at a time.";
     case "EXCLUSIVE":
