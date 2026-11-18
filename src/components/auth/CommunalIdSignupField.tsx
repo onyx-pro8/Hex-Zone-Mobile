@@ -23,8 +23,9 @@ type Props = {
 };
 
 /**
- * Communal ID picker for Individual signup (self-register or system-admin QR).
+ * Optional Communal ID picker for Individual signup (self-register or system-admin QR).
  * Lists public IDs that already have zones; also allows typing + Validate.
+ * Leaving blank creates the account with no primary (secondary zones only).
  */
 export function CommunalIdSignupField({ value, onChange, onValidated }: Props) {
   const [rows, setRows] = useState<CommunalIdRow[]>([]);
@@ -126,11 +127,12 @@ export function CommunalIdSignupField({ value, onChange, onValidated }: Props) {
           textTransform: "uppercase",
         }}
       >
-        Communal ID (required)
+        Communal ID (optional)
       </Text>
       <Text style={{ color: colors.textDim, fontSize: 12, lineHeight: 17 }}>
-        Select a public Communal ID. Its zones are calculated into your single
-        primary zone. You can then create up to 2 secondary zones.
+        Optionally select a public Communal ID — its zones become your primary.
+        Skip to create with no primary; you can still create up to 2 secondary
+        zones.
       </Text>
 
       <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
@@ -224,8 +226,8 @@ export function CommunalIdSignupField({ value, onChange, onValidated }: Props) {
         <ActivityIndicator color={colors.accent} />
       ) : filtered.length === 0 ? (
         <Text style={{ color: colors.textDim, fontSize: 12 }}>
-          No public Communal IDs with zones yet. Ask a network admin to create
-          one, or type an ID and Validate.
+          No public Communal IDs with zones yet. You can skip this and create
+          secondary zones only, or type an ID and Validate.
         </Text>
       ) : (
         <ScrollView

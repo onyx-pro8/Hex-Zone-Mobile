@@ -96,6 +96,7 @@ export async function resolveAvatarDisplayUri(
       ? `${absolute}${absolute.includes("?") ? "&" : "?"}v=${Date.now()}`
       : absolute;
     const response = await fetch(fetchUrl, {
+      cache: "no-store",
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
     if (!response.ok) return null;

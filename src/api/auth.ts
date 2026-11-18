@@ -53,7 +53,7 @@ export type RegisterPayload = {
   /** Administrator email when several administrators share the Network ID. */
   administratorEmail?: string;
   zoneId?: string;
-  /** Required for Individual (EXCLUSIVE) signup — public Communal ID. */
+  /** Optional for Individual (EXCLUSIVE) signup — public Communal ID primary. */
   communalId?: string;
   phone?: string;
   address?: string;

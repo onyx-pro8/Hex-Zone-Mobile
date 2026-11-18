@@ -139,9 +139,10 @@ export default function SignupScreen() {
       toast.error("Name, email and password are required.");
       return;
     }
-    if (!communalId.trim() || !communalValidated) {
+    const communal = communalId.trim().toUpperCase();
+    if (communal && !communalValidated) {
       toast.error(
-        "Select and validate a Communal ID. Its zones become your primary zone.",
+        "Validate your Communal ID, or clear it to continue without a primary zone.",
       );
       return;
     }
@@ -156,7 +157,7 @@ export default function SignupScreen() {
         registrationType: "USER",
         address,
         phone: phone.trim() || undefined,
-        communalId: communalId.trim().toUpperCase(),
+        ...(communal ? { communalId: communal } : {}),
       });
       router.replace("/(auth)/login");
     } catch (err) {
@@ -193,7 +194,7 @@ export default function SignupScreen() {
           ? "Optional phone and your home address."
           : step === 4
             ? "Free Individual account. Upgrade later in User settings."
-            : "Pick a public Communal ID for your primary zone.";
+            : "Optional Communal ID for a primary zone — or skip for secondary only.";
 
   const footerPad =
     Platform.OS === "android" && keyboardInset > 0
@@ -400,8 +401,8 @@ export default function SignupScreen() {
                       marginTop: 4,
                     }}
                   >
-                    Role stays User. Select a Communal ID next for your primary
-                    zone, then create up to 2 secondary zones.
+                    Role stays User. Optionally pick a Communal ID next for a
+                    primary zone, or skip and create up to 2 secondary zones.
                   </Text>
                 </View>
               ) : null}

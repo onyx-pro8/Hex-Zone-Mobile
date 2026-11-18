@@ -396,9 +396,15 @@ export function SubscriptionSection() {
             {overview.subscription.billing_interval
               ? ` · ${overview.subscription.billing_interval}`
               : ""}
-            {overview.year_month ? ` · ${overview.year_month}` : ""}
+            {overview.plan.plan_key !== "private" && overview.year_month
+              ? ` · ${overview.year_month}`
+              : ""}
           </Text>
-          {!overview.can_manage_billing ? (
+          {overview.plan.plan_key === "private" ? (
+            <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4 }}>
+              System administrator — full access, no subscription or billing.
+            </Text>
+          ) : !overview.can_manage_billing ? (
             <Text style={{ color: colors.textDim, fontSize: 12, marginTop: 4 }}>
               Plan is managed by the account holder. Limits below are shared
               across the whole network.
@@ -421,7 +427,17 @@ export function SubscriptionSection() {
           ))}
         </View>
 
-        {overview.can_manage_billing ? (
+        {overview.plan.plan_key === "private" ? (
+          <View style={{ gap: 10, marginTop: 4 }}>
+            <Button
+              label="Refresh usage"
+              variant="ghost"
+              onPress={() => void load()}
+              disabled={busy}
+              fullWidth
+            />
+          </View>
+        ) : overview.can_manage_billing ? (
           <View style={{ gap: 10, marginTop: 4 }}>
             <Button
               label={

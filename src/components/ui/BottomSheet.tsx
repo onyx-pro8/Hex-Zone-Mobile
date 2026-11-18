@@ -48,6 +48,10 @@ function resolveMaxHeight(
  * capped so it stays on screen — otherwise focused inputs sit behind the
  * keyboard (iOS Modal does not honor adjustResize). A minimum backdrop is
  * always reserved so the sheet + keyboard cannot trap the UI full-screen.
+ *
+ * Layout note: when the keyboard is closed the sheet only has `maxHeight`
+ * (no fixed height). Children with `flex: 1` collapse to 0 — use content
+ * sizing or an explicit `maxHeight` on nested ScrollViews instead.
  */
 export function BottomSheet({
   visible,

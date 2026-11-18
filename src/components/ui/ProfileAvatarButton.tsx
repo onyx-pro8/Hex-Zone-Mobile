@@ -72,13 +72,19 @@ export function ProfileAvatarButton({
           borderRadius: size / 2,
           borderColor,
           marginLeft: inset ? 12 : 0,
+          backgroundColor: hasImage ? "transparent" : "#C8DFFF",
         },
       ]}
     >
       {hasImage ? (
         <Image
           source={{ uri: displayUri!.trim() }}
-          style={{ width: size, height: size, borderRadius: size / 2 }}
+          style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: "transparent",
+          }}
           onError={() => setImageFailed(true)}
         />
       ) : (
@@ -115,7 +121,6 @@ export function ProfileAvatarButton({
 
 const styles = StyleSheet.create({
   circle: {
-    backgroundColor: "#C8DFFF",
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
