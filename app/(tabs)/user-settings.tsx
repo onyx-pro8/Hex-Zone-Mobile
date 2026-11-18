@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -37,7 +38,6 @@ import {
 import {
   absolutizeAvatarUrl,
   invalidateAvatarDisplayCache,
-  primeAvatarDisplayCache,
 } from "@/lib/resolveAvatarUri";
 import { colors } from "@/theme/colors";
 import { normalizeUsername, validateUsernameFormat } from "@/lib/username";
@@ -151,6 +151,7 @@ export default function UserSettingsScreen() {
   const [draft, setDraft] = useState<AppSettings>(settings);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
@@ -165,6 +166,32 @@ export default function UserSettingsScreen() {
   const [hostedAvatarLabel, setHostedAvatarLabel] = useState<string | null>(
     null,
   );
+
+  const loadRemoteSettings = useCallback(async () => {
+    const res = await getRemoteAppSettings();
+    if (res.data) {
+      const merged = await updateAppSettings(res.data as Partial<AppSettings>);
+      setDraft(merged);
+      return;
+    }
+    if (res.error) {
+      toast.error(res.error);
+    }
+  }, []);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    keepLocalAvatarPreview.current = false;
+    if (user?.id) {
+      invalidateAvatarDisplayCache(`/owners/${user.id}/avatar`);
+    }
+    try {
+      await refreshUser();
+      await loadRemoteSettings();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadRemoteSettings, refreshUser, user?.id]);
 
   useEffect(() => {
     setName((user?.name ?? "").trim());
@@ -234,20 +261,13 @@ export default function UserSettingsScreen() {
   useEffect(() => {
     let mounted = true;
     void (async () => {
-      const res = await getRemoteAppSettings();
-      if (!mounted) return;
-      if (res.data) {
-        const merged = await updateAppSettings(res.data as Partial<AppSettings>);
-        if (mounted) setDraft(merged);
-      } else if (res.error) {
-        toast.error(res.error);
-      }
+      await loadRemoteSettings();
       if (mounted) setLoading(false);
     })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadRemoteSettings]);
 
   const accountName = name.trim() || (user?.name ?? "").trim();
   const roleLabel = String(user?.role ?? "").toLowerCase() === "administrator"
@@ -261,15 +281,33 @@ export default function UserSettingsScreen() {
     return `${planName} · ${roleLabel}. Account type is set by your subscription; it is not edited here.`;
   }, [accountType, roleLabel]);
 
-  const clearAvatar = () => {
-    keepLocalAvatarPreview.current = false;
+  const clearAvatar = async () => {
+    if (!user?.id) {
+      toast.error("Not signed in.");
+      return;
+    }
+    keepLocalAvatarPreview.current = true;
     setAvatarUrl(null);
     setHostedAvatarLabel(null);
     setUserAvatar(null);
-    if (user?.id) {
-      invalidateAvatarDisplayCache(`/owners/${user.id}/avatar`);
-    }
     setProfileSaved(false);
+    setUploadingAvatar(true);
+    invalidateAvatarDisplayCache(`/owners/${user.id}/avatar`);
+
+    const res = await updateOwnerProfile(user.id, { avatar_url: "" });
+    setUploadingAvatar(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+
+    keepLocalAvatarPreview.current = false;
+    invalidateAvatarDisplayCache(`/owners/${user.id}/avatar`);
+    await refreshUser();
+    setUserAvatar(null);
+    setAvatarUrl(null);
+    setHostedAvatarLabel(null);
+    toast.success("Avatar removed.");
   };
 
   const onImageSelected = async (dataUrl: string) => {
@@ -296,11 +334,13 @@ export default function UserSettingsScreen() {
         : remote;
 
     setHostedAvatarLabel(remote);
-    setAvatarUrl(dataUrl);
-    // Seed cache before refresh so swapping to the thin URL stays instant.
-    primeAvatarDisplayCache(thinPath, dataUrl);
+    // Prefer the processed server image (black bg → transparent PNG).
+    keepLocalAvatarPreview.current = false;
+    invalidateAvatarDisplayCache(thinPath);
+    setAvatarUrl(thinPath);
+    setUserAvatar(thinPath);
     await refreshUser();
-    primeAvatarDisplayCache(thinPath, dataUrl);
+    invalidateAvatarDisplayCache(thinPath);
   };
 
   const onSaveProfile = async () => {
@@ -341,12 +381,7 @@ export default function UserSettingsScreen() {
     await refreshUser();
     keepLocalAvatarPreview.current = false;
     if (user?.id) {
-      const thinPath = absolutizeAvatarUrl(`/owners/${user.id}/avatar`);
-      if (avatarUrl?.startsWith("data:")) {
-        primeAvatarDisplayCache(thinPath, avatarUrl);
-      } else {
-        invalidateAvatarDisplayCache(thinPath);
-      }
+      invalidateAvatarDisplayCache(`/owners/${user.id}/avatar`);
     }
     setProfileSaved(true);
     setSavingProfile(false);
@@ -377,6 +412,13 @@ export default function UserSettingsScreen() {
           contentContainerStyle={{ paddingBottom: 110 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => void onRefresh()}
+              tintColor={colors.accent}
+            />
+          }
         >
           <ScreenHeader
             title="User settings"
@@ -427,7 +469,7 @@ export default function UserSettingsScreen() {
                       label="Remove"
                       variant="ghost"
                       size="sm"
-                      onPress={clearAvatar}
+                      onPress={() => void clearAvatar()}
                       disabled={uploadingAvatar}
                     />
                   ) : null}
