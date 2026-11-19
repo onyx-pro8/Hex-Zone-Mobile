@@ -1,41 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
-  Modal,
-  Pressable,
   RefreshControl,
+  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AlertTriangle, MapPin, UserCircle2, X } from "lucide-react-native";
+import { AlertTriangle, MapPin, UserCircle2 } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
-import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/context/AuthContext";
 import {
   getMembers,
   listNetworkAdmins,
-  setMemberAccountType,
   setMemberActive,
-  setMemberRole,
   type Member,
 } from "@/api/members";
 import {
   accountTypeLabel,
-  ADMIN_ASSIGNABLE_ACCOUNT_TYPES,
   formatLimit,
   getMemberLimit,
   isSystemAdministrator,
   normalizeAccountType,
-  toApiAccountType,
-  type NormalizedAccountType,
 } from "@/lib/accountLimits";
 import { useResolvedAvatarUri } from "@/lib/resolveAvatarUri";
 import { initialsForUser } from "@/components/ui/ProfileAvatarButton";
@@ -120,12 +112,14 @@ function MemberRow({
   member,
   isSelf,
   sameZone,
-  onPress,
+  onActiveChange,
+  activeBusy,
 }: {
   member: Member;
   isSelf: boolean;
   sameZone: boolean;
-  onPress?: () => void;
+  onActiveChange?: (next: boolean) => void;
+  activeBusy?: boolean;
 }) {
   const isActive = member.active !== false;
   const memberAccountType = normalizeAccountType(member.account_type);
@@ -136,7 +130,7 @@ function MemberRow({
     ? `${accountTypeLabel(memberAccountType)} (System Admin)`
     : accountTypeLabel(memberAccountType);
 
-  const content = (
+  return (
     <Card
       style={{
         marginBottom: 10,
@@ -145,12 +139,12 @@ function MemberRow({
         opacity: isActive ? 1 : 0.78,
       }}
     >
-      <View style={{ flexDirection: "row", gap: 14 }}>
+      <View style={{ flexDirection: "row", gap: 14, alignItems: "center" }}>
         <MemberAvatar member={member} />
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text
-              style={{ color: colors.text, fontSize: 16, fontWeight: "700" }}
+              style={{ color: colors.text, fontSize: 16, fontWeight: "700", flex: 1 }}
               numberOfLines={1}
             >
               {member.name}
@@ -184,6 +178,20 @@ function MemberRow({
             </View>
           ) : null}
         </View>
+        {onActiveChange ? (
+          <Switch
+            value={isActive}
+            disabled={activeBusy}
+            onValueChange={onActiveChange}
+            trackColor={{ false: "#CBD5E1", true: colors.accent }}
+            thumbColor="#ffffff"
+            accessibilityLabel={
+              isActive
+                ? `${member.name} can sign in`
+                : `${member.name} cannot sign in`
+            }
+          />
+        ) : null}
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -203,321 +211,8 @@ function MemberRow({
       </View>
     </Card>
   );
-
-  if (!onPress) return content;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-    >
-      {content}
-    </Pressable>
-  );
 }
 
-function ManageMemberModal({
-  member,
-  visible,
-  busy,
-  onClose,
-  onSave,
-}: {
-  member: Member | null;
-  visible: boolean;
-  busy: boolean;
-  onClose: () => void;
-  onSave: (next: {
-    accountType: NormalizedAccountType;
-    role: "administrator" | "user";
-    active: boolean;
-  }) => void;
-}) {
-  const [accountType, setAccountType] = useState<NormalizedAccountType>("EXCLUSIVE");
-  const [role, setRole] = useState<"administrator" | "user">("user");
-  const [active, setActive] = useState(true);
-
-  useEffect(() => {
-    if (!member) return;
-    const nextType = normalizeAccountType(member.account_type);
-    setAccountType(nextType);
-    setRole(
-      nextType === "ENHANCED" ||
-        String(member.role ?? "").toLowerCase() === "administrator"
-        ? "administrator"
-        : "user",
-    );
-    setActive(member.active !== false);
-  }, [member]);
-
-  if (!member) return null;
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(15, 44, 92, 0.35)",
-          justifyContent: "center",
-          paddingHorizontal: 24,
-        }}
-      >
-        <Pressable
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            bottom: 0,
-            left: 0,
-          }}
-          onPress={busy ? undefined : onClose}
-        />
-        <View
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 16,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: 16,
-            gap: 12,
-            maxWidth: 400,
-            width: "100%",
-            alignSelf: "center",
-            shadowColor: "#0F2C5C",
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.18,
-            shadowRadius: 16,
-            elevation: 10,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Text style={{ color: colors.text, fontSize: 16, fontWeight: "800" }}>
-              Manage member
-            </Text>
-            <Pressable onPress={onClose} hitSlop={8} disabled={busy}>
-              <X size={20} color={colors.accent} />
-            </Pressable>
-          </View>
-
-          <View>
-            <Text
-              style={{ color: colors.text, fontSize: 14, fontWeight: "700" }}
-              numberOfLines={1}
-            >
-              {member.name}
-            </Text>
-            {member.username ? (
-              <Text
-                style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}
-                numberOfLines={1}
-              >
-                @{member.username}
-              </Text>
-            ) : null}
-          </View>
-
-          <View style={{ gap: 6 }}>
-            <Text
-              style={{
-                color: colors.textMuted,
-                fontSize: 10,
-                fontWeight: "700",
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-              }}
-            >
-              Role
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              {(accountType === "ENHANCED"
-                ? ([{ value: "administrator" as const, label: "Administrator" }] as const)
-                : ([
-                    { value: "administrator" as const, label: "Administrator" },
-                    { value: "user" as const, label: "User" },
-                  ] as const)
-              ).map((option) => {
-                const selected = role === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    disabled={busy}
-                    onPress={() => setRole(option.value)}
-                    style={{
-                      flex: 1,
-                      borderRadius: 10,
-                      paddingHorizontal: 10,
-                      paddingVertical: 7,
-                      backgroundColor: selected
-                        ? colors.accent
-                        : colors.bgSurface,
-                      borderWidth: 1,
-                      borderColor: selected ? colors.accent : colors.border,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: selected ? "#fff" : colors.text,
-                        fontWeight: "700",
-                        fontSize: 12,
-                        textAlign: "center",
-                      }}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={{ gap: 6 }}>
-            <Text
-              style={{
-                color: colors.textMuted,
-                fontSize: 10,
-                fontWeight: "700",
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-              }}
-            >
-              Account type
-            </Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {ADMIN_ASSIGNABLE_ACCOUNT_TYPES.map((option) => {
-                const selected = accountType === option.value;
-                return (
-                  <Pressable
-                    key={option.value}
-                    disabled={busy}
-                    onPress={() => {
-                      setAccountType(option.value);
-                      if (option.value === "ENHANCED") setRole("administrator");
-                    }}
-                    style={{
-                      borderRadius: 10,
-                      paddingHorizontal: 10,
-                      paddingVertical: 7,
-                      backgroundColor: selected
-                        ? colors.accent
-                        : colors.bgSurface,
-                      borderWidth: 1,
-                      borderColor: selected ? colors.accent : colors.border,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: selected ? "#fff" : colors.text,
-                        fontWeight: "700",
-                        fontSize: 12,
-                      }}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={{ gap: 6 }}>
-            <Text
-              style={{
-                color: colors.textMuted,
-                fontSize: 10,
-                fontWeight: "700",
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-              }}
-            >
-              Active status
-            </Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
-              <Pressable
-                disabled={busy}
-                onPress={() => setActive(true)}
-                style={{
-                  flex: 1,
-                  borderRadius: 10,
-                  paddingVertical: 9,
-                  alignItems: "center",
-                  backgroundColor: active ? colors.accent : colors.bgSurface,
-                  borderWidth: 1,
-                  borderColor: active ? colors.accent : colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: active ? "#fff" : colors.text,
-                    fontWeight: "700",
-                    fontSize: 13,
-                  }}
-                >
-                  Active
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={busy}
-                onPress={() => setActive(false)}
-                style={{
-                  flex: 1,
-                  borderRadius: 10,
-                  paddingVertical: 9,
-                  alignItems: "center",
-                  backgroundColor: !active ? colors.danger : colors.bgSurface,
-                  borderWidth: 1,
-                  borderColor: !active ? colors.danger : colors.border,
-                }}
-              >
-                <Text
-                  style={{
-                    color: !active ? "#fff" : colors.text,
-                    fontWeight: "700",
-                    fontSize: 13,
-                  }}
-                >
-                  Inactive
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 2 }}>
-            <View style={{ flex: 1 }}>
-              <Button
-                label="Cancel"
-                variant="ghost"
-                size="sm"
-                onPress={onClose}
-                disabled={busy}
-                fullWidth
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Button
-                label={busy ? "Saving…" : "Save"}
-                size="sm"
-                onPress={() => onSave({ accountType, role, active })}
-                disabled={busy}
-                fullWidth
-              />
-            </View>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 function applyLivePresence(rows: Member[]): Member[] {
   const live = memberPresenceSnapshot();
@@ -546,7 +241,6 @@ export default function MembersScreen() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<Filter>("same-zone");
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [managing, setManaging] = useState<Member | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -629,121 +323,28 @@ export default function MembersScreen() {
     }
   }, [isSystemAdmin, filter]);
 
-  const onSaveManagedMember = useCallback(
-    async (next: {
-      accountType: NormalizedAccountType;
-      role: "administrator" | "user";
-      active: boolean;
-    }) => {
-      if (!managing) return;
-      const member = managing;
-      const apiType = toApiAccountType(next.accountType);
-      const prevType = String(member.account_type ?? "");
-      const prevRole =
-        String(member.role ?? "").toLowerCase() === "administrator"
-          ? ("administrator" as const)
-          : ("user" as const);
-      const prevActive = member.active !== false;
-
-      setPendingId(member.id);
-      setMembers((prev) =>
-        prev.map((row) =>
-          row.id === member.id
-            ? {
-                ...row,
-                account_type: apiType,
-                role: next.role,
-                active: next.active,
-              }
-            : row,
-        ),
-      );
-
-      const typeChanged =
-        normalizeAccountType(member.account_type) !== next.accountType;
-      const roleChanged = prevRole !== next.role;
-      const activeChanged = prevActive !== next.active;
-
-      if (roleChanged) {
-        const roleRes = await setMemberRole(member.id, next.role);
-        if (roleRes.error) {
-          setPendingId(null);
-          setMembers((prev) =>
-            prev.map((row) =>
-              row.id === member.id
-                ? {
-                    ...row,
-                    account_type: prevType,
-                    role: prevRole,
-                    active: prevActive,
-                  }
-                : row,
-            ),
-          );
-          toast.error(roleRes.error, { title: "Could not update role" });
-          return;
-        }
-      }
-
-      if (typeChanged) {
-        const typeRes = await setMemberAccountType(member.id, apiType);
-        if (typeRes.error) {
-          setPendingId(null);
-          setMembers((prev) =>
-            prev.map((row) =>
-              row.id === member.id
-                ? {
-                    ...row,
-                    account_type: prevType,
-                    role: roleChanged ? next.role : prevRole,
-                    active: prevActive,
-                  }
-                : row,
-            ),
-          );
-          toast.error(typeRes.error, { title: "Could not update account type" });
-          return;
-        }
-      }
-
-      if (activeChanged) {
-        const activeRes = await setMemberActive(member.id, next.active);
-        if (activeRes.error) {
-          setPendingId(null);
-          setMembers((prev) =>
-            prev.map((row) =>
-              row.id === member.id
-                ? {
-                    ...row,
-                    account_type: typeChanged ? apiType : prevType,
-                    role: roleChanged ? next.role : prevRole,
-                    active: prevActive,
-                  }
-                : row,
-            ),
-          );
-          toast.error(
-            /admin|403|forbidden/i.test(activeRes.error)
-              ? "Only administrators can change active status."
-              : activeRes.error,
-            { title: "Could not update active status" },
-          );
-          return;
-        }
-      }
-
-      setPendingId(null);
-      setManaging(null);
-      toast.success("Member updated.");
-      devLog("Members: managed member updated", {
-        memberId: member.id,
-        accountType: apiType,
-        role: next.role,
-        active: next.active,
-      });
-    },
-    [managing],
-  );
+  const toggleMemberActive = useCallback(async (member: Member, next: boolean) => {
+    const previous = member.active !== false;
+    if (next === previous || pendingId) return;
+    setPendingId(member.id);
+    const apply = (rows: Member[]) =>
+      rows.map((row) => (row.id === member.id ? { ...row, active: next } : row));
+    setMembers(apply);
+    setNetworkAdmins(apply);
+    const result = await setMemberActive(member.id, next);
+    setPendingId(null);
+    if (result.error) {
+      const revert = (rows: Member[]) =>
+        rows.map((row) =>
+          row.id === member.id ? { ...row, active: previous } : row,
+        );
+      setMembers(revert);
+      setNetworkAdmins(revert);
+      toast.error(result.error);
+      return;
+    }
+    toast.success(next ? `${member.name} can sign in.` : `${member.name} cannot sign in.`);
+  }, [pendingId]);
 
   const sameZoneMembers = useMemo(() => {
     if (!myZoneId) return members;
@@ -806,8 +407,8 @@ export default function MembersScreen() {
                 ? ` · up to ${memberLimit} member${memberLimit === 1 ? "" : "s"} per account`
                 : " · unlimited members"}
               .
-              {isSystemAdmin
-                ? " Open All members and tap a user to change their role, account type, or active status. Inactive users cannot sign in."
+              {String(user?.role ?? "").toLowerCase() === "administrator"
+                ? " Use the switch on a member to allow or block sign-in. Role and account type cannot be changed here."
                 : ""}
             </Text>
           </Card>
@@ -864,50 +465,21 @@ export default function MembersScreen() {
             renderItem={({ item }) => {
               const sameZone = sameNetwork(item.zone_id, myZoneId);
               const isSelf = myId !== "" && item.id === myId;
-              const canOpenManage =
-                isSystemAdmin && filter === "all" && !isSelf;
-              const confirmAccess = () => {
-                const restore = item.active === false;
-                Alert.alert(
-                  restore ? "Restore network admin" : "Suspend network admin",
-                  restore
-                    ? "They can sign in again."
-                    : "They will be signed out and cannot sign in until you restore them.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    {
-                      text: restore ? "Restore" : "Suspend",
-                      style: restore ? "default" : "destructive",
-                      onPress: () => {
-                        void setMemberActive(item.id, restore).then((result) => {
-                          if (result.error) {
-                            toast.error(result.error);
-                            return;
-                          }
-                          setNetworkAdmins((prev) =>
-                            prev.map((row) =>
-                              row.id === item.id
-                                ? { ...row, active: restore }
-                                : row,
-                            ),
-                          );
-                        });
-                      },
-                    },
-                  ],
-                );
-              };
+              const canToggle =
+                String(user?.role ?? "").toLowerCase() === "administrator" &&
+                !isSelf;
               return (
                 <MemberRow
                   member={item}
                   isSelf={isSelf}
                   sameZone={sameZone}
-                  onPress={
-                    filter === "admins" && !isSelf
-                      ? confirmAccess
-                      : canOpenManage
-                        ? () => setManaging(item)
-                        : undefined
+                  activeBusy={pendingId === item.id}
+                  onActiveChange={
+                    canToggle
+                      ? (next) => {
+                          void toggleMemberActive(item, next);
+                        }
+                      : undefined
                   }
                 />
               );
@@ -936,17 +508,6 @@ export default function MembersScreen() {
             }
           />
         )}
-
-        <ManageMemberModal
-          member={managing}
-          visible={managing != null}
-          busy={pendingId != null}
-          onClose={() => {
-            if (pendingId) return;
-            setManaging(null);
-          }}
-          onSave={(next) => void onSaveManagedMember(next)}
-        />
       </SafeAreaView>
     </GradientBackground>
   );

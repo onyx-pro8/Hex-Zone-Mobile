@@ -31,7 +31,7 @@ import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
 import { type Message } from "@/api/messages";
 import { getMembers } from "@/api/members";
-import { useMemberPresence } from "@/hooks/useMemberPresence";
+import { resolveSenderOnline, useMemberPresence } from "@/hooks/useMemberPresence";
 import { isRunningExpoGo } from "@/lib/pushSupport";
 import {
   getMessageTypeCategory,
@@ -56,6 +56,18 @@ import { colors } from "@/theme/colors";
 type OwnerNameMap = Record<number, string>;
 type OwnerAvatarMap = Record<number, string>;
 
+function privateCounterpartId(
+  item: Message,
+  selfOwnerId: number | null,
+): number | null {
+  if (item.type !== "PRIVATE" || selfOwnerId == null) return null;
+  if (item.sender_id != null && item.sender_id !== selfOwnerId) return item.sender_id;
+  if (item.receiver_id != null && item.receiver_id !== selfOwnerId) {
+    return item.receiver_id;
+  }
+  return null;
+}
+
 function MessageRow({
   item,
   selfOwnerId,
@@ -72,6 +84,7 @@ function MessageRow({
   cluster = "single",
   clusterMinWidth,
   onBubbleWidth,
+  nextItem = null,
 }: {
   item: Message;
   selfOwnerId: number | null;
@@ -88,6 +101,7 @@ function MessageRow({
   cluster?: InboxBubbleCluster;
   clusterMinWidth?: number;
   onBubbleWidth?: (width: number) => void;
+  nextItem?: Message | null;
 }) {
   const router = useRouter();
 
@@ -119,14 +133,12 @@ function MessageRow({
         ? ownerAvatars[senderId] ?? thinAvatar
         : null;
 
-  const privateCounterpartId =
-    item.type === "PRIVATE" && selfOwnerId != null
-      ? item.sender_id != null && item.sender_id !== selfOwnerId
-        ? item.sender_id
-        : item.receiver_id != null && item.receiver_id !== selfOwnerId
-          ? item.receiver_id
-          : null
-      : null;
+  const counterpartId = privateCounterpartId(item, selfOwnerId);
+  const nextCounterpartId = nextItem
+    ? privateCounterpartId(nextItem, selfOwnerId)
+    : null;
+  const showPrivateThread =
+    counterpartId != null && counterpartId !== nextCounterpartId;
 
   return (
     <InboxMessageCard
@@ -153,13 +165,13 @@ function MessageRow({
               senderId={item.sender_id ?? null}
             />
           ) : null}
-          {privateCounterpartId != null ? (
+          {showPrivateThread ? (
             <Pressable
               onPress={() =>
                 router.push({
                   pathname: "/(tabs)/private-thread",
                   params: {
-                    otherOwnerId: String(privateCounterpartId),
+                    otherOwnerId: String(counterpartId),
                     selfOwnerId: String(selfOwnerId ?? ""),
                   },
                 } as unknown as Href)
@@ -193,7 +205,7 @@ function MessageRow({
 
 export default function MessagesScreen() {
   const { user } = useAuth();
-  const { isOnline, isGuestOnline, seedGuestPresence } = useMemberPresence();
+  const { presence, isGuestOnline, seedGuestPresence } = useMemberPresence();
   const router = useRouter();
   const searchParams = useLocalSearchParams<{
     type?: string;
@@ -397,9 +409,11 @@ export default function MessagesScreen() {
                 senderOnline={
                   guestInboxPresenceId(item)
                     ? isGuestInboxSenderOnline(item, isGuestOnline)
-                    : typeof item.sender_id === "number" && item.sender_id > 0
-                      ? isOnline(item.sender_id)
-                      : false
+                    : resolveSenderOnline(
+                        presence,
+                        item.sender_id,
+                        item.sender_online,
+                      )
                 }
                 zoneNames={zoneNames}
                 highlighted={highlightMessageId === item.id}
@@ -413,6 +427,7 @@ export default function MessagesScreen() {
                     ? undefined
                     : (width) => reportClusterWidth(clusterId, width)
                 }
+                nextItem={next}
               />
               );
             }}

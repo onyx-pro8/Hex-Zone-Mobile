@@ -39,7 +39,7 @@ import { wellnessResponseTrackingEnabled } from "@/lib/messageWorkflow";
 import { WellnessAckInline } from "@/components/messages/WellnessAckInline";
 import { useZoneNameLookup } from "@/hooks/useZoneNameLookup";
 import { useEnsureFilteredInboxRows } from "@/hooks/useEnsureFilteredInboxRows";
-import { useMemberPresence } from "@/hooks/useMemberPresence";
+import { resolveSenderOnline, useMemberPresence } from "@/hooks/useMemberPresence";
 import { useFloatingTabBarInset } from "@/components/navigation/FloatingTabBar";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { colors } from "@/theme/colors";
@@ -51,7 +51,7 @@ export default function AlertsScreen() {
   const router = useRouter();
   const tabBarInset = useFloatingTabBarInset();
   const { user } = useAuth();
-  const { isOnline, isGuestOnline } = useMemberPresence();
+  const { presence, isGuestOnline } = useMemberPresence();
   const selfRealName =
     (user?.name ?? "").trim() ||
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
@@ -300,9 +300,11 @@ export default function AlertsScreen() {
                   online={
                     guestInboxPresenceId(item)
                       ? isGuestInboxSenderOnline(item, isGuestOnline)
-                      : senderId != null
-                        ? isOnline(senderId)
-                        : false
+                      : resolveSenderOnline(
+                          presence,
+                          senderId,
+                          item.sender_online,
+                        )
                   }
                   selfOwnerId={ownerId}
                   zoneNames={zoneNames}
