@@ -5,12 +5,13 @@ import {
   Bell,
   BookOpen,
   History,
+  KeyRound,
   LogOut,
   MessageSquareText,
   Ruler,
   Smartphone,
 } from "lucide-react-native";
-import { isSystemAdministrator } from "@/lib/accountLimits";
+import { hasSystemAccess, isSystemAdministrator } from "@/lib/accountLimits";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
@@ -21,11 +22,14 @@ import { colors } from "@/theme/colors";
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const isSystemAdmin = isSystemAdministrator({
+  const staffParams = {
     role: user?.role,
     accountType: user?.accountType,
     legacyAccountType: user?.account_type,
-  });
+    platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
+  };
+  const isSystemAdmin = hasSystemAccess(staffParams);
+  const canGrantPermission = isSystemAdministrator(staffParams);
 
   const onLogout = () => {
     Alert.alert("Sign out", "Are you sure you want to log out?", [
@@ -76,6 +80,14 @@ export default function SettingsScreen() {
               subtitle="Guest access permission messages"
               onPress={() => router.push("/(tabs)/access-history")}
             />
+            {canGrantPermission ? (
+              <SettingsNavRow
+                icon={<KeyRound size={18} color={colors.accent} />}
+                title="Permission"
+                subtitle="Give Technical Support access"
+                onPress={() => router.push("/(tabs)/give-permission")}
+              />
+            ) : null}
             {isSystemAdmin ? (
               <SettingsNavRow
                 icon={<Ruler size={18} color={colors.accent} />}

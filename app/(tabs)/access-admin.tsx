@@ -50,7 +50,7 @@ import { useEffectiveZoneId } from "@/hooks/useEffectiveZoneId";
 import { devLog } from "@/lib/devConsole";
 import {
   canAdministratorInviteUserMember,
-  isSystemAdministrator,
+  hasSystemAccess,
   memberInviteUnavailableHint,
   normalizeAccountType,
 } from "@/lib/accountLimits";
@@ -1295,10 +1295,11 @@ export default function AccessScreen() {
 
   const isSystemAdmin = useMemo(
     () =>
-      isSystemAdministrator({
+      hasSystemAccess({
         role: user?.role,
         accountType: user?.accountType,
         legacyAccountType: user?.account_type,
+        platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
       }),
     [user],
   );

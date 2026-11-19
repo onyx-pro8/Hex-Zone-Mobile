@@ -126,32 +126,68 @@ export function canAdministratorInviteUserMember(params: {
   );
 }
 
-/** System administrator (Private tier) may edit the network ID in Settings. */
+export function isTechnicalSupport(params: {
+  platformStaffRole?: string | null;
+  platform_staff_role?: string | null;
+}): boolean {
+  const key = String(params.platformStaffRole ?? params.platform_staff_role ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_")
+    .replace(/\s+/g, "_");
+  return key === "technical_support" || key === "technicalsupport" || key === "tech_support";
+}
+
+/** System administrator (Private tier). Technical Support is not included. */
 export function isSystemAdministrator(params: {
   accountType?: string | null;
   legacyAccountType?: string | null;
   role?: string | null;
+  platformStaffRole?: string | null;
+  platform_staff_role?: string | null;
 }): boolean {
+  if (isTechnicalSupport(params)) return false;
   if (String(params.role ?? "").toLowerCase() !== "administrator") return false;
   return normalizeAccountType(params.accountType, params.legacyAccountType) === "PRIVATE";
 }
 
-/** Bulk / multi invite QR generation is system-admin only. Network admins mint one at a time. */
+/** System administrator or Technical Support on a Private account. */
+export function hasSystemAccess(params: {
+  accountType?: string | null;
+  legacyAccountType?: string | null;
+  role?: string | null;
+  platformStaffRole?: string | null;
+  platform_staff_role?: string | null;
+}): boolean {
+  if (
+    isTechnicalSupport(params) &&
+    normalizeAccountType(params.accountType, params.legacyAccountType) === "PRIVATE"
+  ) {
+    return true;
+  }
+  return isSystemAdministrator(params);
+}
+
+/** Bulk / multi invite QR generation is system-access only. Network admins mint one at a time. */
 export function canBulkGenerateMemberInviteQr(params: {
   accountType?: string | null;
   legacyAccountType?: string | null;
   role?: string | null;
+  platformStaffRole?: string | null;
+  platform_staff_role?: string | null;
 }): boolean {
-  return isSystemAdministrator(params);
+  return hasSystemAccess(params);
 }
 
-/** Excel/QR workbook download is system-admin only. */
+/** Excel/QR workbook download is system-access only. */
 export function canDownloadMemberInviteQr(params: {
   accountType?: string | null;
   legacyAccountType?: string | null;
   role?: string | null;
+  platformStaffRole?: string | null;
+  platform_staff_role?: string | null;
 }): boolean {
-  return isSystemAdministrator(params);
+  return hasSystemAccess(params);
 }
 
 /** System administrator (Private tier) may edit the network ID in Settings. */

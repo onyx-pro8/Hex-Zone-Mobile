@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   defaultRealtimeWsBase,
   parseMemberPresenceSocketEvent,
+  parsePresenceSnapshot,
 } from "@/lib/messageSocket";
 
 export type WebSocketStatus = "connecting" | "open" | "closed";
@@ -79,8 +80,17 @@ function emitSnapshot() {
 
 function noteMemberPresence(raw: string) {
   const evt = parseMemberPresenceSocketEvent(raw);
-  if (!evt) return;
-  sharedManager.presence.set(evt.ownerId, evt.online);
+  if (evt) {
+    sharedManager.presence.set(evt.ownerId, evt.online);
+    return;
+  }
+  const onlineIds = parsePresenceSnapshot(raw);
+  if (!onlineIds) return;
+  const online = new Set(onlineIds);
+  for (const id of [...sharedManager.presence.keys()]) {
+    if (!online.has(id)) sharedManager.presence.set(id, false);
+  }
+  for (const id of online) sharedManager.presence.set(id, true);
 }
 
 export function memberPresenceSnapshot(): ReadonlyMap<number, boolean> {

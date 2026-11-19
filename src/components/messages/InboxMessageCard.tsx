@@ -97,6 +97,10 @@ export function messagesFormCluster(
   const bSys = isSystemNoticeType(b.type);
   // System notices never stack with chat bubbles (or each other).
   if (aSys || bSys) return false;
+  // A different message type starts its own group.
+  if (String(a.type ?? "").trim().toUpperCase() !== String(b.type ?? "").trim().toUpperCase()) {
+    return false;
+  }
   if (inboxSenderKey(a) !== inboxSenderKey(b)) return false;
   if (inboxDayKey(a.created_at) !== inboxDayKey(b.created_at)) return false;
   const ta = new Date(a.created_at).getTime();
@@ -532,7 +536,7 @@ export function InboxMessageCard({
       style={[
         {
           // Keep a visible gap between stacked same-sender bubbles.
-          marginBottom: cluster === "end" || cluster === "single" ? 6 : 4,
+          marginBottom: cluster === "end" || cluster === "single" ? 8 : 4,
         },
         style,
       ]}

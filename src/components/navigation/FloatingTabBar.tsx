@@ -42,6 +42,9 @@ export function FloatingTabBar({
   const { user } = useAuth();
   const { openCompose } = useCompose();
 
+  const focusedRoute = state.routes[state.index];
+  if (focusedRoute?.name === "private-thread") return null;
+
   const visibleRoutes = state.routes.filter((route) => {
     const options = descriptors[route.key].options as TabOptionsWithHref;
     if (options.href === null) return false;

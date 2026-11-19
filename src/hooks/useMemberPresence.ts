@@ -9,6 +9,7 @@ import {
 import {
   parseGuestPresenceSocketEvent,
   parseMemberPresenceSocketEvent,
+  parsePresenceSnapshot,
 } from "@/lib/messageSocket";
 
 export type MemberPresenceMap = Record<number, boolean>;
@@ -18,6 +19,17 @@ export type GuestPresenceMap = Record<string, boolean>;
  * Live owner online/offline map seeded from /members and updated by
  * MEMBER_PRESENCE WebSocket frames. Guest senders use GUEST_PRESENCE.
  */
+/** Live socket state wins. Otherwise use the inbox hint for people outside /members. */
+export function resolveSenderOnline(
+  presence: MemberPresenceMap,
+  ownerId: number | null | undefined,
+  hintedOnline?: boolean | null,
+): boolean {
+  if (ownerId == null || !Number.isFinite(ownerId) || ownerId <= 0) return false;
+  if (presence[ownerId] !== undefined) return presence[ownerId] === true;
+  return hintedOnline === true;
+}
+
 export function useMemberPresence(): {
   presence: MemberPresenceMap;
   isOnline: (ownerId: number | null | undefined) => boolean;
@@ -43,16 +55,16 @@ export function useMemberPresence(): {
     let active = true;
     void getMembers().then((res) => {
       if (!active || res.error) return;
-      setPresence(() => {
+      setPresence((prev) => {
         const live = memberPresenceSnapshot();
-        const next: MemberPresenceMap = {};
+        const next: MemberPresenceMap = { ...prev };
         for (const row of res.data ?? []) {
           const id = Number(row.id);
           if (!Number.isFinite(id) || id <= 0) continue;
           next[id] = live.has(id) ? live.get(id) === true : row.online === true;
         }
         for (const [id, online] of live) {
-          if (next[id] === undefined) next[id] = online;
+          next[id] = online;
         }
         return next;
       });
@@ -64,6 +76,20 @@ export function useMemberPresence(): {
 
   useEffect(() => {
     return subscribeRealtimeMessages((raw) => {
+      const snapshot = parsePresenceSnapshot(raw);
+      if (snapshot) {
+        const online = new Set(snapshot);
+        setPresence((prev) => {
+          const next: MemberPresenceMap = { ...prev };
+          for (const id of online) next[id] = true;
+          for (const key of Object.keys(next)) {
+            const id = Number(key);
+            if (!online.has(id)) next[id] = false;
+          }
+          return next;
+        });
+        return;
+      }
       const memberEvt = parseMemberPresenceSocketEvent(raw);
       if (memberEvt) {
         setPresence((prev) => {
@@ -82,7 +108,20 @@ export function useMemberPresence(): {
       }
       try {
         const parsed = JSON.parse(raw) as { type?: string; data?: Record<string, unknown> };
-        if (parsed.type === "NEW_MESSAGE" && parsed.data) {
+        if (
+          (parsed.type === "NEW_MESSAGE" || parsed.type === "NEW_GEO_MESSAGE") &&
+          parsed.data
+        ) {
+          const liveSender = Number(parsed.data.sender_id);
+          if (
+            Number.isFinite(liveSender) &&
+            liveSender > 0 &&
+            parsed.data.sender_online === true
+          ) {
+            setPresence((prev) =>
+              prev[liveSender] === true ? prev : { ...prev, [liveSender]: true },
+            );
+          }
           const senderGuest =
             typeof parsed.data.guest_sender_id === "string"
               ? parsed.data.guest_sender_id.trim()

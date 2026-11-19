@@ -38,6 +38,8 @@ export type Message = {
   guest_id?: string | null;
   /** True when the guest sender was recently active on a guest API. */
   guest_online?: boolean;
+  /** True when the member sender is online. Absent when the server withheld it. */
+  sender_online?: boolean;
   permission_visibility?: string | null;
   read_by_owner_ids?: number[] | null;
   is_read_by_viewer?: boolean | null;
@@ -481,6 +483,7 @@ export function normalizeMessage(raw: unknown): Message | null {
       : {}),
     ...(contractGuestId !== undefined ? { guest_id: contractGuestId } : {}),
     ...(typeof row.guest_online === "boolean" ? { guest_online: row.guest_online } : {}),
+    ...(typeof row.sender_online === "boolean" ? { sender_online: row.sender_online } : {}),
     ...(permissionVisibility !== undefined
       ? { permission_visibility: permissionVisibility }
       : {}),

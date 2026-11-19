@@ -242,6 +242,30 @@ export type MemberPresenceSocketEvent = {
   online: boolean;
 };
 
+/** Full online set pushed when a member socket connects. */
+export function parsePresenceSnapshot(raw: string): number[] | null {
+  try {
+    const parsed = JSON.parse(raw) as { type?: unknown; data?: unknown };
+    if (parsed.type !== "PRESENCE_SNAPSHOT") return null;
+    const data =
+      parsed.data != null &&
+      typeof parsed.data === "object" &&
+      !Array.isArray(parsed.data)
+        ? (parsed.data as Record<string, unknown>)
+        : {};
+    const rawIds = data.online_owner_ids ?? data.onlineOwnerIds;
+    if (!Array.isArray(rawIds)) return null;
+    const ids: number[] = [];
+    for (const value of rawIds) {
+      const id = typeof value === "number" ? value : Number(value);
+      if (Number.isFinite(id) && id > 0) ids.push(id);
+    }
+    return ids;
+  } catch {
+    return null;
+  }
+}
+
 /** Parse MEMBER_PRESENCE frames used for realtime online/offline dots. */
 export function parseMemberPresenceSocketEvent(
   raw: string,

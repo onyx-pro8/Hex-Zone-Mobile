@@ -25,7 +25,7 @@ import {
   resolveMessagePropagationPositionForType,
 } from "@/lib/messagePosition";
 import { getOrCreateDeviceHid } from "@/lib/storage";
-import { isSystemAdministrator } from "@/lib/accountLimits";
+import { hasSystemAccess } from "@/lib/accountLimits";
 import { toMessageTypeLabel, type MessageType } from "@/lib/messageTypes";
 import {
   isEmergencyMessageType,
@@ -233,10 +233,11 @@ export function QuickAlertsSheet({
     (user?.name ?? "").trim() ||
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
   const selfBroadcastName = resolveBroadcastName(selfRealName || user?.name);
-  const isSystemAdmin = isSystemAdministrator({
+  const isSystemAdmin = hasSystemAccess({
     accountType: user?.accountType,
     legacyAccountType: user?.account_type,
     role: user?.role,
+    platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
   });
 
   useEffect(() => {
