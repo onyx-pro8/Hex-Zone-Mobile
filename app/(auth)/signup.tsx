@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
-import { Lock, Mail, MapPin, Phone, QrCode, User } from "lucide-react-native";
+import { Lock, Mail, MapPin, Phone, QrCode, RefreshCw, User } from "lucide-react-native";
 import { GradientBackground } from "@/components/ui/GradientBackground";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Input } from "@/components/ui/Input";
@@ -29,6 +29,7 @@ import {
 import {
   AUTH_MAP_DEFAULT_CENTER,
   addressToMockCoords,
+  generateZoneId,
   type LatLng,
 } from "@/lib/h3";
 import { toast } from "@/lib/toast";
@@ -42,7 +43,7 @@ const STEP_LABELS = [
   "Name",
   "Contact",
   "Account",
-  "Communal",
+  "Network",
 ];
 
 const labelStyle = {
@@ -69,6 +70,7 @@ export default function SignupScreen() {
   const [confirm, setConfirm] = useState("");
   const [address, setAddress] = useState("350 Fifth Avenue, New York");
   const [addressCoords, setAddressCoords] = useState<LatLng | null>(null);
+  const [zoneId, setZoneId] = useState(() => generateZoneId());
   const [communalId, setCommunalId] = useState("");
   const [communalValidated, setCommunalValidated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -125,6 +127,10 @@ export default function SignupScreen() {
     if (current === 4) {
       return true;
     }
+    if (current === 5 && !zoneId.trim()) {
+      toast.error("Enter or generate a network ID.");
+      return false;
+    }
     return true;
   };
 
@@ -137,6 +143,11 @@ export default function SignupScreen() {
   const onSubmit = async () => {
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password) {
       toast.error("Name, email and password are required.");
+      return;
+    }
+    const networkId = zoneId.trim();
+    if (!networkId) {
+      toast.error("Enter or generate a network ID.");
       return;
     }
     const communal = communalId.trim().toUpperCase();
@@ -157,6 +168,7 @@ export default function SignupScreen() {
         registrationType: "USER",
         address,
         phone: phone.trim() || undefined,
+        zoneId: networkId,
         ...(communal ? { communalId: communal } : {}),
       });
       router.replace("/(auth)/login");
@@ -183,7 +195,7 @@ export default function SignupScreen() {
           ? "Contact details"
           : step === 4
             ? "Account setup"
-            : "Communal ID";
+            : "Network ID";
 
   const stepSubtitle =
     step === 1
@@ -194,7 +206,7 @@ export default function SignupScreen() {
           ? "Optional phone and your home address."
           : step === 4
             ? "Free Individual account. Upgrade later in User settings."
-            : "Optional Communal ID for a primary zone — or skip for secondary only.";
+            : "Enter the network ID for this account. A Communal ID is optional.";
 
   const footerPad =
     Platform.OS === "android" && keyboardInset > 0
@@ -408,20 +420,65 @@ export default function SignupScreen() {
               ) : null}
 
               {step === 5 ? (
-                <View
-                  style={{
-                    padding: 14,
-                    borderRadius: 14,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.bgCard,
-                  }}
-                >
-                  <CommunalIdSignupField
-                    value={communalId}
-                    onChange={setCommunalId}
-                    onValidated={(valid) => setCommunalValidated(valid)}
-                  />
+                <View style={{ gap: 12 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 10,
+                      alignItems: "flex-end",
+                    }}
+                  >
+                    <Input
+                      label="Network ID"
+                      placeholder="Network-ABC123"
+                      value={zoneId}
+                      onChangeText={setZoneId}
+                      autoCapitalize="characters"
+                      containerStyle={{ flex: 1 }}
+                    />
+                    <Pressable
+                      onPress={() => setZoneId(generateZoneId())}
+                      style={{
+                        height: 48,
+                        width: 48,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.bgSurface,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        marginBottom: 2,
+                      }}
+                      accessibilityLabel="Generate network ID"
+                    >
+                      <RefreshCw size={18} color={colors.accent} />
+                    </Pressable>
+                  </View>
+                  <Text
+                    style={{
+                      color: colors.textDim,
+                      fontSize: 11,
+                      lineHeight: 16,
+                    }}
+                  >
+                    This is the ID saved on your account. It is shown on the
+                    members list exactly as you enter it.
+                  </Text>
+                  <View
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.bgCard,
+                    }}
+                  >
+                    <CommunalIdSignupField
+                      value={communalId}
+                      onChange={setCommunalId}
+                      onValidated={(valid) => setCommunalValidated(valid)}
+                    />
+                  </View>
                 </View>
               ) : null}
 

@@ -51,6 +51,15 @@ import { colors } from "@/theme/colors";
 
 type Filter = "same-zone" | "all" | "admins";
 
+function sameNetwork(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const a = String(left ?? "").trim().toLowerCase();
+  const b = String(right ?? "").trim().toLowerCase();
+  return Boolean(a) && a === b;
+}
+
 function MemberAvatar({ member }: { member: Member }) {
   const uri = useResolvedAvatarUri(member.avatar_url);
   const initials = initialsForUser(member.name, member.username ?? member.email);
@@ -738,7 +747,7 @@ export default function MembersScreen() {
 
   const sameZoneMembers = useMemo(() => {
     if (!myZoneId) return members;
-    return members.filter((m) => String(m.zone_id ?? "") === myZoneId);
+    return members.filter((m) => sameNetwork(m.zone_id, myZoneId));
   }, [members, myZoneId]);
 
   const visible =
@@ -853,8 +862,7 @@ export default function MembersScreen() {
             data={visible}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => {
-              const sameZone =
-                !!myZoneId && String(item.zone_id ?? "") === myZoneId;
+              const sameZone = sameNetwork(item.zone_id, myZoneId);
               const isSelf = myId !== "" && item.id === myId;
               const canOpenManage =
                 isSystemAdmin && filter === "all" && !isSelf;
