@@ -8,6 +8,7 @@ import {
   watchDeviceLocation,
   LOCATION_UNAVAILABLE_MESSAGE,
 } from "@/lib/expoLocation";
+import { listComposeZones } from "@/api/messageFeature";
 import { getMembers } from "@/api/members";
 import {
   createZone,
@@ -110,6 +111,8 @@ export type ZoneBuilderScope = {
   communalIdLocked?: boolean;
   /** Network admins may validate/generate Communal IDs and attach them to primaries. */
   canUseCommunalTools?: boolean;
+  /** Private system admin: list the same deduped zones as message compose. */
+  isSystemAdministrator?: boolean;
 };
 
 function resolveZoneOwnerName(
@@ -319,11 +322,14 @@ export function useZoneBuilder(
   const refresh = useCallback(async () => {
     setLoadingList(true);
     setListError(null);
-    const [zonesRes, capsRes, membersRes, communalRes] = await Promise.all([
+    const [zonesRes, capsRes, membersRes, communalRes, composeRes] = await Promise.all([
       getZones(),
       getZoneCapabilities(),
       getMembers(),
       listCommunalIds(),
+      scope?.isSystemAdministrator
+        ? listComposeZones()
+        : Promise.resolve({ data: null, error: null }),
     ]);
     if (zonesRes.error) {
       setListError(zonesRes.error);
@@ -361,8 +367,18 @@ export function useZoneBuilder(
       const ownById = new Map<string, SavedZone>();
       const communalById = new Map<string, SavedZone>();
 
+      const composeIds =
+        scope?.isSystemAdministrator && !composeRes.error
+          ? new Set(
+              (composeRes.data?.zones ?? []).map((zone) =>
+                String(zone.zone_record_id),
+              ),
+            )
+          : null;
+
       if (!zonesRes.error) {
         for (const row of zonesRes.data ?? []) {
+          if (composeIds && !composeIds.has(String(row.id))) continue;
           const resolved = resolveZoneOwnerName(row as SavedZone, nameById);
           if (row.shared_via_communal) {
             communalById.set(String(resolved.id), {
@@ -379,6 +395,7 @@ export function useZoneBuilder(
         if (batch.error || !batch.data) continue;
         for (const row of batch.data) {
           const key = String(row.id);
+          if (composeIds && !composeIds.has(key)) continue;
           if (ownById.has(key)) continue;
           const resolved = resolveZoneOwnerName(
             { ...row, shared_via_communal: true },
@@ -424,6 +441,7 @@ export function useZoneBuilder(
     scope?.currentUserId,
     scope?.currentUserName,
     scope?.isAccountAdministrator,
+    scope?.isSystemAdministrator,
   ]);
 
   useEffect(() => {
