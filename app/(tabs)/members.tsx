@@ -39,7 +39,11 @@ import {
 } from "@/lib/accountLimits";
 import { useResolvedAvatarUri } from "@/lib/resolveAvatarUri";
 import { initialsForUser } from "@/components/ui/ProfileAvatarButton";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import {
+  memberPresenceSnapshot,
+  subscribeRealtimeMessages,
+  useWebSocket,
+} from "@/hooks/useWebSocket";
 import { parseMemberPresenceSocketEvent } from "@/lib/messageSocket";
 import { toast } from "@/lib/toast";
 import { devLog } from "@/lib/devConsole";
@@ -506,8 +510,28 @@ function ManageMemberModal({
   );
 }
 
+function applyLivePresence(rows: Member[]): Member[] {
+  const live = memberPresenceSnapshot();
+  if (live.size === 0) return rows;
+  let changed = false;
+  const next = rows.map((row) => {
+    const id = Number(row.id);
+    if (!live.has(id)) return row;
+    const online = live.get(id) === true;
+    if (row.online === online) return row;
+    changed = true;
+    return { ...row, online };
+  });
+  return changed ? next : rows;
+}
+
 export default function MembersScreen() {
   const { user, token, ownerZoneId } = useAuth();
+  const { status: socketStatus } = useWebSocket({
+    token,
+    zoneIds: [],
+    enabled: Boolean(token),
+  });
   const [members, setMembers] = useState<Member[]>([]);
   const [networkAdmins, setNetworkAdmins] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
@@ -515,14 +539,8 @@ export default function MembersScreen() {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [managing, setManaging] = useState<Member | null>(null);
 
-  const { lastMessage } = useWebSocket({
-    token,
-    zoneIds: [],
-    enabled: Boolean(token),
-  });
-
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const result = await getMembers();
       if (result.error) {
@@ -537,7 +555,7 @@ export default function MembersScreen() {
         })
       ) {
         const admins = await listNetworkAdmins();
-        if (!admins.error) setNetworkAdmins(admins.data ?? []);
+        if (!admins.error) setNetworkAdmins(applyLivePresence(admins.data ?? []));
       } else {
         setNetworkAdmins([]);
       }
@@ -545,7 +563,7 @@ export default function MembersScreen() {
         count: rows.length,
         myZoneId: user?.zoneId ?? null,
       });
-      setMembers(rows);
+      setMembers(applyLivePresence(rows));
     } finally {
       setLoading(false);
     }
@@ -556,21 +574,29 @@ export default function MembersScreen() {
   }, [load]);
 
   useEffect(() => {
-    if (!lastMessage) return;
-    const evt = parseMemberPresenceSocketEvent(lastMessage);
-    if (!evt) return;
-    const ownerKey = String(evt.ownerId);
-    setMembers((prev) => {
-      let changed = false;
-      const next = prev.map((row) => {
-        if (row.id !== ownerKey) return row;
-        if (row.online === evt.online) return row;
-        changed = true;
-        return { ...row, online: evt.online };
-      });
-      return changed ? next : prev;
+    if (socketStatus !== "open") return;
+    void load(true);
+  }, [socketStatus, load]);
+
+  useEffect(() => {
+    return subscribeRealtimeMessages((raw) => {
+      const evt = parseMemberPresenceSocketEvent(raw);
+      if (!evt) return;
+      const ownerKey = String(evt.ownerId);
+      const patch = (prev: Member[]) => {
+        let changed = false;
+        const next = prev.map((row) => {
+          if (row.id !== ownerKey) return row;
+          if (row.online === evt.online) return row;
+          changed = true;
+          return { ...row, online: evt.online };
+        });
+        return changed ? next : prev;
+      };
+      setMembers(patch);
+      setNetworkAdmins(patch);
     });
-  }, [lastMessage]);
+  }, []);
 
   const accountType = useMemo(
     () => normalizeAccountType(user?.accountType, user?.account_type),

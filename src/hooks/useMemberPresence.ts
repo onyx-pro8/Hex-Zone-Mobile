@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { getMembers } from "@/api/members";
 import { useAuth } from "@/context/AuthContext";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import {
+  memberPresenceSnapshot,
+  subscribeRealtimeMessages,
+  useWebSocket,
+} from "@/hooks/useWebSocket";
 import {
   parseGuestPresenceSocketEvent,
   parseMemberPresenceSocketEvent,
@@ -23,71 +27,84 @@ export function useMemberPresence(): {
   const { token } = useAuth();
   const [presence, setPresence] = useState<MemberPresenceMap>({});
   const [guestPresence, setGuestPresence] = useState<GuestPresenceMap>({});
-  const { lastMessage } = useWebSocket({
+  const { status } = useWebSocket({
     token,
     zoneIds: [],
     enabled: Boolean(token),
   });
+  const socketOpen = status === "open";
 
   useEffect(() => {
+    if (!token) {
+      setPresence({});
+      setGuestPresence({});
+      return;
+    }
     let active = true;
     void getMembers().then((res) => {
       if (!active || res.error) return;
-      const next: MemberPresenceMap = {};
-      for (const row of res.data ?? []) {
-        const id = Number(row.id);
-        if (!Number.isFinite(id) || id <= 0) continue;
-        next[id] = row.online === true;
-      }
-      setPresence(next);
+      setPresence(() => {
+        const live = memberPresenceSnapshot();
+        const next: MemberPresenceMap = {};
+        for (const row of res.data ?? []) {
+          const id = Number(row.id);
+          if (!Number.isFinite(id) || id <= 0) continue;
+          next[id] = live.has(id) ? live.get(id) === true : row.online === true;
+        }
+        for (const [id, online] of live) {
+          if (next[id] === undefined) next[id] = online;
+        }
+        return next;
+      });
     });
     return () => {
       active = false;
     };
-  }, []);
+  }, [token, socketOpen]);
 
   useEffect(() => {
-    if (!lastMessage) return;
-    const memberEvt = parseMemberPresenceSocketEvent(lastMessage);
-    if (memberEvt) {
-      setPresence((prev) => {
-        if (prev[memberEvt.ownerId] === memberEvt.online) return prev;
-        return { ...prev, [memberEvt.ownerId]: memberEvt.online };
-      });
-      return;
-    }
-    const guestEvt = parseGuestPresenceSocketEvent(lastMessage);
-    if (guestEvt) {
-      setGuestPresence((prev) => {
-        if (prev[guestEvt.guestId] === guestEvt.online) return prev;
-        return { ...prev, [guestEvt.guestId]: guestEvt.online };
-      });
-      return;
-    }
-    try {
-      const parsed = JSON.parse(lastMessage) as { type?: string; data?: Record<string, unknown> };
-      if (parsed.type === "NEW_MESSAGE" && parsed.data) {
-        const senderGuest =
-          typeof parsed.data.guest_sender_id === "string"
-            ? parsed.data.guest_sender_id.trim()
-            : "";
-        const senderId = parsed.data.sender_id;
-        const guestId =
-          senderGuest ||
-          ((senderId == null || senderId === 0) && typeof parsed.data.guest_id === "string"
-            ? parsed.data.guest_id.trim()
-            : "");
-        const flaggedOnline = parsed.data.guest_online === true;
-        if (guestId && (flaggedOnline || senderGuest || senderId == null || senderId === 0)) {
-          setGuestPresence((prev) =>
-            prev[guestId] === true ? prev : { ...prev, [guestId]: true },
-          );
-        }
+    return subscribeRealtimeMessages((raw) => {
+      const memberEvt = parseMemberPresenceSocketEvent(raw);
+      if (memberEvt) {
+        setPresence((prev) => {
+          if (prev[memberEvt.ownerId] === memberEvt.online) return prev;
+          return { ...prev, [memberEvt.ownerId]: memberEvt.online };
+        });
+        return;
       }
-    } catch {
-      /* ignore */
-    }
-  }, [lastMessage]);
+      const guestEvt = parseGuestPresenceSocketEvent(raw);
+      if (guestEvt) {
+        setGuestPresence((prev) => {
+          if (prev[guestEvt.guestId] === guestEvt.online) return prev;
+          return { ...prev, [guestEvt.guestId]: guestEvt.online };
+        });
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as { type?: string; data?: Record<string, unknown> };
+        if (parsed.type === "NEW_MESSAGE" && parsed.data) {
+          const senderGuest =
+            typeof parsed.data.guest_sender_id === "string"
+              ? parsed.data.guest_sender_id.trim()
+              : "";
+          const senderId = parsed.data.sender_id;
+          const guestId =
+            senderGuest ||
+            ((senderId == null || senderId === 0) && typeof parsed.data.guest_id === "string"
+              ? parsed.data.guest_id.trim()
+              : "");
+          const flaggedOnline = parsed.data.guest_online === true;
+          if (guestId && (flaggedOnline || senderGuest || senderId == null || senderId === 0)) {
+            setGuestPresence((prev) =>
+              prev[guestId] === true ? prev : { ...prev, [guestId]: true },
+            );
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
 
   const isOnline = useCallback(
     (ownerId: number | null | undefined) => {

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { defaultRealtimeWsBase } from "@/lib/messageSocket";
+import {
+  defaultRealtimeWsBase,
+  parseMemberPresenceSocketEvent,
+} from "@/lib/messageSocket";
 
 export type WebSocketStatus = "connecting" | "open" | "closed";
 
@@ -33,6 +36,9 @@ type SharedManager = {
   nextSourceId: number;
   enabled: boolean;
   connectionSeq: number;
+  pingTimer: ReturnType<typeof setInterval> | null;
+  /** Latest MEMBER_PRESENCE values seen on this socket. */
+  presence: Map<number, boolean>;
 };
 
 const INITIAL_BACKOFF_MS = 1000;
@@ -53,6 +59,8 @@ const sharedManager: SharedManager = {
   nextSourceId: 1,
   enabled: true,
   connectionSeq: 0,
+  presence: new Map(),
+  pingTimer: null,
 };
 
 function snapshot(): Snapshot {
@@ -69,7 +77,18 @@ function emitSnapshot() {
   }
 }
 
+function noteMemberPresence(raw: string) {
+  const evt = parseMemberPresenceSocketEvent(raw);
+  if (!evt) return;
+  sharedManager.presence.set(evt.ownerId, evt.online);
+}
+
+export function memberPresenceSnapshot(): ReadonlyMap<number, boolean> {
+  return sharedManager.presence;
+}
+
 function emitMessage(raw: string) {
+  noteMemberPresence(raw);
   for (const listener of sharedManager.messageListeners) {
     listener(raw);
   }
@@ -94,11 +113,29 @@ function clearReconnectTimer() {
   }
 }
 
+function clearPingTimer() {
+  if (sharedManager.pingTimer != null) {
+    clearInterval(sharedManager.pingTimer);
+    sharedManager.pingTimer = null;
+  }
+}
+
+function startPing() {
+  clearPingTimer();
+  sharedManager.pingTimer = setInterval(() => {
+    const ws = sharedManager.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "PING" }));
+  }, 20000);
+}
+
 function closeSocket() {
   clearReconnectTimer();
+  clearPingTimer();
   const ws = sharedManager.ws;
   sharedManager.ws = null;
   sharedManager.lastMessage = null;
+  sharedManager.presence.clear();
   if (ws) {
     ws.onopen = null;
     ws.onmessage = null;
@@ -186,6 +223,7 @@ function connectSocket() {
     emitSnapshot();
     void connectionId;
     sendSubscribeFrame();
+    startPing();
   };
 
   ws.onmessage = (event) => {
@@ -201,6 +239,7 @@ function connectSocket() {
     if (sharedManager.ws === ws) {
       sharedManager.ws = null;
     }
+    sharedManager.presence.clear();
     sharedManager.status = "closed";
     emitSnapshot();
     if (sharedManager.activeUsers > 0 && sharedManager.enabled) {
@@ -216,6 +255,7 @@ function connectSocket() {
 function setToken(token: string | null) {
   if (sharedManager.token === token) return;
   sharedManager.token = token;
+  if (!token) sharedManager.presence.clear();
   closeSocket();
   if (token && sharedManager.enabled) {
     connectSocket();
