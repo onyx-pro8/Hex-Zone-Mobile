@@ -24,6 +24,7 @@ export function useGuestRealtime(params: {
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const [presence, setPresence] = useState<PresenceMap>({});
   const wsRef = useRef<WebSocket | null>(null);
+  const liveSeen = useRef<Set<number>>(new Set());
   const zoneKey = useMemo(() => JSON.stringify(zoneIds), [zoneIds]);
 
   useEffect(() => {
@@ -34,6 +35,7 @@ export function useGuestRealtime(params: {
       for (const [k, v] of Object.entries(seedPresence)) {
         const id = Number(k);
         if (!Number.isFinite(id) || id <= 0) continue;
+        if (liveSeen.current.has(id)) continue;
         if (next[id] !== v) {
           next[id] = v;
           changed = true;
@@ -76,6 +78,7 @@ export function useGuestRealtime(params: {
         setLastMessage(raw);
         const presenceEv = parseMemberPresenceSocketEvent(raw);
         if (presenceEv) {
+          liveSeen.current.add(presenceEv.ownerId);
           setPresence((prev) => {
             if (prev[presenceEv.ownerId] === presenceEv.online) return prev;
             return { ...prev, [presenceEv.ownerId]: presenceEv.online };

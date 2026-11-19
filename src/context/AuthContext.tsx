@@ -526,14 +526,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [token, user, performLogout, wsStatus]);
 
-  // Keep this phone Online while the account stays signed in. Presence expires
-  // after 30 minutes without a heartbeat, which made an open session look offline.
+  // Keep this phone Online while the account stays signed in. A dropped
+  // browser tab must not be the only thing that refreshes last_seen.
   useEffect(() => {
     if (!token || !user?.id) return;
     void heartbeatCurrentDevice();
     const timer = setInterval(() => {
       void heartbeatCurrentDevice();
-    }, 4 * 60 * 1000);
+    }, 45 * 1000);
     return () => clearInterval(timer);
   }, [token, user?.id]);
 
