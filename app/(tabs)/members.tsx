@@ -26,7 +26,9 @@ import {
   accountTypeLabel,
   formatLimit,
   getMemberLimit,
+  hasSystemAccess,
   isSystemAdministrator,
+  isTechnicalSupport,
   normalizeAccountType,
 } from "@/lib/accountLimits";
 import { useResolvedAvatarUri } from "@/lib/resolveAvatarUri";
@@ -123,12 +125,17 @@ function MemberRow({
 }) {
   const isActive = member.active !== false;
   const memberAccountType = normalizeAccountType(member.account_type);
-  const memberAccountTypeText = isSystemAdministrator({
-    role: member.role,
-    accountType: member.account_type,
+  const memberAccountTypeText = isTechnicalSupport({
+    platform_staff_role: member.platform_staff_role,
   })
-    ? `${accountTypeLabel(memberAccountType)} (System Admin)`
-    : accountTypeLabel(memberAccountType);
+    ? `${accountTypeLabel(memberAccountType)} (Technical Support)`
+    : isSystemAdministrator({
+        role: member.role,
+        accountType: member.account_type,
+        platform_staff_role: member.platform_staff_role,
+      })
+      ? `${accountTypeLabel(memberAccountType)} (System Admin)`
+      : accountTypeLabel(memberAccountType);
 
   return (
     <Card
@@ -252,9 +259,10 @@ export default function MembersScreen() {
       }
       const rows = result.data ?? [];
       if (
-        isSystemAdministrator({
+        hasSystemAccess({
           role: user?.role,
           accountType: user?.accountType ?? user?.account_type,
+          platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
         })
       ) {
         const admins = await listNetworkAdmins();
@@ -270,7 +278,14 @@ export default function MembersScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.zoneId, user?.role, user?.accountType, user?.account_type]);
+  }, [
+    user?.zoneId,
+    user?.role,
+    user?.accountType,
+    user?.account_type,
+    user?.platformStaffRole,
+    user?.platform_staff_role,
+  ]);
 
   useEffect(() => {
     void load();
@@ -312,9 +327,10 @@ export default function MembersScreen() {
   );
   const myZoneId = (ownerZoneId || String(user?.zoneId ?? "")).trim();
   const myId = String(user?.id ?? "").trim();
-  const isSystemAdmin = isSystemAdministrator({
+  const isSystemAdmin = hasSystemAccess({
     role: user?.role,
     accountType: user?.accountType ?? user?.account_type,
+    platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
   });
 
   useEffect(() => {

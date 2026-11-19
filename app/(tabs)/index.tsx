@@ -139,6 +139,8 @@ function MessageRow({
     : null;
   const showPrivateThread =
     counterpartId != null && counterpartId !== nextCounterpartId;
+  const showWellness =
+    item.type === "WELLNESS_CHECK" && wellnessResponseTrackingEnabled(item);
 
   return (
     <InboxMessageCard
@@ -156,9 +158,9 @@ function MessageRow({
       clusterMinWidth={clusterMinWidth}
       onBubbleWidth={onBubbleWidth}
       footerExtra={
+        showWellness || showPrivateThread ? (
         <>
-          {item.type === "WELLNESS_CHECK" &&
-          wellnessResponseTrackingEnabled(item) ? (
+          {showWellness ? (
             <WellnessAckInline
               messageEventId={item.id}
               selfOwnerId={selfOwnerId}
@@ -198,6 +200,7 @@ function MessageRow({
             </Pressable>
           ) : null}
         </>
+        ) : null
       }
     />
   );

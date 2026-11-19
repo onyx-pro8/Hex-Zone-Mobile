@@ -56,7 +56,7 @@ import {
   type MessageType,
 } from "@/lib/messageTypes";
 import { resolveBroadcastName } from "@/lib/appSettings";
-import { isSystemAdministrator } from "@/lib/accountLimits";
+import { hasSystemAccess } from "@/lib/accountLimits";
 import { MAX_MESSAGE_IMAGES } from "@/lib/messageImages";
 import {
   isEmergencyMessageType,
@@ -278,10 +278,11 @@ export function ComposeMessageSheet({
     (user?.name ?? "").trim() ||
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
   const selfBroadcastName = resolveBroadcastName(selfRealName || user?.name);
-  const isSystemAdmin = isSystemAdministrator({
+  const isSystemAdmin = hasSystemAccess({
     accountType: user?.accountType,
     legacyAccountType: user?.account_type,
     role: user?.role,
+    platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
   });
 
   const [composeType, setComposeType] = useState<MessageType>("PA");

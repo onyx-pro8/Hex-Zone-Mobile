@@ -53,7 +53,7 @@ import {
   zoneHasCommunalId,
 } from "@/hooks/useZoneBuilder";
 import { listZonesForCommunalId, type CommunalIdRow } from "@/api/zones";
-import { isSystemAdministrator, normalizeAccountType } from "@/lib/accountLimits";
+import { hasSystemAccess, normalizeAccountType } from "@/lib/accountLimits";
 import {
   isClosedPolygon,
   layerFocusPoint,
@@ -140,10 +140,11 @@ export default function DashboardScreen() {
     currentUserName: user?.name?.trim() || undefined,
     isAccountAdministrator: canChoosePrimaryTier,
     canUseCommunalTools: canChoosePrimaryTier,
-    isSystemAdministrator: isSystemAdministrator({
+    isSystemAdministrator: hasSystemAccess({
       role: user?.role,
       accountType: user?.accountType,
       legacyAccountType: user?.account_type,
+      platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
     }),
   });
 

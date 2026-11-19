@@ -31,6 +31,9 @@ function guestMessagesFormCluster(
   const aSys = String(a.type).toUpperCase() === "PERMISSION";
   const bSys = String(b.type).toUpperCase() === "PERMISSION";
   if (aSys || bSys) return false;
+  if (String(a.type ?? "").trim().toUpperCase() !== String(b.type ?? "").trim().toUpperCase()) {
+    return false;
+  }
   if (guestChatSenderKey(a) !== guestChatSenderKey(b)) return false;
   if (inboxDayKey(a.created_at) !== inboxDayKey(b.created_at)) return false;
   const ta = new Date(a.created_at ?? "").getTime();

@@ -21,6 +21,8 @@ export type AuthUser = {
   registrationType?: RegistrationType;
   accountOwnerId?: number;
   role?: UserRole;
+  platform_staff_role?: string | null;
+  platformStaffRole?: string | null;
   zoneId?: string;
   first_name?: string;
   last_name?: string;

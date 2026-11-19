@@ -87,6 +87,7 @@ export default function TabsLayout() {
           <Tabs.Screen name="messages" options={{ href: null }} />
           <Tabs.Screen name="recent-services" options={{ href: null }} />
           <Tabs.Screen name="settings" options={{ href: null }} />
+          <Tabs.Screen name="give-permission" options={{ href: null }} />
           <Tabs.Screen name="user-settings" options={{ href: null }} />
           <Tabs.Screen name="smart-home-settings" options={{ href: null }} />
           <Tabs.Screen name="access-codes" options={{ href: null }} />

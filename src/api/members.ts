@@ -13,6 +13,7 @@ export type Member = {
   location?: { latitude: number; longitude: number } | null;
   zones?: string[];
   role?: "administrator" | "user" | string;
+  platform_staff_role?: string | null;
   active?: boolean;
   online?: boolean;
   avatar_url?: string | null;
@@ -70,6 +71,12 @@ function normalizeMember(raw: unknown): Member | null {
       ? row.zones.filter((z): z is string => typeof z === "string")
       : [],
     role: typeof row.role === "string" ? row.role : undefined,
+    platform_staff_role:
+      typeof row.platform_staff_role === "string"
+        ? row.platform_staff_role
+        : typeof row.platformStaffRole === "string"
+          ? row.platformStaffRole
+          : null,
     active: typeof row.active === "boolean" ? row.active : true,
     online: typeof row.online === "boolean" ? row.online : false,
     avatar_url:
@@ -147,6 +154,31 @@ export async function setMemberAccountType(
     method: "PATCH",
     url: `/owners/${encodeURIComponent(String(memberId))}`,
     data: { account_type: accountType },
+  });
+}
+
+export async function listTechnicalSupport() {
+  const result = await request<unknown>({
+    method: "GET",
+    url: "/owners/technical-support",
+  });
+  const rows = Array.isArray(result.data) ? result.data : [];
+  return {
+    ...result,
+    data: rows
+      .map((row) => normalizeMember(row))
+      .filter((row): row is Member => row != null),
+  };
+}
+
+export async function setPlatformStaffRole(
+  memberId: string | number,
+  role: "technical_support" | "none",
+) {
+  return request<unknown>({
+    method: "PUT",
+    url: `/owners/${encodeURIComponent(String(memberId))}/platform-staff`,
+    data: { role },
   });
 }
 

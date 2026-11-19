@@ -16,7 +16,7 @@ import { getRemoteAppSettings, updateRemoteAppSettings } from "@/api";
 import { getDevices, listHubCommands, sendHubCommand, type HubCommandRecord } from "@/api/devices";
 import { useAuth } from "@/context/AuthContext";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { isSystemAdministrator, normalizeAccountType } from "@/lib/accountLimits";
+import { hasSystemAccess, normalizeAccountType } from "@/lib/accountLimits";
 import { isSmartHomeHid } from "@/lib/deviceSync";
 import { toastSmartHomeSettingsSaved } from "@/lib/smartHomeToast";
 import { toast } from "@/lib/toast";
@@ -122,10 +122,11 @@ export function ConfigForm({
   const isAdmin = useIsAdmin();
   const isIndividual =
     normalizeAccountType(user?.accountType, user?.account_type) === "EXCLUSIVE";
-  const isSystemAdmin = isSystemAdministrator({
+  const isSystemAdmin = hasSystemAccess({
     role: user?.role,
     accountType: user?.accountType,
     legacyAccountType: user?.account_type,
+    platformStaffRole: user?.platformStaffRole ?? user?.platform_staff_role,
   });
   const isNetworkAdmin = isAdmin && !isSystemAdmin && !isIndividual;
   const [hubCommand, setHubCommand] = useState<"arm" | "disarm" | "status">("arm");
