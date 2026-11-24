@@ -10,6 +10,7 @@ import {
   confirmSubscriptionCheckout,
   type ConfirmCheckoutResult,
 } from "@/api/subscription";
+import { accountTypeLabel, normalizeAccountType } from "@/lib/accountLimits";
 import { colors } from "@/theme/colors";
 
 type Phase = "loading" | "success" | "failed" | "cancelled";
@@ -147,7 +148,8 @@ export default function SubscriptionResultScreen() {
                   {result.plan.label}
                 </Text>
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  Account type: {result.account_type}
+                  Account type:{" "}
+                  {accountTypeLabel(normalizeAccountType(result.account_type))}
                 </Text>
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>
                   Role: {result.role}

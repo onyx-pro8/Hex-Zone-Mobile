@@ -270,7 +270,7 @@ export function deviceLimitDescription(type: NormalizedAccountType): string {
     case "PRIVATE":
       return "Private (system admin) accounts have unlimited smart-home hubs. Phones and browsers register separately as login sessions.";
     case "PRIVATE_PLUS":
-      return "Private+ accounts allow 10 smart-home hubs. Phones and browsers are separate login sessions; only one phone or browser session can be active at a time.";
+      return "Family accounts allow 10 smart-home hubs. Phones and browsers are separate login sessions; only one phone or browser session can be active at a time.";
     case "EXCLUSIVE":
       return "Individual accounts do not support smart-home hubs. Phones and browsers still register as login sessions.";
     case "ENHANCED":
