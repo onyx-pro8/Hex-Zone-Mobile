@@ -409,7 +409,10 @@ export default function LoginScreen() {
                   Remember me
                 </Text>
               </Pressable>
-              <Pressable hitSlop={8}>
+              <Pressable
+                hitSlop={8}
+                onPress={() => router.push("/(auth)/forgot-password")}
+              >
                 <Text
                   style={{
                     color: colors.accent,

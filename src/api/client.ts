@@ -21,6 +21,9 @@ const AUTH_FREE_PATHS = [
   "/zones/communal-ids/public",
   "/zones/validate-reference/public",
   "/owners/networks/public",
+  "/auth/signup/verification",
+  "/auth/password/forgot",
+  "/auth/password/reset",
 ];
 
 function isAuthFreeRequest(url: string | undefined): boolean {
