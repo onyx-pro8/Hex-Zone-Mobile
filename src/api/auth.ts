@@ -176,18 +176,56 @@ export async function listJoinableNetworks(accountType: string) {
   });
 }
 
-export async function registerRequest(payload: RegisterPayload) {
-  // Self-serve signup is free Individual only. Paid plans activate via Stripe
-  // in User settings. Network invites use the separate join QR flow.
+export type SignupVerificationStatus = {
+  email: string;
+  expires_in_seconds: number;
+  resend_after_seconds: number;
+  sent: boolean;
+  delivery: string;
+};
+
+function normalizeSelfServeRegister(payload: RegisterPayload): RegisterPayload {
   const communal = payload.communalId?.trim().toUpperCase();
-  const normalized: RegisterPayload = {
+  return {
     ...payload,
+    email: payload.email.trim(),
     accountType: "EXCLUSIVE",
     registrationType: "USER",
     registrationCode: undefined,
     tierLevel: undefined,
-    ...(communal ? { communalId: communal } : {}),
+    address: payload.address?.trim() || "N/A",
+    ...(communal ? { communalId: communal } : { communalId: undefined }),
   };
+}
+
+export async function startSignupVerification(payload: RegisterPayload) {
+  return request<SignupVerificationStatus>({
+    method: "POST",
+    url: "/auth/signup/verification",
+    data: normalizeSelfServeRegister(payload),
+  });
+}
+
+export async function resendSignupVerification(email: string) {
+  return request<SignupVerificationStatus>({
+    method: "POST",
+    url: "/auth/signup/verification/resend",
+    data: { email: email.trim() },
+  });
+}
+
+export async function confirmSignupVerification(email: string, code: string) {
+  return request<{ id?: string }>({
+    method: "POST",
+    url: "/auth/signup/verification/confirm",
+    data: { email: email.trim(), code },
+  });
+}
+
+export async function registerRequest(payload: RegisterPayload) {
+  // Self-serve signup is free Individual only. Paid plans activate via Stripe
+  // in User settings. Network invites use the separate join QR flow.
+  const normalized = normalizeSelfServeRegister(payload);
 
   const primary = await request<{ id?: string }>({
     method: "POST",
@@ -488,4 +526,62 @@ export function normalizeUser(raw: AuthUser | null): AuthUser | null {
           ? raw.tier_level
           : null,
   };
+}
+
+export type PasswordResetStatus = {
+  email: string;
+  expires_in_seconds: number;
+  resend_after_seconds: number;
+  sent: boolean;
+  delivery: string;
+};
+
+export type PasswordResetConfirm = {
+  email: string;
+  reset_token: string;
+  expires_in_seconds: number;
+};
+
+export async function requestPasswordReset(email: string) {
+  return request<PasswordResetStatus>({
+    method: "POST",
+    url: "/auth/password/forgot",
+    data: { email: email.trim() },
+  });
+}
+
+export async function resendPasswordReset(email: string) {
+  return request<PasswordResetStatus>({
+    method: "POST",
+    url: "/auth/password/forgot/resend",
+    data: { email: email.trim() },
+  });
+}
+
+export async function confirmPasswordReset(email: string, code: string) {
+  return request<PasswordResetConfirm>({
+    method: "POST",
+    url: "/auth/password/forgot/confirm",
+    data: { email: email.trim(), code },
+  });
+}
+
+export async function resetPassword(
+  email: string,
+  resetToken: string,
+  password: string,
+) {
+  return request<{ updated?: boolean }>({
+    method: "POST",
+    url: "/auth/password/reset",
+    data: { email: email.trim(), reset_token: resetToken, password },
+  });
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return request<{ updated?: boolean }>({
+    method: "POST",
+    url: "/auth/password/change",
+    data: { currentPassword, newPassword },
+  });
 }

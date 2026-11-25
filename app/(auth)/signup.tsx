@@ -20,9 +20,9 @@ import { AuthMapPanel } from "@/components/ui/AuthMapPanel";
 import { OnboardingProgress } from "@/components/auth/OnboardingProgress";
 import { OnboardingNav } from "@/components/auth/OnboardingNav";
 import { CommunalIdSignupField } from "@/components/auth/CommunalIdSignupField";
-import { useAuth } from "@/context/AuthContext";
 import {
   checkEmailAvailable,
+  startSignupVerification,
   validateSignupEmail,
   validateSignupPassword,
 } from "@/api/auth";
@@ -59,7 +59,6 @@ export default function SignupScreen() {
   const router = useRouter();
   const bottomInset = useBottomSafeInset();
   const keyboardInset = useKeyboardBottomInset();
-  const { register } = useAuth();
 
   const [step, setStep] = useState(1);
   const [firstName, setFirstName] = useState("");
@@ -160,7 +159,7 @@ export default function SignupScreen() {
 
     setSubmitting(true);
     try {
-      await register({
+      const started = await startSignupVerification({
         name: `${firstName} ${lastName}`.trim(),
         email: email.trim(),
         password,
@@ -171,16 +170,25 @@ export default function SignupScreen() {
         zoneId: networkId,
         ...(communal ? { communalId: communal } : {}),
       });
-      router.replace("/(auth)/login");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "";
-      toast.error(
-        /422|exclusive|individual|account owner|zone|communal|network|administrator|already registered|409/i.test(
-          msg,
-        )
-          ? msg
-          : "Could not create account. Please review your details and try again.",
-      );
+      if (started.error || !started.data) {
+        toast.error(
+          started.error ||
+            "Could not create account. Please review your details and try again.",
+        );
+        return;
+      }
+      if (started.data.delivery === "logged") {
+        toast.info("Verification code was written to the server log.");
+      } else if (!started.data.sent && started.data.delivery !== "cooldown") {
+        toast.error("Could not email the code. You can resend it on the next screen.");
+      }
+      router.push({
+        pathname: "/(auth)/auth-pin",
+        params: {
+          email: started.data.email || email.trim(),
+          resendAfter: String(started.data.resend_after_seconds ?? 60),
+        },
+      });
     } finally {
       setSubmitting(false);
     }
@@ -529,7 +537,7 @@ export default function SignupScreen() {
             onNext={
               step < TOTAL_STEPS ? () => void goNext() : () => void onSubmit()
             }
-            nextLabel={step < TOTAL_STEPS ? "Next" : "Signup"}
+            nextLabel={step < TOTAL_STEPS ? "Next" : "Send code"}
             nextLoading={
               step === 1
                 ? checkingCredentials

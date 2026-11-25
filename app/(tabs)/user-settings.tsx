@@ -41,7 +41,7 @@ import {
 } from "@/lib/resolveAvatarUri";
 import { colors } from "@/theme/colors";
 import { normalizeUsername, validateUsernameFormat } from "@/lib/username";
-import { checkUsernameAvailable } from "@/api/auth";
+import { checkUsernameAvailable, changePassword } from "@/api/auth";
 
 function Field({
   label,
@@ -53,6 +53,7 @@ function Field({
   autoCapitalize,
   editable = true,
   hint,
+  secureTextEntry = false,
 }: {
   label: string;
   value: string;
@@ -63,6 +64,7 @@ function Field({
   autoCapitalize?: "none" | "words" | "sentences";
   editable?: boolean;
   hint?: string | null;
+  secureTextEntry?: boolean;
 }) {
   return (
     <View style={{ gap: 6 }}>
@@ -87,6 +89,7 @@ function Field({
         autoCapitalize={autoCapitalize}
         autoCorrect={false}
         editable={editable}
+        secureTextEntry={secureTextEntry}
         selectTextOnFocus={editable}
         style={{
           backgroundColor: editable ? colors.bgSurface : "#EEF2F7",
@@ -156,6 +159,10 @@ export default function UserSettingsScreen() {
   const [savingIdentity, setSavingIdentity] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [identitySaved, setIdentitySaved] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [usernameHint, setUsernameHint] = useState<string | null>(null);
@@ -405,6 +412,32 @@ export default function UserSettingsScreen() {
     setSavingIdentity(false);
   };
 
+  const onChangePassword = async () => {
+    if (!currentPassword) {
+      toast.error("Enter your current password.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match.");
+      return;
+    }
+    setSavingPassword(true);
+    const result = await changePassword(currentPassword, newPassword);
+    setSavingPassword(false);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    toast.success("Password updated.");
+  };
+
   return (
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
@@ -610,6 +643,43 @@ export default function UserSettingsScreen() {
                 }
                 onPress={() => void onSaveIdentity()}
                 disabled={loading || savingIdentity}
+                fullWidth
+              />
+            </Card>
+
+            <SectionTitle>Password</SectionTitle>
+            <Card style={{ gap: 14 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                Enter your current password, then choose a new one.
+              </Text>
+              <Field
+                label="Current password"
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                placeholder="Current password"
+              />
+              <Field
+                label="New password"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                placeholder="At least 8 characters"
+              />
+              <Field
+                label="Confirm new password"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                placeholder="Repeat the new password"
+              />
+              <Button
+                label={savingPassword ? "Updating…" : "Update password"}
+                onPress={() => void onChangePassword()}
+                disabled={savingPassword}
                 fullWidth
               />
             </Card>
