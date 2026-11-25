@@ -204,7 +204,8 @@ export function buildDashboardMapHtml(zoomControlTop = 96): string {
               color: color,
               weight: 2,
               fillColor: color,
-              fillOpacity: 0.42
+              fillOpacity: 0.45,
+              interactive: false
             }).addTo(h3DraftLayer);
           } catch (e) {
             debug('h3-render-error', { cell: cell, err: String(e && e.message || e) });
